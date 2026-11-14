@@ -433,10 +433,17 @@ export function Toolbar({
         <span>
           パラメータ数 <span className="font-mono">{formatCount(check?.params)}</span>
         </span>
-        <span className={errors > 0 ? 'flex items-center gap-1 text-critical-text' : 'text-ink-3'}>
-          {errors > 0 && <AlertTriangle className="size-3.5" aria-hidden />}
-          誤り {errors} 件
-        </span>
+        {/* 部品がまだ無い (新規の直後) は, 誤りの数ではなく始め方を出す */}
+        {Object.keys(spec.nodes).length === 0 ? (
+          <span className="text-ink-3">部品を置いて始める</span>
+        ) : (
+          <span
+            className={errors > 0 ? 'flex items-center gap-1 text-critical-text' : 'text-ink-3'}
+          >
+            {errors > 0 && <AlertTriangle className="size-3.5" aria-hidden />}
+            誤り {errors} 件
+          </span>
+        )}
         <Button
           variant="ghost"
           icon={theme === 'dark' ? Sun : Moon}
