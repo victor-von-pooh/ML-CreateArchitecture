@@ -9,9 +9,10 @@ test('例を開くと, 誤り無しで形とパラメータ数が出る', async 
   await page.getByRole('button', { name: /^cnn_classifier/ }).click()
 
   // 確認と形の推定の結果がノードと上の欄に出る
-  await expect(page.locator('header')).toContainText('誤り 0 件', { timeout: 20_000 })
+  // (誤り 0 件は確認の結果が届く前にも出るので, 例に固有の値を先に待つ)
+  await expect(page.locator('[data-id="head"]')).toContainText('[4, 10]', { timeout: 20_000 })
   await expect(page.locator('header')).toContainText('パラメータ数 5.1K')
-  await expect(page.locator('[data-id="head"]')).toContainText('[4, 10]')
+  await expect(page.locator('header')).toContainText('誤り 0 件')
 })
 
 test('部品を置いて選択の欄でつなぎ, 保存して開き直す', async ({ page }) => {
