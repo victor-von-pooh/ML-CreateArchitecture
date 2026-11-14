@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Spec, UnitSpec } from './graph'
-import { arrangeSpec, layoutPositions } from './layout'
+import { arrangeSpec, layoutPositions, placeMissing } from './layout'
 
 /** テスト用の部品 (入力の口と, 1 つの出力の口) */
 function unit(name: string, inputs: string[], variadic = false): UnitSpec {
@@ -61,5 +61,17 @@ describe('layout', () => {
       outputs: {},
     }
     expect(layoutPositions(cycle, units).size).toBe(3)
+  })
+
+  it('位置の無いものにだけ位置を書く', () => {
+    const partly: Spec = {
+      ...residual,
+      nodes: { ...residual.nodes, fc1: { ...residual.nodes.fc1!, ui: { x: 999, y: 5 } } },
+    }
+    const placed = placeMissing(partly, units)
+    expect(placed.nodes.fc1!.ui).toEqual({ x: 999, y: 5 })
+    expect(placed.nodes.fc2!.ui).toEqual(layoutPositions(partly, units).get('fc2'))
+    expect(placed.inputs.x!.ui).toBeDefined()
+    expect(placed.ui?.outputs?.y).toBeDefined()
   })
 })

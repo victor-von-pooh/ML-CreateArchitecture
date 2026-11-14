@@ -10,7 +10,7 @@ import { Palette } from './features/editor/Palette'
 import { Toolbar } from './features/editor/Toolbar'
 import { addNode, emptySpec, type Spec, type UnitSpec } from './lib/graph'
 import { useHistory } from './lib/history'
-import { arrangeSpec } from './lib/layout'
+import { arrangeSpec, placeMissing } from './lib/layout'
 
 /** 書き換えている途中の値が落ち着いてから使う (確認の回数を抑える) */
 function useDebounced<T>(value: T, delay: number): T {
@@ -157,8 +157,11 @@ function Editor() {
           checking={check.isFetching || debounced !== spec}
           onChange={setSpec}
           onLoad={(name, loaded) => {
-            history.reset(loaded)
-            setSaved(JSON.stringify(loaded))
+            // 位置の無いもの (手で書いた定義など) は, 開いたときに一度だけ
+            // 段に分けた位置を書く (後の編集で動かないように)
+            const placed = placeMissing(loaded, unitMap)
+            history.reset(placed)
+            setSaved(JSON.stringify(placed))
             setFileName(name)
             setSelected(null)
           }}
@@ -171,7 +174,7 @@ function Editor() {
           center={center}
           onSelect={setSelected}
           onArrange={() => {
-            setSpec(arrangeSpec(spec, unitMap))
+            setSpec((current) => arrangeSpec(current, unitMap))
             // 並べ直した全体が見えるように表示の範囲を合わせる
             window.requestAnimationFrame(() => void flow.fitView({ duration: 200 }))
           }}

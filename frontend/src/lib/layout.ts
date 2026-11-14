@@ -1,7 +1,7 @@
 import { specWires, type Spec, type Ui, type UnitSpec } from './graph'
 
 // 段 (つながりの深さ) の間の横の間隔と, 同じ段の中の縦の間隔
-const COLUMN = 280
+const COLUMN = 300
 const GAP = 40
 
 // ノードの高さの見積もり (見出しと, 口の行ごとの高さ)
@@ -101,6 +101,32 @@ export function arrangeSpec(spec: Spec, units: Map<string, UnitSpec>): Spec {
     outputNames(spec).map((name) => [
       name,
       { ...spec.ui?.outputs?.[name], ...at(`output:${name}`) },
+    ]),
+  )
+  return { ...spec, inputs, nodes, ui: { ...spec.ui, outputs } }
+}
+
+/** 位置の無いもの (入力, ノード, 出力) にだけ, 段に分けた位置を書いた定義 */
+export function placeMissing(spec: Spec, units: Map<string, UnitSpec>): Spec {
+  const arranged = arrangeSpec(spec, units)
+  const has = (ui: { x?: number; y?: number } | undefined) =>
+    ui?.x !== undefined && ui?.y !== undefined
+  const inputs = Object.fromEntries(
+    Object.entries(spec.inputs).map(([name, input]) => [
+      name,
+      has(input.ui) ? input : arranged.inputs[name]!,
+    ]),
+  )
+  const nodes = Object.fromEntries(
+    Object.entries(spec.nodes).map(([name, node]) => [
+      name,
+      has(node.ui) ? node : arranged.nodes[name]!,
+    ]),
+  )
+  const outputs = Object.fromEntries(
+    Object.entries(arranged.ui?.outputs ?? {}).map(([name, ui]) => [
+      name,
+      has(spec.ui?.outputs?.[name]) ? spec.ui!.outputs![name]! : ui,
     ]),
   )
   return { ...spec, inputs, nodes, ui: { ...spec.ui, outputs } }
