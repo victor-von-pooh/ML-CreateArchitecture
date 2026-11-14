@@ -1,10 +1,28 @@
 import type { CheckResult } from '../api/client'
 
-/** 形の推定で失敗したノード (名前とエラーの文) */
-export function failedNodes(check: CheckResult | undefined): { node: string; error: string }[] {
-  return Object.entries(check?.nodes ?? {})
-    .filter(([, result]) => result.status === 'error')
-    .map(([node, result]) => ({ node, error: result.error ?? '' }))
+/**
+ * 形の推定で失敗したノードと出力 (選ぶときの名前, 表示の名前, エラーの文)
+ *
+ * 定義に無いもの (確認の結果が届く前に消したものなど) は除く
+ */
+export function failedNodes(
+  check: CheckResult | undefined,
+  spec: { nodes: Record<string, unknown>; outputs: Record<string, unknown> },
+): { id: string; label: string; error: string }[] {
+  const nodes = Object.entries(check?.nodes ?? {})
+    .filter(([name, result]) => result.status === 'error' && name in spec.nodes)
+    .map(([name, result]) => ({ id: name, label: name, error: result.error ?? '' }))
+  const outputs = Object.entries(check?.outputs ?? {})
+    .filter(([name, value]) => {
+      const info = value as ShapeInfo | null
+      return info?.kind === 'error' && name in spec.outputs
+    })
+    .map(([name, value]) => ({
+      id: `output:${name}`,
+      label: `出力 ${name}`,
+      error: (value as ShapeInfo).error ?? '',
+    }))
+  return [...nodes, ...outputs]
 }
 
 /** 形の推定の結果 (ML-ModelControl の describe の形) */

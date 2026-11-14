@@ -192,7 +192,7 @@ export function Toolbar({
 
   // 保存した時点の定義を, 保存していない変更の判定に使う
   const save = useMutation({
-    mutationFn: (target: Spec) => api.saveModel(name, target),
+    mutationFn: (target: Spec & { name: string }) => api.saveModel(target.name, target),
     onSuccess: (summary, target) => {
       void queryClient.invalidateQueries({ queryKey: ['models'] })
       onSaved(summary.name, target)
@@ -200,19 +200,24 @@ export function Toolbar({
   })
   // 開いたものと違う名前で保存する場合, 同じ名前の保存した定義があれば
   // 上書きしてよいかを確かめる (一覧を読めない場合は確かめずに保存)
+  // 確かめている間は保存のボタンを止め, 押した時点の名前で保存する
+  const [asking, setAsking] = useState(false)
   const requestSave = async () => {
+    const target = { ...spec, name }
     if (name !== ownFile) {
+      setAsking(true)
       const models = await queryClient
         .fetchQuery({ queryKey: ['models'], queryFn: api.listModels, staleTime: 0 })
         .catch(() => [])
+        .finally(() => setAsking(false))
       if (
-        models.some((model) => model.name === name) &&
-        !window.confirm(`保存した定義 ${name} があります. 上書きしますか?`)
+        models.some((model) => model.name === target.name) &&
+        !window.confirm(`保存した定義 ${target.name} があります. 上書きしますか?`)
       ) {
         return
       }
     }
-    save.mutate({ ...spec, name })
+    save.mutate(target)
   }
   const open = useMutation({
     mutationFn: ({ source, target }: { source: 'model' | 'example'; target: string }) =>
@@ -229,7 +234,7 @@ export function Toolbar({
   // 誤りは, 定義の誤りと形の推定で失敗したノードの数
   const errors =
     (check?.issues ?? []).filter((issue) => issue.severity === 'error').length +
-    failedNodes(check).length
+    failedNodes(check, spec).length
   const validName = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(name)
 
   // 入力と出力は, 使われていない名前で右下に追加
@@ -296,7 +301,7 @@ export function Toolbar({
       )}
       <Button
         icon={Save}
-        disabled={!validName || save.isPending}
+        disabled={!validName || save.isPending || asking}
         onClick={() => void requestSave()}
         title={validName ? undefined : '名前は英数字, _, - にしてください'}
       >

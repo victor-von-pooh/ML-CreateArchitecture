@@ -194,6 +194,7 @@ test('ノードを引数ごと複製し, 写して貼れる', async ({ page }) =
 
 test('出力を選んだ後も欄が残らず, 形の推定の失敗を誤りに数え, 上書きは確かめる', async ({
   page,
+  request,
 }) => {
   await page.goto('/')
 
@@ -212,9 +213,11 @@ test('出力を選んだ後も欄が残らず, 形の推定の失敗を誤りに
   await page.getByLabel('in_features').press('Enter')
   await expect(page.locator('header')).toContainText('誤り 1 件', { timeout: 20_000 })
   await page.locator('.react-flow__pane').click()
-  await expect(page.getByRole('region', { name: '形の推定で失敗したノード' })).toContainText('head')
+  await expect(page.getByRole('region', { name: '形の推定で失敗したもの' })).toContainText('head')
 
-  // 保存した定義と同じ名前で保存する場合は確かめ, 断れば保存しない
+  // 保存した定義 (前のテストで保存した e2e_model) と同じ名前で保存する
+  // 場合は確かめ, 断れば保存しない
+  const before = await (await request.get('/api/models/e2e_model')).text()
   await page.getByLabel('保存する名前').fill('e2e_model')
   let asked = ''
   page.once('dialog', (dialog) => {
@@ -223,5 +226,7 @@ test('出力を選んだ後も欄が残らず, 形の推定の失敗を誤りに
   })
   await page.getByRole('button', { name: /^保存/ }).click()
   await expect.poll(() => asked).toContain('e2e_model')
+  await page.waitForTimeout(500)
+  expect(await (await request.get('/api/models/e2e_model')).text()).toBe(before)
   await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
 })

@@ -241,8 +241,6 @@ function Editor() {
               </div>
             )}
             <Inspector
-              // 選び直したら作り直し, 前に選んだものの欄を残さない
-              key={current ?? ''}
               spec={spec}
               units={unitMap}
               check={check.data}

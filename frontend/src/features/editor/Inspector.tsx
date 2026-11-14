@@ -369,7 +369,7 @@ export function Inspector({
     onSelect(null)
   }
 
-  const failed = failedNodes(check)
+  const failed = failedNodes(check, spec)
 
   // 何も選んでいない場合は, 全体の情報と定義全体の誤り
   if (!selected) {
@@ -391,19 +391,19 @@ export function Inspector({
         )}
         <IssueList issues={issuesFor((issue) => !issue.node)} />
         {failed.length > 0 && (
-          <section aria-label="形の推定で失敗したノード" className="space-y-1">
+          <section aria-label="形の推定で失敗したもの" className="space-y-1">
             <h3 className="text-xs font-semibold text-critical-text">
-              形の推定で失敗したノード ({failed.length})
+              形の推定で失敗したもの ({failed.length})
             </h3>
             <ul className="space-y-1">
-              {failed.map(({ node, error }) => (
-                <li key={node}>
+              {failed.map(({ id, label, error }) => (
+                <li key={id}>
                   <button
                     type="button"
-                    onClick={() => onSelect(node)}
+                    onClick={() => onSelect(id)}
                     className="w-full rounded-md px-1 py-0.5 text-left text-xs hover:bg-surface-2"
                   >
-                    <span className="font-mono font-semibold">{node}</span>
+                    <span className="font-mono font-semibold">{label}</span>
                     <span className="block text-critical-text [overflow-wrap:anywhere]">
                       {error}
                     </span>
