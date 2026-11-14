@@ -7,7 +7,9 @@ import {
   disconnect,
   emptySpec,
   removeItem,
+  refOptions,
   renameItem,
+  setPortRefs,
   specWires,
   type Spec,
   type UnitSpec,
@@ -122,6 +124,23 @@ describe('graph', () => {
     expect(spec.outputs).toEqual({})
     // 出力の名前は残る (つなぎ直せるように)
     expect(Object.keys(spec.ui?.outputs ?? {})).toEqual(['y'])
+  })
+})
+
+describe('inputs editor', () => {
+  it('つなぎ先の候補と, 口のつなぎ先の置き換え', () => {
+    let spec: Spec = addNode(emptySpec(), units.get('nn.LSTM')!, { x: 0, y: 0 })
+    spec = addNode(spec, units.get('op.Add')!, { x: 0, y: 0 })
+    expect(refOptions(spec, units, 'add1').map((option) => option.value)).toEqual([
+      'x',
+      'lstm1:output',
+      'lstm1:h_n',
+      'lstm1:c_n',
+    ])
+    spec = setPortRefs(spec, units, 'add1', 'xs', ['x', 'lstm1:h_n'])
+    expect(spec.nodes.add1!.inputs).toEqual({ xs: ['x', 'lstm1:h_n'] })
+    spec = setPortRefs(spec, units, 'add1', 'xs', [])
+    expect(spec.nodes.add1!.inputs).toEqual({})
   })
 })
 
