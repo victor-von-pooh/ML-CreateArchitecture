@@ -45,8 +45,12 @@ export function checkValue(param: ParamSpec, text: string): string | null {
   const trimmed = text.trim()
   if (trimmed === '') return param.required ? '必須の引数です' : null
   const value = parseValue(param, trimmed)
+  // null は値を決めない (None) 指定
+  if (value === null) return param.required ? '必須の引数です' : null
   if (param.kind === 'int' && !Number.isInteger(value)) return '整数を入れてください'
-  if (param.kind === 'float' && typeof value !== 'number') return '数を入れてください'
+  if (param.kind === 'float' && (typeof value !== 'number' || !Number.isFinite(value))) {
+    return '有限の数を入れてください'
+  }
   if (typeof value === 'number') {
     if (param.minimum !== null && value < param.minimum)
       return `${param.minimum} 以上にしてください`

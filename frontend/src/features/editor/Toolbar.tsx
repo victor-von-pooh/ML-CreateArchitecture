@@ -29,14 +29,21 @@ function Dialog({
   children: ReactNode
 }) {
   const ref = useRef<HTMLDialogElement>(null)
+  // 開く前に操作していた所 (最初の描画のときに覚え, 開発時の 2 回の実行でも
+  // ダイアログの中を覚えない)
+  const [before] = useState(() => document.activeElement)
   useEffect(() => {
-    // 開く前に操作していた所を覚え, 閉じたら (枠を外したら) そこに戻す
-    const before = document.activeElement
     ref.current?.showModal()
     return () => {
-      if (before instanceof HTMLElement && before.isConnected) before.focus()
+      // 閉じたら (枠を外したら) そこに戻す. 定義を開いて上の操作を作り直した
+      // 場合は, 同じ印 (data-return) の新しいボタンに戻す
+      const mark = before instanceof HTMLElement ? before.dataset.return : undefined
+      window.requestAnimationFrame(() => {
+        if (before instanceof HTMLElement && before.isConnected) before.focus()
+        else if (mark) document.querySelector<HTMLElement>(`[data-return="${mark}"]`)?.focus()
+      })
     }
-  }, [])
+  }, [before])
   return (
     <dialog
       ref={ref}
@@ -229,6 +236,7 @@ export function Toolbar({
         icon={FolderOpen}
         disabled={save.isPending}
         onClick={() => setDialog('open')}
+        data-return="open"
       >
         開く
       </Button>
@@ -258,7 +266,7 @@ export function Toolbar({
         出力
       </Button>
       <span className="mx-1 h-6 w-px bg-line" aria-hidden />
-      <Button variant="ghost" icon={FileText} onClick={() => setDialog('yaml')}>
+      <Button variant="ghost" icon={FileText} onClick={() => setDialog('yaml')} data-return="yaml">
         YAML
       </Button>
       <Button
@@ -268,6 +276,7 @@ export function Toolbar({
           exported.mutate()
           setDialog('python')
         }}
+        data-return="python"
       >
         Python
       </Button>

@@ -19,7 +19,10 @@ describe('checkValue', () => {
   it('種類に合わない値の理由を返す', () => {
     expect(checkValue(base, 'abc')).toBe('整数を入れてください')
     expect(checkValue(base, '1.5')).toBe('整数を入れてください')
-    expect(checkValue({ ...base, kind: 'float' }, 'x')).toBe('数を入れてください')
+    expect(checkValue({ ...base, kind: 'float' }, 'x')).toBe('有限の数を入れてください')
+    expect(checkValue({ ...base, kind: 'float' }, 'Infinity')).toBe('有限の数を入れてください')
+    expect(checkValue(base, 'null')).toBeNull()
+    expect(checkValue({ ...base, required: true }, 'null')).toBe('必須の引数です')
     expect(checkValue(base, '3')).toBeNull()
     expect(checkValue({ ...base, kind: 'float' }, '1e-5')).toBeNull()
   })

@@ -57,9 +57,15 @@ function ParamField({
   // 確かめてから反映 (合わない値は理由を出して反映しない)
   const commit = (text: string) => {
     const message = check(text)
-    setError(message)
+    // 反映しない場合は, 定義に残る値も示す (欄の文字と定義の値が違うため)
+    setError(
+      message === null || value === undefined
+        ? message
+        : `${message} (定義は前の値 ${formatValue(value)} のまま)`,
+    )
     if (message === null) onChange(parseValue(param, text))
   }
+  const hintId = `${id}-hint`
   const hint = [
     param.description,
     param.minimum !== null ? `${param.minimum} 以上` : '',
@@ -127,7 +133,9 @@ function ParamField({
           onBlur={(event) => commit(event.target.value)}
           onKeyDown={(event) => event.key === 'Enter' && commit(event.currentTarget.value)}
           aria-invalid={error !== null}
-          aria-describedby={error ? errorId : undefined}
+          aria-describedby={
+            [error ? errorId : '', hint ? hintId : ''].join(' ').trim() || undefined
+          }
           className="h-7 w-full rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
         />
         {param.suggestions && listId && <Suggestions id={listId} suggestions={param.suggestions} />}
@@ -139,11 +147,15 @@ function ParamField({
       {label}
       {field}
       {error && (
-        <p id={errorId} className="col-start-2 text-[11px] text-critical-text">
+        <p id={errorId} role="alert" className="col-start-2 text-[11px] text-critical-text">
           {error}
         </p>
       )}
-      {hint && <p className="col-start-2 text-[10px] text-ink-3">{hint}</p>}
+      {hint && (
+        <p id={hintId} className="col-start-2 text-[10px] text-ink-3">
+          {hint}
+        </p>
+      )}
     </div>
   )
 }
@@ -428,6 +440,8 @@ export function Inspector({
           の次元は他の大きさに合ってしまうので避けてください.
         </p>
         <ParamField
+          // 入力を選び直したら作り直して値と誤りを合わせる
+          key={`${selected}-shape`}
           param={{
             name: 'shape',
             kind: 'list',
@@ -446,6 +460,8 @@ export function Inspector({
           }}
         />
         <ParamField
+          // 入力を選び直したら作り直して値と誤りを合わせる
+          key={`${selected}-dtype`}
           param={{
             name: 'dtype',
             kind: 'str',
@@ -460,6 +476,8 @@ export function Inspector({
           onChange={(value) => update({ dtype: String(value) })}
         />
         <ParamField
+          // 入力を選び直したら作り直して値と誤りを合わせる
+          key={`${selected}-fill`}
           param={{
             name: 'fill',
             kind: 'str',
