@@ -150,13 +150,11 @@ test('整列で, つながりの順に左から右へ並べ直し, 元に戻せ�
   await page.getByRole('button', { name: '開く' }).click()
   await page.getByRole('button', { name: /^residual_mlp/ }).click()
   const box = async (id: string) => (await page.locator(`[data-id="${id}"]`).boundingBox())!
-  // 同じ行なら左にあるか, 折り返した場合は上の行にあるか
-  const before = async (a: string, b: string) => {
-    const [first, second] = [await box(a), await box(b)]
-    return Math.abs(first.y - second.y) < 20 ? first.x < second.x : first.y < second.y
-  }
+  // 左にあるか (この例は折り返さない長さ. 飛び越すつなぎのために上下には
+  // ずれる)
+  const before = async (a: string, b: string) => (await box(a)).x < (await box(b)).x
 
-  // 並べ直すと, 入力, つなぎ先の順に右へ (長い場合は折り返して下の行へ)
+  // 並べ直すと, 入力, つなぎ先の順に右へ
   await page.getByRole('button', { name: '整列' }).click()
   await page.waitForTimeout(400)
   expect(await before('x', 'fc1')).toBe(true)
