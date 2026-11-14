@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
 
 import { api } from './api/client'
 import { ErrorBox, Spinner } from './components/ui'
@@ -8,7 +8,7 @@ import { Canvas } from './features/editor/Canvas'
 import { Inspector } from './features/editor/Inspector'
 import { Palette } from './features/editor/Palette'
 import { Toolbar } from './features/editor/Toolbar'
-import { addNode, emptySpec, type Spec, type UnitSpec } from './lib/graph'
+import { addNode, emptySpec, pasteNode, type NodeDef, type Spec, type UnitSpec } from './lib/graph'
 import { useHistory } from './lib/history'
 import { arrangeSpec, placeMissing } from './lib/layout'
 
@@ -87,6 +87,9 @@ function Editor() {
     (id.startsWith('output:') &&
       (id.slice(7) in target.outputs || id.slice(7) in (target.ui?.outputs ?? {})))
 
+  // 無くなったノードは選んでいないものとする (念のため)
+  const current = selected === null || has(spec, selected) ? selected : null
+
   // 元に戻す・やり直すで選んでいるものが無くなる場合は, 選択を外す
   const { undo, redo, previous, next: following } = history
   const undoSpec = useCallback(() => {
@@ -99,6 +102,34 @@ function Editor() {
     if (selected !== null && !has(following, selected)) setSelected(null)
     redo()
   }, [following, selected, redo])
+
+  // 写したノード (部品, 引数, 呼び出しの設定, 説明)
+  const [clipboard, setClipboard] = useState<NodeDef | null>(null)
+
+  // ノードの写しを置いて選ぶ (置き場所は, 見えている範囲の真ん中か元のノードの右下)
+  const paste = (source: NodeDef, position: { x: number; y: number }) => {
+    const pasted = pasteNode(spec, source, position)
+    setSpec(pasted.spec)
+    setSelected(pasted.name)
+  }
+  const duplicate = (name: string) => {
+    const node = spec.nodes[name]
+    if (!node) return
+    paste(node, { x: (node.ui?.x ?? 0) + 40, y: (node.ui?.y ?? 0) + 40 })
+  }
+
+  // 写す (Ctrl+C), 貼る (Ctrl+V), 複製する (Ctrl+D). 部品のノードを選んで
+  // いる場合だけ (それ以外はブラウザの標準の操作)
+  const onClipboardKey = useEffectEvent((key: string): boolean => {
+    const node = current !== null ? spec.nodes[current] : undefined
+    // 文字を選んでいる場合の Ctrl+C は, その文字の写し (ブラウザの標準)
+    const text = !(window.getSelection()?.isCollapsed ?? true)
+    if (key === 'c' && node && !text) setClipboard(node)
+    else if (key === 'v' && clipboard) paste(clipboard, center())
+    else if (key === 'd' && node && current !== null) duplicate(current)
+    else return false
+    return true
+  })
 
   // Ctrl (Mac は Cmd) + Z で元に戻し, Shift も押すか Ctrl + Y でやり直す
   // 文字を打つ欄ではブラウザの標準の操作 (文字の取り消し) を使い, 開いた
@@ -117,15 +148,15 @@ function Editor() {
       const key = event.key.toLowerCase()
       if (key === 'z' && !event.shiftKey) undoSpec()
       else if ((key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey)) redoSpec()
-      else return
+      else if (event.shiftKey || !['c', 'v', 'd'].includes(key)) return
+      // 押し続けた場合の繰り返しでは, 写しを増やさない
+      else if (event.repeat) return
+      else if (!onClipboardKey(key)) return
       event.preventDefault()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [undoSpec, redoSpec])
-
-  // 無くなったノードは選んでいないものとする (念のため)
-  const current = selected === null || has(spec, selected) ? selected : null
 
   // 部品はキャンバスの真ん中に置いて選択
   const add = (unit: UnitSpec) => {
@@ -211,6 +242,7 @@ function Editor() {
               selected={current}
               onChange={setSpec}
               onSelect={setSelected}
+              onDuplicate={duplicate}
             />
           </aside>
         </div>

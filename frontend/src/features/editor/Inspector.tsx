@@ -1,4 +1,4 @@
-import { AlertTriangle, Info, Trash2 } from 'lucide-react'
+import { AlertTriangle, Copy, Info, Trash2 } from 'lucide-react'
 import { memo, useEffect, useId, useRef, useState } from 'react'
 
 import type { CheckResult, Issue } from '../../api/client'
@@ -349,6 +349,7 @@ export function Inspector({
   selected,
   onChange,
   onSelect,
+  onDuplicate,
 }: {
   spec: Spec
   units: Map<string, UnitSpec>
@@ -356,6 +357,8 @@ export function Inspector({
   selected: string | null
   onChange: (spec: Spec) => void
   onSelect: (id: string | null) => void
+  /** 部品のノードの写しを置く */
+  onDuplicate: (name: string) => void
 }) {
   const taken = (value: string) => value in spec.inputs || value in spec.nodes
   const issuesFor = (predicate: (issue: Issue) => boolean) =>
@@ -618,6 +621,15 @@ export function Inspector({
           ))}
         </fieldset>
       )}
+      <Button
+        variant="secondary"
+        icon={Copy}
+        onClick={() => onDuplicate(selected)}
+        title="引数ごと写したノードを右下に置く (Ctrl+D. Ctrl+C と Ctrl+V でも写せる)"
+        aria-keyshortcuts="Control+D Meta+D"
+      >
+        複製
+      </Button>
       <Button variant="danger" icon={Trash2} onClick={remove}>
         ノードを消す
       </Button>

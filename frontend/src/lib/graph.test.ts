@@ -6,6 +6,7 @@ import {
   connect,
   disconnect,
   emptySpec,
+  pasteNode,
   removeItem,
   refOptions,
   renameItem,
@@ -151,5 +152,23 @@ describe('params', () => {
     expect(parseShape([2, 3])).toEqual([2, 3])
     expect(parseShape('4, a')).toBeNull()
     expect(parseShape('')).toBeNull()
+  })
+
+  it('ノードの写しは, つなぎ先を除いて独立に写す', () => {
+    const source = {
+      unit: 'nn.Linear',
+      params: { in_features: 4, sizes: [1, 2] },
+      inputs: 'x',
+      ui: { x: 10, y: 20, note: 'keep' },
+    }
+    let spec: Spec = { ...emptySpec(), nodes: { linear1: source } }
+    const pasted = pasteNode(spec, source, { x: 50, y: 60 })
+    spec = pasted.spec
+    expect(pasted.name).toBe('linear2')
+    const copy = spec.nodes.linear2!
+    expect(copy.inputs).toEqual({})
+    expect(copy.ui).toEqual({ x: 50, y: 60, note: 'keep' })
+    ;(copy.params!.sizes as number[]).push(3)
+    expect(source.params.sizes).toEqual([1, 2])
   })
 })
