@@ -7,8 +7,11 @@ import { formatCount, formatShape } from '../../lib/format'
 import { formatValue, parseShape, parseValue } from '../../lib/params'
 import {
   isValidName,
+  nodeInputs,
+  refOptions,
   removeItem,
   renameItem,
+  setPortRefs,
   type ParamSpec,
   type Spec,
   type UnitSpec,
@@ -139,6 +142,93 @@ function NameField({
   )
 }
 
+/** 口のつなぎ先を選ぶ欄 (線を引かずに, キーボードでもつなげる) */
+function PortRefs({
+  port,
+  refs,
+  options,
+  variadic,
+  optional,
+  onChange,
+}: {
+  port: string
+  refs: string[]
+  options: { value: string; label: string }[]
+  variadic: boolean
+  optional: boolean
+  onChange: (refs: string[]) => void
+}) {
+  const id = useId()
+  const label = (
+    <label htmlFor={id} className="font-mono text-xs text-ink-2">
+      {port}
+      {!optional && <span className="text-critical-text"> *</span>}
+    </label>
+  )
+  // 1 つだけつなぐ口は選択, 複数つなぐ口は並びと追加の選択
+  if (!variadic) {
+    return (
+      <div className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-center gap-2">
+        {label}
+        <select
+          id={id}
+          value={refs[0] ?? ''}
+          onChange={(event) => onChange(event.target.value ? [event.target.value] : [])}
+          className="h-7 w-full rounded-md border border-line bg-bg px-1 font-mono text-xs"
+        >
+          <option value="">(未接続)</option>
+          {refs[0] && !options.some((option) => option.value === refs[0]) && (
+            <option value={refs[0]}>{refs[0]} (候補に無い書き方)</option>
+          )}
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    )
+  }
+  return (
+    <div className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-start gap-2">
+      {label}
+      <div className="space-y-1">
+        <ol className="space-y-1">
+          {refs.map((ref, index) => (
+            <li key={`${ref}-${index}`} className="flex items-center gap-1 font-mono text-xs">
+              <span className="text-ink-3">{index + 1}.</span>
+              <span className="min-w-0 flex-1 truncate">{ref}</span>
+              <button
+                type="button"
+                onClick={() => onChange(refs.filter((_, position) => position !== index))}
+                aria-label={`${port} の ${index + 1} 番目のつなぎ先 ${ref} を外す`}
+                title="外す"
+                className="rounded px-1 text-ink-3 hover:bg-surface-2 hover:text-critical-text"
+              >
+                <Trash2 className="size-3" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ol>
+        <select
+          id={id}
+          value=""
+          aria-label={`${port} につなぎ先を加える`}
+          onChange={(event) => event.target.value && onChange([...refs, event.target.value])}
+          className="h-7 w-full rounded-md border border-line bg-bg px-1 font-mono text-xs"
+        >
+          <option value="">(つなぎ先を加える)</option>
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  )
+}
+
 /** 誤りと注意の一覧 */
 function IssueList({ issues }: { issues: Issue[] }) {
   if (issues.length === 0) return null
@@ -200,7 +290,8 @@ export function Inspector({
       <div className="space-y-3 p-3 text-xs">
         <p className="text-ink-3">
           ノードを選ぶと, 引数と推定した出力の形を確かめて編集できます. 左の一覧から部品を加え,
-          口から口へドラッグしてつなぎます. 線とノードは選んで Delete で消せます.
+          口から口へドラッグするか, ノードの「入力のつなぎ先」から選んでつなぎます.
+          線とノードは選んで Delete で消せます.
         </p>
         <dl className="grid grid-cols-2 gap-1">
           <dt className="text-ink-3">パラメータ数</dt>
@@ -243,11 +334,27 @@ export function Inspector({
         <p className="text-xs text-ink-3">
           モデルの出力. 出力が 1 つならその値, 2 つ以上なら名前ごとの辞書を返します.
         </p>
-        <p className="font-mono text-xs">
-          {name in spec.outputs
-            ? `${spec.outputs[name]} → ${shape ? formatShape(shape) : '?'}`
-            : '未接続'}
-        </p>
+        {name in spec.outputs && (
+          <p className="font-mono text-xs">形: {shape ? formatShape(shape) : '?'}</p>
+        )}
+        <PortRefs
+          key={name}
+          port="つなぎ先"
+          refs={name in spec.outputs ? [spec.outputs[name]!] : []}
+          options={refOptions(spec, units, null)}
+          variadic={false}
+          optional={false}
+          onChange={(refs) => {
+            const outputs = { ...spec.outputs }
+            const uiOutputs = { ...(spec.ui?.outputs ?? {}) }
+            if (refs[0]) outputs[name] = refs[0]
+            else {
+              delete outputs[name]
+              uiOutputs[name] ??= {}
+            }
+            onChange({ ...spec, outputs, ui: { ...spec.ui, outputs: uiOutputs } })
+          }}
+        />
         <IssueList issues={issuesFor((issue) => issue.location === `outputs.${name}`)} />
         <Button variant="danger" icon={Trash2} onClick={remove}>
           出力を消す
@@ -379,6 +486,22 @@ export function Inspector({
         </div>
       )}
       <IssueList issues={issuesFor((issue) => issue.node === selected)} />
+      {(unit?.inputs.length ?? 0) > 0 && (
+        <fieldset className="space-y-2">
+          <legend className="mb-1 text-xs font-semibold">入力のつなぎ先</legend>
+          {unit!.inputs.map((port) => (
+            <PortRefs
+              key={`${selected}-${port.name}`}
+              port={port.name}
+              refs={nodeInputs(node, unit)[port.name] ?? []}
+              options={refOptions(spec, units, selected)}
+              variadic={port.variadic}
+              optional={port.optional}
+              onChange={(refs) => onChange(setPortRefs(spec, units, selected, port.name, refs))}
+            />
+          ))}
+        </fieldset>
+      )}
       {(unit?.params.length ?? 0) > 0 && (
         <fieldset className="space-y-2">
           <legend className="mb-1 text-xs font-semibold">引数</legend>

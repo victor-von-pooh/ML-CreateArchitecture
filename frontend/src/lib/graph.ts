@@ -308,3 +308,45 @@ export function renameItem(spec: Spec, oldName: string, newName: string): Spec {
 export function isValidName(name: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)
 }
+
+/** つなぎ先に選べるもの (入力と, 他のノードの出力の口) */
+export function refOptions(
+  spec: Spec,
+  units: Map<string, UnitSpec>,
+  exclude: string | null,
+): { value: string; label: string }[] {
+  const options = Object.keys(spec.inputs).map((name) => ({ value: name, label: `${name} (入力)` }))
+  for (const [name, node] of Object.entries(spec.nodes)) {
+    if (name === exclude) continue
+    const outputs = units.get(node.unit)?.outputs ?? []
+    if (outputs.length <= 1) {
+      options.push({ value: name, label: `${name} (${node.unit})` })
+    } else {
+      for (const port of outputs) {
+        options.push({ value: `${name}:${port.name}`, label: `${name}:${port.name}` })
+      }
+    }
+  }
+  return options
+}
+
+/** ノードの 1 つの口のつなぎ先を置き換えた定義を返す (空のリストは未接続) */
+export function setPortRefs(
+  spec: Spec,
+  units: Map<string, UnitSpec>,
+  name: string,
+  port: string,
+  refs: string[],
+): Spec {
+  const node = spec.nodes[name]
+  if (!node) return spec
+  const unit = units.get(node.unit)
+  const current = nodeInputs(node, unit)
+  const inputs: Record<string, string | string[]> = {}
+  for (const [key, values] of Object.entries({ ...current, [port]: refs })) {
+    if (values.length === 0) continue
+    const variadic = unit?.inputs.find((item) => item.name === key)?.variadic
+    inputs[key] = variadic ? values : values[0]!
+  }
+  return { ...spec, nodes: { ...spec.nodes, [name]: { ...node, inputs } } }
+}
