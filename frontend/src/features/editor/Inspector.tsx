@@ -1,5 +1,5 @@
 import { AlertTriangle, Info, Trash2 } from 'lucide-react'
-import { useId, useState } from 'react'
+import { memo, useId, useState } from 'react'
 
 import type { CheckResult, Issue } from '../../api/client'
 import { Button } from '../../components/ui'
@@ -20,6 +20,23 @@ import {
 // 入力の例に使える型と値の作り方 (ML-ModelControl と同じ)
 const DTYPES = ['float32', 'float64', 'float16', 'bfloat16', 'int64', 'int32', 'bool']
 const FILLS = ['zeros', 'ones', 'arange']
+
+/** 入力欄の値の候補 (数が多いので, 候補が変わらない限り描き直さない) */
+const Suggestions = memo(function Suggestions({
+  id,
+  suggestions,
+}: {
+  id: string
+  suggestions: unknown[]
+}) {
+  return (
+    <datalist id={id}>
+      {suggestions.map((choice) => (
+        <option key={String(choice)} value={String(choice)} />
+      ))}
+    </datalist>
+  )
+})
 
 /** 1 つの引数の入力欄 (真偽値はチェック, 選択肢は選択, それ以外は文字) */
 function ParamField({
@@ -91,19 +108,20 @@ function ParamField({
           list={listId}
           defaultValue={formatValue(value)}
           placeholder={param.default !== null ? formatValue(param.default) : ''}
+          onChange={(event) => {
+            // 候補から選んだ場合 (候補と同じ文字になった場合) はすぐに反映
+            const text = event.target.value
+            if (param.suggestions?.some((choice) => String(choice) === text)) {
+              onChange(parseValue(param, text))
+            }
+          }}
           onBlur={(event) => onChange(parseValue(param, event.target.value))}
           onKeyDown={(event) =>
             event.key === 'Enter' && onChange(parseValue(param, event.currentTarget.value))
           }
           className="h-7 w-full rounded-md border border-line bg-bg px-2 font-mono text-xs"
         />
-        {param.suggestions && (
-          <datalist id={listId}>
-            {param.suggestions.map((choice) => (
-              <option key={String(choice)} value={String(choice)} />
-            ))}
-          </datalist>
-        )}
+        {param.suggestions && listId && <Suggestions id={listId} suggestions={param.suggestions} />}
       </>
     )
   }

@@ -42,12 +42,6 @@ dev = [
 ml-modelcontrol = { path = "../ML-ModelControl", editable = true }
 # Linux (CI) では CUDA の無い軽い PyTorch を使う
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
-torchvision = [
-    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" }
-]
-torchaudio = [
-    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" }
-]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
