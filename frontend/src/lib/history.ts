@@ -1,36 +1,50 @@
 import { useCallback, useRef, useState } from 'react'
 
-// 続けて起きた変更 (ノードのドラッグなど) を 1 回分にまとめる間隔 (ミリ秒)
-const MERGE_MS = 500
+// 同じ印の続けて起きた変更 (ノードのドラッグなど) を 1 回分にまとめる間隔
+// (ミリ秒)
+const MERGE_MS = 2000
 
 // 戻せる回数の上限
 const LIMIT = 100
 
 /** 値の変更の履歴 (戻すための過去と, やり直すための未来) */
-interface History<T> {
+export interface History<T> {
   past: T[]
   present: T
   future: T[]
 }
 
+/** 変更の指定 (新しい値か, 今の値から新しい値を作る関数) */
+type Update<T> = T | ((current: T) => T)
+
 /** 値と, 元に戻す・やり直すの操作 */
 export interface HistoryState<T> {
   value: T
-  /** 変更 (履歴に残す. 続けて起きた変更は 1 回分にまとめる) */
-  set: (next: T | ((current: T) => T)) => void
+  /**
+   * 変更 (履歴に残す). merge に同じ印を付けた続けての変更 (ドラッグなど)
+   * は 1 回分にまとめる. 中身の同じ変更は残さない
+   */
+  set: (next: Update<T>, merge?: string) => void
   /** 履歴に残さない変更 (保存した名前の反映など) */
-  replace: (next: T | ((current: T) => T)) => void
+  replace: (next: Update<T>) => void
   /** 履歴を消して値を置き換える (定義を開いた場合と新規) */
   reset: (next: T) => void
   undo: () => void
   redo: () => void
-  canUndo: boolean
-  canRedo: boolean
+  /** 元に戻した場合の値 (戻せない場合は undefined) */
+  previous: T | undefined
+  /** やり直した場合の値 (やり直せない場合は undefined) */
+  next: T | undefined
 }
 
-/** 履歴の 1 歩を進める (純粋な関数. テストで使う) */
+/** 2 つの値の中身が同じか (JSON にした文字で比べる) */
+function same<T>(a: T, b: T): boolean {
+  return Object.is(a, b) || JSON.stringify(a) === JSON.stringify(b)
+}
+
+/** 履歴の 1 歩を進める (純粋な関数. 中身が同じなら変えない) */
 export function pushHistory<T>(history: History<T>, next: T, merge: boolean): History<T> {
-  if (Object.is(next, history.present)) return history
+  if (same(next, history.present)) return history
   const past = merge ? history.past : [...history.past, history.present].slice(-LIMIT)
   return { past, present: next, future: [] }
 }
@@ -57,6 +71,11 @@ export function redoHistory<T>(history: History<T>): History<T> {
   }
 }
 
+/** 変更の指定から新しい値を作る */
+function apply<T>(next: Update<T>, current: T): T {
+  return typeof next === 'function' ? (next as (value: T) => T)(current) : next
+}
+
 /** 元に戻す・やり直すができる値 */
 export function useHistory<T>(initial: () => T): HistoryState<T> {
   const [history, setHistory] = useState<History<T>>(() => ({
@@ -64,38 +83,38 @@ export function useHistory<T>(initial: () => T): HistoryState<T> {
     present: initial(),
     future: [],
   }))
-  // 最後に履歴に残した時刻 (続けて起きた変更をまとめるため)
-  const last = useRef(0)
+  // 最後に履歴に残した変更の印と時刻 (同じ印の続けての変更をまとめるため)
+  const last = useRef<{ merge: string | undefined; time: number }>({
+    merge: undefined,
+    time: 0,
+  })
 
-  const set = useCallback((next: T | ((current: T) => T)) => {
+  const set = useCallback((next: Update<T>, merge?: string) => {
     const now = Date.now()
-    const merge = now - last.current < MERGE_MS
-    last.current = now
-    setHistory((current) => {
-      const value = typeof next === 'function' ? (next as (value: T) => T)(current.present) : next
-      return pushHistory(current, value, merge && current.past.length > 0)
-    })
+    const together =
+      merge !== undefined && last.current.merge === merge && now - last.current.time < MERGE_MS
+    last.current = { merge, time: now }
+    setHistory((current) =>
+      pushHistory(current, apply(next, current.present), together && current.past.length > 0),
+    )
   }, [])
 
-  const replace = useCallback((next: T | ((current: T) => T)) => {
-    setHistory((current) => ({
-      ...current,
-      present: typeof next === 'function' ? (next as (value: T) => T)(current.present) : next,
-    }))
+  const replace = useCallback((next: Update<T>) => {
+    setHistory((current) => ({ ...current, present: apply(next, current.present) }))
   }, [])
 
   const reset = useCallback((next: T) => {
-    last.current = 0
+    last.current = { merge: undefined, time: 0 }
     setHistory({ past: [], present: next, future: [] })
   }, [])
 
   // 戻した直後の変更は, 前の変更とまとめない
   const undo = useCallback(() => {
-    last.current = 0
+    last.current = { merge: undefined, time: 0 }
     setHistory(undoHistory)
   }, [])
   const redo = useCallback(() => {
-    last.current = 0
+    last.current = { merge: undefined, time: 0 }
     setHistory(redoHistory)
   }, [])
 
@@ -106,7 +125,7 @@ export function useHistory<T>(initial: () => T): HistoryState<T> {
     reset,
     undo,
     redo,
-    canUndo: history.past.length > 0,
-    canRedo: history.future.length > 0,
+    previous: history.past[history.past.length - 1],
+    next: history.future[0],
   }
 }

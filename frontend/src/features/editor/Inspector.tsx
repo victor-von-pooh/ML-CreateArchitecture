@@ -53,8 +53,8 @@ function ParamField({
 }) {
   const id = useId()
   const errorId = `${id}-error`
-  // 誤りは, 出したときの定義の値と一緒に持つ (元に戻すなどで値が変わったら消す)
-  const [failure, setFailure] = useState<{ message: string; value: string } | null>(null)
+  // 反映しなかった値の誤り (元に戻すなどで値が変わったら消す)
+  const [failure, setFailure] = useState<{ message: string } | null>(null)
   // 確かめてから反映 (合わない値は理由を出して反映しない)
   const commit = (text: string) => {
     const message = check(text)
@@ -67,17 +67,26 @@ function ParamField({
               value === undefined
                 ? message
                 : `${message} (定義は前の値 ${formatValue(value)} のまま)`,
-            value: formatValue(value),
           },
     )
-    if (message === null) onChange(parseValue(param, text))
+    // 値が変わらない場合は反映しない (元に戻すの履歴に残さないため)
+    if (message === null) {
+      const parsed = parseValue(param, text)
+      if (JSON.stringify(parsed) !== JSON.stringify(value)) onChange(parsed)
+    }
   }
   const hintId = `${id}-hint`
   // 欄の外で値が変わった場合 (元に戻すなど) は, 打っている途中でなければ
   // 欄の文字を定義の値に合わせる
   const inputRef = useRef<HTMLInputElement>(null)
   const text = formatValue(value)
-  const error = failure && failure.value === text ? failure.message : null
+  // 欄の外で値が変わったら, 前の誤りを消す
+  const [seen, setSeen] = useState(text)
+  if (seen !== text) {
+    setSeen(text)
+    setFailure(null)
+  }
+  const error = failure?.message ?? null
   useEffect(() => {
     const input = inputRef.current
     if (input && document.activeElement !== input) input.value = text

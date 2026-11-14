@@ -273,7 +273,7 @@ export function Toolbar({
         disabled={!onUndo}
         onClick={onUndo}
         aria-label="元に戻す"
-        title="元に戻す (Ctrl+Z)"
+        title="元に戻す (Ctrl+Z, Mac は Cmd+Z)"
         aria-keyshortcuts="Control+Z Meta+Z"
       />
       <Button
@@ -282,7 +282,7 @@ export function Toolbar({
         disabled={!onRedo}
         onClick={onRedo}
         aria-label="やり直す"
-        title="やり直す (Ctrl+Shift+Z)"
+        title="やり直す (Ctrl+Shift+Z, Mac は Cmd+Shift+Z)"
         aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y"
       />
       <span className="mx-1 h-6 w-px bg-line" aria-hidden />

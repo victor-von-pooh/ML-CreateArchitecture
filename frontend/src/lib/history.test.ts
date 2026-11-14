@@ -26,6 +26,8 @@ describe('history', () => {
     history = pushHistory(history, 3, true)
     expect(history.past).toEqual([0])
     expect(pushHistory(history, 3, false)).toBe(history)
+    const objects = { past: [], present: { a: [1] }, future: [] }
+    expect(pushHistory(objects, { a: [1] }, false)).toBe(objects)
     expect(undoHistory(history).present).toBe(0)
   })
 })

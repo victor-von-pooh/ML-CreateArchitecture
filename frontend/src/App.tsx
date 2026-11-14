@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { api } from './api/client'
 import { ErrorBox, Spinner } from './components/ui'
@@ -79,32 +79,52 @@ function Editor() {
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
 
+  // 選んでいるもの (ノード, 入力, 出力) が定義にあるか
+  const has = (target: Spec, id: string) =>
+    id in target.nodes ||
+    id in target.inputs ||
+    (id.startsWith('output:') &&
+      (id.slice(7) in target.outputs || id.slice(7) in (target.ui?.outputs ?? {})))
+
+  // 元に戻す・やり直すで選んでいるものが無くなる場合は, 選択を外す
+  const { undo, redo, previous, next: following } = history
+  const undoSpec = useCallback(() => {
+    if (!previous) return
+    if (selected !== null && !has(previous, selected)) setSelected(null)
+    undo()
+  }, [previous, selected, undo])
+  const redoSpec = useCallback(() => {
+    if (!following) return
+    if (selected !== null && !has(following, selected)) setSelected(null)
+    redo()
+  }, [following, selected, redo])
+
   // Ctrl (Mac は Cmd) + Z で元に戻し, Shift も押すか Ctrl + Y でやり直す
-  // 文字の欄の中ではブラウザの標準の操作 (文字の取り消し) を使う
-  const { undo, redo } = history
+  // 文字を打つ欄ではブラウザの標準の操作 (文字の取り消し) を使い, 開いた
+  // ダイアログの中では定義を戻さない
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
-      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (target?.closest('dialog[open], textarea, [contenteditable="true"]')) return
+      if (
+        target instanceof HTMLInputElement &&
+        !['checkbox', 'radio', 'button', 'submit', 'range', 'color'].includes(target.type)
+      ) {
+        return
+      }
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return
       const key = event.key.toLowerCase()
-      if (key === 'z' && !event.shiftKey) undo()
-      else if ((key === 'z' && event.shiftKey) || key === 'y') redo()
+      if (key === 'z' && !event.shiftKey) undoSpec()
+      else if ((key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey)) redoSpec()
       else return
       event.preventDefault()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [undo, redo])
+  }, [undoSpec, redoSpec])
 
-  // 戻した結果で無くなったノードは選んでいないものとする
-  const exists =
-    selected === null ||
-    selected in spec.nodes ||
-    selected in spec.inputs ||
-    (selected.startsWith('output:') &&
-      (selected.slice(7) in spec.outputs || selected.slice(7) in (spec.ui?.outputs ?? {})))
-  const current = exists ? selected : null
+  // 無くなったノードは選んでいないものとする (念のため)
+  const current = selected === null || has(spec, selected) ? selected : null
 
   // 部品はキャンバスの真ん中に置いて選択
   const add = (unit: UnitSpec) => {
@@ -149,8 +169,8 @@ function Editor() {
           }}
           center={center}
           onSelect={setSelected}
-          onUndo={history.canUndo ? undo : undefined}
-          onRedo={history.canRedo ? redo : undefined}
+          onUndo={previous ? undoSpec : undefined}
+          onRedo={following ? redoSpec : undefined}
         />
         <div className="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)_20rem]">
           <aside aria-label="部品の一覧" className="min-h-0 border-r border-line bg-surface">

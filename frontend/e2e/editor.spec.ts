@@ -130,6 +130,13 @@ test('元に戻す・やり直すで, 部品の追加と引数の変更を戻せ
   // やり直すと部品が戻り, 文字の欄の中の Ctrl+Z は定義を戻さない
   await redo.click()
   await expect(page.locator('[data-id="linear1"]')).toBeVisible()
+
+  // 欄を通るだけ (値を変えない) では履歴に残らず, やり直しが消えない
+  await page.locator('[data-id="linear1"]').click()
+  await page.getByLabel('in_features').focus()
+  await page.getByLabel('in_features').blur()
+  await expect(redo).toBeEnabled()
+  await page.locator('.react-flow__pane').click()
   await page.keyboard.press('ControlOrMeta+Shift+z')
   await page.locator('[data-id="linear1"]').click()
   await expect(page.getByLabel('in_features')).toHaveValue('8')
