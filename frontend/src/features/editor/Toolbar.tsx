@@ -89,15 +89,19 @@ function TextView({ text }: { text: string }) {
 function OpenDialog({
   onOpen,
   onClose,
+  onDeleted,
 }: {
   onOpen: (source: 'model' | 'example', name: string) => void
   onClose: () => void
+  /** 保存した定義を消した後 (今開いている定義なら, 保存していない扱いにする) */
+  onDeleted: (name: string) => void
 }) {
   const models = useQuery({ queryKey: ['models'], queryFn: api.listModels })
   const queryClient = useQueryClient()
   // 保存した定義を消す (確かめてから. 消した後は一覧を読み直す)
   const remove = useMutation({
     mutationFn: (name: string) => api.deleteModel(name),
+    onSuccess: (_, name) => onDeleted(name),
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ['models'] }),
   })
   const examples = useQuery({
@@ -184,6 +188,7 @@ export function Toolbar({
   onRedo,
   onArrange,
   ownFile,
+  onDeletedOwn,
 }: {
   spec: Spec
   fileName: string
@@ -203,6 +208,8 @@ export function Toolbar({
   onArrange: () => void
   /** 今の定義を開いた (か保存した) 保存した定義の名前 (新規と例は null) */
   ownFile: string | null
+  /** 今開いている保存した定義を消した (保存していない扱いにする) */
+  onDeletedOwn: () => void
 }) {
   const queryClient = useQueryClient()
   const nameId = useId()
@@ -406,6 +413,9 @@ export function Toolbar({
       )}
       {dialog === 'open' && (
         <OpenDialog
+          onDeleted={(deleted) => {
+            if (deleted === ownFile) onDeletedOwn()
+          }}
           onOpen={(source, target) => {
             if (!dirty || window.confirm('保存していない変更を捨てて, 定義を開きますか?')) {
               open.mutate({ source, target })

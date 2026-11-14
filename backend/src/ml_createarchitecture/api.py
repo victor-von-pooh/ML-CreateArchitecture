@@ -14,7 +14,11 @@ from ml_modelcontrol import (
 )
 from pydantic import BaseModel
 
-from ml_createarchitecture.store import ModelError, ModelStore
+from ml_createarchitecture.store import (
+    ModelError,
+    ModelNotFoundError,
+    ModelStore,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -406,7 +410,7 @@ def delete_model(name: str, request: Request) -> None:
     ----------
     None
     """
-    # 名前の規則に合わない場合は 400, 無い場合は 404
+    # 名前の規則に合わない場合は 400, 無い場合は 404, 消せない場合は 500
     store = get_store(request)
     try:
         store.path_for(name)
@@ -414,5 +418,7 @@ def delete_model(name: str, request: Request) -> None:
         raise HTTPException(400, str(error)) from error
     try:
         store.delete(name)
-    except ModelError as error:
+    except ModelNotFoundError as error:
         raise HTTPException(404, str(error)) from error
+    except ModelError as error:
+        raise HTTPException(500, str(error)) from error

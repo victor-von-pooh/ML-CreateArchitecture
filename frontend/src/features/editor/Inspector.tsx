@@ -44,12 +44,15 @@ function ParamField({
   value,
   onChange,
   check = (text) => checkValue(param, text),
+  format = formatValue,
 }: {
   param: ParamSpec
   value: unknown
   onChange: (value: unknown) => void
   /** 入力欄の文字の確認 (合わない場合は理由. その値は定義に反映しない) */
   check?: (text: string) => string | null
+  /** 値を欄の文字にする (一覧に無い引数では null も文字で見せる) */
+  format?: (value: unknown) => string
 }) {
   const id = useId()
   const errorId = `${id}-error`
@@ -64,9 +67,7 @@ function ParamField({
         ? null
         : {
             message:
-              value === undefined
-                ? message
-                : `${message} (定義は前の値 ${formatValue(value)} のまま)`,
+              value === undefined ? message : `${message} (定義は前の値 ${format(value)} のまま)`,
           },
     )
     // 値が変わらない場合は反映しない (元に戻すの履歴に残さないため)
@@ -79,7 +80,7 @@ function ParamField({
   // 欄の外で値が変わった場合 (元に戻すなど) は, 打っている途中でなければ
   // 欄の文字を定義の値に合わせる
   const inputRef = useRef<HTMLInputElement>(null)
-  const text = formatValue(value)
+  const text = format(value)
   // 欄の外で値が変わったら, 前の誤りを消す
   const [seen, setSeen] = useState(text)
   if (seen !== text) {
@@ -186,6 +187,45 @@ function ParamField({
   )
 }
 
+// Python の予約語 (一覧に無い引数の名前に使えない. 書き出すコードの引数になるため)
+const PYTHON_KEYWORDS = new Set([
+  'False',
+  'None',
+  'True',
+  'and',
+  'as',
+  'assert',
+  'async',
+  'await',
+  'break',
+  'class',
+  'continue',
+  'def',
+  'del',
+  'elif',
+  'else',
+  'except',
+  'finally',
+  'for',
+  'from',
+  'global',
+  'if',
+  'import',
+  'in',
+  'is',
+  'lambda',
+  'nonlocal',
+  'not',
+  'or',
+  'pass',
+  'raise',
+  'return',
+  'try',
+  'while',
+  'with',
+  'yield',
+])
+
 /**
  * 一覧に無い引数 (**kwargs で受け取る部品の, einops の式の大きさ h=2 など)
  * の欄. 名前を書いて加え, 値は JSON (読めなければ文字) として読む
@@ -202,11 +242,18 @@ function ExtraParams({
   const id = useId()
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // 外した後は加える欄に移る (外した行にあった操作の場所を失わないため)
+  const draftRef = useRef<HTMLInputElement>(null)
   const extra = Object.entries(values).filter(([key]) => !known.has(key))
+  const removeParam = (key: string) => {
+    onChange(key, undefined)
+    draftRef.current?.focus()
+  }
   const add = () => {
     const key = draft.trim()
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))
       return setError('英字か _ で始まる名前にしてください')
+    if (PYTHON_KEYWORDS.has(key)) return setError('Python の予約語は使えません')
     if (known.has(key) || key in values) return setError('その引数は既にあります')
     setError(null)
     setDraft('')
@@ -231,12 +278,17 @@ function ExtraParams({
               }}
               value={value}
               onChange={(next) => onChange(key, next)}
+              // 空は外すのではなく誤り (外すのはごみ箱), null は文字で見せて残す
+              check={(text) =>
+                text.trim() === '' ? '値を入れてください (外す場合はごみ箱)' : null
+              }
+              format={(item) => (item === null ? 'null' : formatValue(item))}
             />
           </div>
           <Button
             variant="ghost"
             icon={Trash2}
-            onClick={() => onChange(key, undefined)}
+            onClick={() => removeParam(key)}
             aria-label={`引数 ${key} を外す`}
             title={`引数 ${key} を外す`}
           />
@@ -247,11 +299,16 @@ function ExtraParams({
           加える引数の名前
         </label>
         <input
+          ref={draftRef}
           id={id}
           value={draft}
           placeholder="引数の名前 (例: h)"
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => event.key === 'Enter' && add()}
+          onChange={(event) => {
+            setDraft(event.target.value)
+            setError(null)
+          }}
+          // 日本語の変換を確定する Enter では加えない
+          onKeyDown={(event) => event.key === 'Enter' && !event.nativeEvent.isComposing && add()}
           aria-invalid={error !== null}
           aria-describedby={error ? `${id}-error` : undefined}
           className="h-7 min-w-0 flex-1 rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"

@@ -16,6 +16,11 @@ class ModelError(ValueError):
     pass
 
 
+# 定義が無い場合の誤り (消す場合に, 消せない誤りと分けるため)
+class ModelNotFoundError(ModelError):
+    pass
+
+
 class ModelStore:
     def __init__(self, root: Path):
         # 定義のファイルを置くディレクトリを保存 (書き込むときに作成)
@@ -180,6 +185,6 @@ class ModelStore:
         try:
             path.unlink()
         except FileNotFoundError as error:
-            raise ModelError(f"定義 {name} はありません") from error
+            raise ModelNotFoundError(f"定義 {name} はありません") from error
         except OSError as error:
             raise ModelError(f"定義 {name} を消せません: {error}") from error

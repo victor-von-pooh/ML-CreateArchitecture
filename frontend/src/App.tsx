@@ -227,6 +227,10 @@ function Editor() {
             setSelected(null)
           }}
           ownFile={ownFile}
+          onDeletedOwn={() => {
+            setOwnFile(null)
+            setSaved('')
+          }}
           onSaved={(name, savedSpec) => {
             setOwnFile(name)
             // 保存した定義の名前を今の定義にも反映 (保存の間の編集は残す)
