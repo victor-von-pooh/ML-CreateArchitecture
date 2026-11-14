@@ -3,7 +3,7 @@ import { memo, useEffect, useId, useRef, useState } from 'react'
 
 import type { CheckResult, Issue } from '../../api/client'
 import { Button } from '../../components/ui'
-import { formatCount, formatShape } from '../../lib/format'
+import { failedNodes, formatCount, formatShape } from '../../lib/format'
 import { checkValue, formatValue, parseShape, parseValue } from '../../lib/params'
 import {
   isValidName,
@@ -369,6 +369,8 @@ export function Inspector({
     onSelect(null)
   }
 
+  const failed = failedNodes(check, spec)
+
   // 何も選んでいない場合は, 全体の情報と定義全体の誤り
   if (!selected) {
     return (
@@ -388,6 +390,29 @@ export function Inspector({
           <p className="text-warning-text">パラメータ数が上限を超えるので, 形は推定していません.</p>
         )}
         <IssueList issues={issuesFor((issue) => !issue.node)} />
+        {failed.length > 0 && (
+          <section aria-label="形の推定で失敗したもの" className="space-y-1">
+            <h3 className="text-xs font-semibold text-critical-text">
+              形の推定で失敗したもの ({failed.length})
+            </h3>
+            <ul className="space-y-1">
+              {failed.map(({ id, label, error }) => (
+                <li key={id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(id)}
+                    className="w-full rounded-md px-1 py-0.5 text-left text-xs hover:bg-surface-2"
+                  >
+                    <span className="font-mono font-semibold">{label}</span>
+                    <span className="block text-critical-text [overflow-wrap:anywhere]">
+                      {error}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     )
   }
@@ -399,7 +424,8 @@ export function Inspector({
     return (
       <div className="space-y-3 p-3">
         <NameField
-          key={name}
+          // 兄弟の欄と重ならない key (重なると別のものを選んだ後も欄が残る)
+          key={`name:${name}`}
           name={name}
           taken={(value) => value in spec.outputs || value in (spec.ui?.outputs ?? {})}
           onRename={(value) => {
@@ -423,7 +449,7 @@ export function Inspector({
           <p className="font-mono text-xs">形: {shape ? formatShape(shape) : '?'}</p>
         )}
         <PortRefs
-          key={name}
+          key={`refs:${name}`}
           port="つなぎ先"
           refs={name in spec.outputs ? [spec.outputs[name]!] : []}
           options={refOptions(spec, units, null)}

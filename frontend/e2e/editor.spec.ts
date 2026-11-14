@@ -191,3 +191,42 @@ test('ノードを引数ごと複製し, 写して貼れる', async ({ page }) =
   await expect(page.locator('[data-id="linear4"]')).toBeVisible()
   await expect(page.getByLabel('in_features')).toHaveValue('16')
 })
+
+test('出力を選んだ後も欄が残らず, 形の推定の失敗を誤りに数え, 上書きは確かめる', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/')
+
+  // 出力を選んでから入力を選ぶと, 名前の欄は 1 つ
+  await page.getByRole('button', { name: '出力', exact: true }).click()
+  await page.getByRole('button', { name: '入力', exact: true }).click()
+  await expect(page.getByLabel('名前', { exact: true })).toHaveCount(1)
+  await expect(page.getByLabel('名前', { exact: true })).toHaveValue('input1')
+
+  // 形の合わない全結合の層は, 形の推定の失敗として誤りに数える
+  await page.getByRole('button', { name: '開く' }).click()
+  page.once('dialog', (dialog) => void dialog.accept())
+  await page.getByRole('button', { name: /^cnn_classifier/ }).click()
+  await page.locator('[data-id="head"]').click()
+  await page.getByLabel('in_features').fill('99')
+  await page.getByLabel('in_features').press('Enter')
+  await expect(page.locator('header')).toContainText('誤り 1 件', { timeout: 20_000 })
+  await page.locator('.react-flow__pane').click()
+  await expect(page.getByRole('region', { name: '形の推定で失敗したもの' })).toContainText('head')
+
+  // 保存した定義 (前のテストで保存した e2e_model) と同じ名前で保存する
+  // 場合は確かめ, 断れば保存しない
+  const before = await (await request.get('/api/models/e2e_model')).text()
+  await page.getByLabel('保存する名前').fill('e2e_model')
+  let asked = ''
+  page.once('dialog', (dialog) => {
+    asked = dialog.message()
+    void dialog.dismiss()
+  })
+  await page.getByRole('button', { name: /^保存/ }).click()
+  await expect.poll(() => asked).toContain('e2e_model')
+  await page.waitForTimeout(500)
+  expect(await (await request.get('/api/models/e2e_model')).text()).toBe(before)
+  await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
+})
