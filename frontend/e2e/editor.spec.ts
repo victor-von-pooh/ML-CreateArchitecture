@@ -312,3 +312,14 @@ test('複数つなぐ口のつなぎ先を並べ替えられる', async ({ page 
   ).toBeVisible()
   await expect(page.getByRole('button', { name: 'xs の 2 番目のつなぎ先 x を外す' })).toBeVisible()
 })
+
+test('大きすぎて形を推定しない場合は, 上の欄で知らせる', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('[data-id="x"]').click()
+  await page.getByLabel('shape').fill('[100000, 100000]')
+  await page.getByLabel('shape').press('Enter')
+  await expect(page.locator('header')).toContainText('形は未推定', { timeout: 20_000 })
+  await page.getByLabel('shape').fill('[4, 16]')
+  await page.getByLabel('shape').press('Enter')
+  await expect(page.locator('header')).not.toContainText('形は未推定', { timeout: 20_000 })
+})

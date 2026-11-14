@@ -90,7 +90,10 @@ function OpenDialog({
   onOpen,
   onClose,
   onDeleted,
+  openError,
 }: {
+  /** 開けなかった誤り (読めない YAML など. ダイアログの中に出す) */
+  openError: unknown
   onOpen: (source: 'model' | 'example', name: string) => void
   onClose: () => void
   /** 保存した定義を消した後 (今開いている定義なら, 保存していない扱いにする) */
@@ -147,6 +150,7 @@ function OpenDialog({
         </ul>
       )}
       {remove.error && <ErrorBox error={remove.error} />}
+      {openError ? <ErrorBox error={openError} /> : null}
       <h3 className="mb-1 text-xs font-semibold text-ink-2">例から始める</h3>
       {examples.isPending ? (
         <Spinner />
@@ -257,6 +261,11 @@ export function Toolbar({
   const exported = useMutation({
     mutationFn: () => api.exportPython(spec, 'Model'),
   })
+
+  // 形を推定しなかった理由 (パラメータ数の上限か, 入力の例が大きすぎる場合)
+  const notInferred = check?.estimated_only
+    ? 'パラメータ数が上限を超えるので, 形は推定していません'
+    : check?.issues.find((issue) => issue.code === 'input_too_large')?.message
 
   // 誤りは, 定義の誤りと形の推定で失敗したノードの数
   const errors =
@@ -392,6 +401,13 @@ export function Toolbar({
       </Button>
       <div className="ml-auto flex items-center gap-3 text-xs" aria-live="polite">
         {checking && <span className="text-ink-3">確認中…</span>}
+        {/* 大きすぎて形を推定していない場合は, 誤りが無くても知らせる */}
+        {!checking && notInferred && (
+          <span className="flex items-center gap-1 text-warning-text" title={notInferred}>
+            <AlertTriangle className="size-3.5" aria-hidden />
+            形は未推定
+          </span>
+        )}
         <span>
           パラメータ数 <span className="font-mono">{formatCount(check?.params)}</span>
         </span>
@@ -422,6 +438,7 @@ export function Toolbar({
             }
           }}
           onClose={() => setDialog(null)}
+          openError={open.error}
         />
       )}
       {dialog === 'yaml' && (
@@ -449,7 +466,7 @@ export function Toolbar({
           )}
         </Dialog>
       )}
-      {open.error && <ErrorBox error={open.error} />}
+      {open.error && dialog !== 'open' && <ErrorBox error={open.error} />}
     </header>
   )
 }
