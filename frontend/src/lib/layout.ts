@@ -8,6 +8,9 @@ const GAP = 40
 const WRAP_AFTER = 8
 const ROW_GAP = 120
 
+// 段を飛び越すつなぎのために, またぐ段のノードを下げる量
+const LANE = 110
+
 // ノードの高さの見積もり (見出しと, 口の行ごとの高さ)
 const HEADER = 60
 const PORT_ROW = 22
@@ -74,13 +77,25 @@ export function layoutPositions(spec: Spec, units: Map<string, UnitSpec>): Map<s
   const last = Math.max(0, ...nodeDepths.map(([, value]) => value)) + 1
   outputNames(spec).forEach((name) => place(`output:${name}`, last))
 
+  // 段を飛び越すつなぎ (残差など) がまたぐ段は, 線がノードの裏を通らない
+  // ように, ノードを 1 つ分下げて上を空ける
+  const columnOf = (id: string) =>
+    id in spec.inputs ? 0 : id.startsWith('output:') ? last : (depth.get(id) ?? 0)
+  const lifted = new Set<number>()
+  for (const wire of specWires(spec, units)) {
+    const from = columnOf(wire.source)
+    const to = columnOf(wire.target)
+    for (let column = from + 1; column < to; column += 1) lifted.add(column)
+  }
+  const offset = (column: number) => (lifted.has(column) ? LANE : 0)
+
   // 段が多い場合は, 全体が横に長くなりすぎないように折り返して行に並べる
   const count = last + 1
   const rows = Math.ceil(count / WRAP_AFTER)
   const perRow = Math.ceil(count / rows)
   const heights = new Map<number, number>()
   for (const [column, ids] of columns) {
-    const total = ids.reduce((sum, id) => sum + heightOf(id, spec, units) + GAP, 0)
+    const total = offset(column) + ids.reduce((sum, id) => sum + heightOf(id, spec, units) + GAP, 0)
     const row = Math.floor(column / perRow)
     heights.set(row, Math.max(heights.get(row) ?? 0, total))
   }
@@ -94,7 +109,7 @@ export function layoutPositions(spec: Spec, units: Map<string, UnitSpec>): Map<s
   const positions = new Map<string, Point>()
   for (const [column, ids] of columns) {
     const row = Math.floor(column / perRow)
-    let y = top(row)
+    let y = top(row) + offset(column)
     for (const id of ids) {
       positions.set(id, { x: 40 + (column % perRow) * COLUMN, y })
       y += heightOf(id, spec, units) + GAP

@@ -46,6 +46,10 @@ describe('layout', () => {
     expect(x('fc1')).toBeLessThan(x('fc2'))
     expect(x('fc2')).toBeLessThan(x('add'))
     expect(x('add')).toBeLessThan(x('output:y'))
+    // x から add への飛び越すつなぎがまたぐ段 (fc1, fc2) は下げる
+    const y = (id: string) => positions.get(id)!.y
+    expect(y('fc1')).toBeGreaterThan(y('x'))
+    expect(y('fc2')).toBeGreaterThan(y('add'))
   })
 
   it('並べ直した位置を ui に書き, 循環があっても止まる', () => {
