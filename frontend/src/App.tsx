@@ -10,6 +10,7 @@ import { Palette } from './features/editor/Palette'
 import { Toolbar } from './features/editor/Toolbar'
 import { addNode, emptySpec, type Spec, type UnitSpec } from './lib/graph'
 import { useHistory } from './lib/history'
+import { arrangeSpec } from './lib/layout'
 
 /** 書き換えている途中の値が落ち着いてから使う (確認の回数を抑える) */
 function useDebounced<T>(value: T, delay: number): T {
@@ -169,6 +170,11 @@ function Editor() {
           }}
           center={center}
           onSelect={setSelected}
+          onArrange={() => {
+            setSpec(arrangeSpec(spec, unitMap))
+            // 並べ直した全体が見えるように表示の範囲を合わせる
+            window.requestAnimationFrame(() => void flow.fitView({ duration: 200 }))
+          }}
           onUndo={previous ? undoSpec : undefined}
           onRedo={following ? redoSpec : undefined}
         />

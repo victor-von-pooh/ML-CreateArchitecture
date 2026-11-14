@@ -7,6 +7,7 @@ import {
   LogIn,
   LogOut,
   Moon,
+  Network,
   Redo2,
   Save,
   Sun,
@@ -161,6 +162,7 @@ export function Toolbar({
   center,
   onUndo,
   onRedo,
+  onArrange,
 }: {
   spec: Spec
   fileName: string
@@ -176,6 +178,8 @@ export function Toolbar({
   onUndo?: () => void
   /** やり直す (やり直せない場合は undefined) */
   onRedo?: () => void
+  /** 全てをつながりの深さで段に分けて並べ直す */
+  onArrange: () => void
 }) {
   const nameId = useId()
   const { theme, toggle } = useTheme()
@@ -285,6 +289,14 @@ export function Toolbar({
         title="やり直す (Ctrl+Shift+Z, Mac は Cmd+Shift+Z)"
         aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y"
       />
+      <Button
+        variant="ghost"
+        icon={Network}
+        onClick={onArrange}
+        title="つながりの順に左から右へ並べ直す (元に戻すで戻せる)"
+      >
+        整列
+      </Button>
       <span className="mx-1 h-6 w-px bg-line" aria-hidden />
       <Button variant="secondary" icon={LogIn} onClick={addInput}>
         入力
