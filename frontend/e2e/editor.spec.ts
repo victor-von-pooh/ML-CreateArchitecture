@@ -149,15 +149,20 @@ test('整列で, つながりの順に左から右へ並べ直し, 元に戻せ�
   await page.goto('/')
   await page.getByRole('button', { name: '開く' }).click()
   await page.getByRole('button', { name: /^residual_mlp/ }).click()
-  const left = async (id: string) => (await page.locator(`[data-id="${id}"]`).boundingBox())!.x
+  const box = async (id: string) => (await page.locator(`[data-id="${id}"]`).boundingBox())!
+  // 同じ行なら左にあるか, 折り返した場合は上の行にあるか
+  const before = async (a: string, b: string) => {
+    const [first, second] = [await box(a), await box(b)]
+    return Math.abs(first.y - second.y) < 20 ? first.x < second.x : first.y < second.y
+  }
 
-  // 並べ直すと, 入力, つなぎ先の順に右へ
+  // 並べ直すと, 入力, つなぎ先の順に右へ (長い場合は折り返して下の行へ)
   await page.getByRole('button', { name: '整列' }).click()
   await page.waitForTimeout(400)
-  expect(await left('x')).toBeLessThan(await left('fc1'))
-  expect(await left('fc1')).toBeLessThan(await left('act'))
-  expect(await left('act')).toBeLessThan(await left('add'))
-  expect(await left('add')).toBeLessThan(await left('head'))
+  expect(await before('x', 'fc1')).toBe(true)
+  expect(await before('fc1', 'act')).toBe(true)
+  expect(await before('act', 'add')).toBe(true)
+  expect(await before('add', 'head')).toBe(true)
   await page.screenshot({ path: 'test-results/arranged.png' })
 
   // 元に戻すで, 並べ直す前の位置
