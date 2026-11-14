@@ -305,6 +305,10 @@ test('複数つなぐ口のつなぎ先を並べ替えられる', async ({ page 
   await page.getByLabel('xs につなぎ先を加える').selectOption('x')
   await page.getByLabel('xs につなぎ先を加える').selectOption('relu1')
   await page.getByRole('button', { name: 'xs の 2 番目のつなぎ先 relu1 を上へ' }).click()
+  // 動かした先の行のボタンにフォーカスが移る (先頭なので下へ)
+  await expect(
+    page.getByRole('button', { name: 'xs の 1 番目のつなぎ先 relu1 を下へ' }),
+  ).toBeFocused()
   await expect(
     page.getByRole('button', { name: 'xs の 1 番目のつなぎ先 relu1 を外す' }),
   ).toBeVisible()

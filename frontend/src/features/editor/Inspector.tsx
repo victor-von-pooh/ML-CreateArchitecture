@@ -389,6 +389,18 @@ function PortRefs({
   onChange: (refs: string[]) => void
 }) {
   const id = useId()
+  // つなぎ先を 1 つ上か下へ動かし, 動かした先の行の同じ向き (端なら逆向き) の
+  // ボタンにフォーカスを移す
+  const move = (index: number, step: -1 | 1) => {
+    const target = index + step
+    if (refs[index] === refs[target]) return
+    onChange(swap(refs, index, target))
+    const edge = target === 0 || target === refs.length - 1
+    const direction = (step === -1) !== edge ? 'up' : 'down'
+    window.requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>(`[data-move="${id}-${target}-${direction}"]`)?.focus(),
+    )
+  }
   const label = (
     <label htmlFor={id} className="font-mono text-xs text-ink-2">
       {port}
@@ -425,14 +437,16 @@ function PortRefs({
       <div className="space-y-1">
         <ol className="space-y-1">
           {refs.map((ref, index) => (
-            <li key={`${ref}-${index}`} className="flex items-center gap-1 font-mono text-xs">
+            // 並べ替えても行を作り直さない (押したボタンのフォーカスを保つ)
+            <li key={index} className="flex items-center gap-1 font-mono text-xs">
               <span className="text-ink-3">{index + 1}.</span>
               <span className="min-w-0 flex-1 truncate">{ref}</span>
               {/* 順に意味がある口 (Concat など) のための並べ替え */}
               <button
                 type="button"
                 disabled={index === 0}
-                onClick={() => onChange(swap(refs, index, index - 1))}
+                data-move={`${id}-${index}-up`}
+                onClick={() => move(index, -1)}
                 aria-label={`${port} の ${index + 1} 番目のつなぎ先 ${ref} を上へ`}
                 title="上へ"
                 className="rounded px-1 text-ink-3 hover:bg-surface-2 hover:text-ink disabled:opacity-30"
@@ -442,7 +456,8 @@ function PortRefs({
               <button
                 type="button"
                 disabled={index === refs.length - 1}
-                onClick={() => onChange(swap(refs, index, index + 1))}
+                data-move={`${id}-${index}-down`}
+                onClick={() => move(index, 1)}
                 aria-label={`${port} の ${index + 1} 番目のつなぎ先 ${ref} を下へ`}
                 title="下へ"
                 className="rounded px-1 text-ink-3 hover:bg-surface-2 hover:text-ink disabled:opacity-30"

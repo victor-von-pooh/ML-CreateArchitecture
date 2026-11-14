@@ -185,5 +185,11 @@ describe('params', () => {
     expect([...downstream(spec, units, 'a')].sort()).toEqual(['b', 'c'])
     expect(refOptions(spec, units, 'a').map((option) => option.value)).toEqual(['x'])
     expect(refOptions(spec, units, 'c').map((option) => option.value)).toEqual(['b', 'a', 'x'])
+    // 循環していても, 既につないであるものは候補に残す
+    const cycle: Spec = {
+      ...spec,
+      nodes: { ...spec.nodes, a: { unit: 'nn.Linear', inputs: { input: 'c' } } },
+    }
+    expect(refOptions(cycle, units, 'a').map((option) => option.value)).toContain('c')
   })
 })

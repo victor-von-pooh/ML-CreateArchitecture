@@ -336,7 +336,12 @@ export function refOptions(
 ): { value: string; label: string }[] {
   // 新しく足したノードほどつなぐことが多いので, ノードは新しい順, 入力は最後
   // 選んだノード自身とその先のノード (つなぐと循環になる) は除く
+  // 既につないであるものは (循環していても) 残す
   const below = exclude !== null ? downstream(spec, units, exclude) : new Set<string>()
+  const node = exclude !== null ? spec.nodes[exclude] : undefined
+  for (const refs of Object.values(node ? nodeInputs(node, units.get(node.unit)) : {})) {
+    for (const ref of refs) below.delete(parseRef(ref).name)
+  }
   const options: { value: string; label: string }[] = []
   for (const [name, node] of Object.entries(spec.nodes).reverse()) {
     if (name === exclude || below.has(name)) continue
@@ -359,7 +364,9 @@ export function refOptions(
 export function downstream(spec: Spec, units: Map<string, UnitSpec>, name: string): Set<string> {
   const next = new Map<string, string[]>()
   for (const wire of specWires(spec, units)) {
-    next.set(wire.source, [...(next.get(wire.source) ?? []), wire.target])
+    const list = next.get(wire.source)
+    if (list) list.push(wire.target)
+    else next.set(wire.source, [wire.target])
   }
   const found = new Set<string>()
   const stack = [...(next.get(name) ?? [])]
