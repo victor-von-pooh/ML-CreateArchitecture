@@ -1,0 +1,156 @@
+import { useQuery } from '@tanstack/react-query'
+import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
+import { useEffect, useMemo, useState } from 'react'
+
+import { api } from './api/client'
+import { ErrorBox, Spinner } from './components/ui'
+import { Canvas } from './features/editor/Canvas'
+import { Inspector } from './features/editor/Inspector'
+import { Palette } from './features/editor/Palette'
+import { Toolbar } from './features/editor/Toolbar'
+import { addNode, emptySpec, type Spec, type UnitSpec } from './lib/graph'
+
+/** 書き換えている途中の値が落ち着いてから使う (確認の回数を抑える) */
+function useDebounced<T>(value: T, delay: number): T {
+  const [current, setCurrent] = useState(value)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setCurrent(value), delay)
+    return () => window.clearTimeout(timer)
+  }, [value, delay])
+  return current
+}
+
+/** モデルの定義を部品の一覧, キャンバス, 詳細で編集する画面 */
+export function App() {
+  return (
+    <ReactFlowProvider>
+      <Editor />
+    </ReactFlowProvider>
+  )
+}
+
+/** 編集の画面の本体 (キャンバスの表示範囲を使うので ReactFlowProvider の中) */
+function Editor() {
+  const units = useQuery({ queryKey: ['units'], queryFn: api.listUnits, staleTime: Infinity })
+  const [spec, setSpec] = useState<Spec>(() => emptySpec())
+  const [fileName, setFileName] = useState('model')
+  // 保存した (か開いた) 時点の定義. 今の定義と比べて, 保存していない変更を判定
+  const [saved, setSaved] = useState(() => JSON.stringify(emptySpec()))
+  const [selected, setSelected] = useState<string | null>(null)
+  const [added, setAdded] = useState(0)
+  const flow = useReactFlow()
+
+  // 定義が落ち着いたら確認と形の推定 (前の結果は次が届くまで表示)
+  const debounced = useDebounced(spec, 500)
+  const check = useQuery({
+    queryKey: ['check', debounced],
+    queryFn: () => api.check(debounced),
+    placeholderData: (previous) => previous,
+    staleTime: Infinity,
+  })
+
+  const unitMap = useMemo(
+    () => new Map((units.data ?? []).map((unit) => [unit.name, unit])),
+    [units.data],
+  )
+  const dirty = useMemo(() => JSON.stringify(spec) !== saved, [spec, saved])
+
+  // 新しく置くものは, キャンバスに見えている範囲の真ん中 (少しずつずらす)
+  const center = () => {
+    const box = document.querySelector('.react-flow')?.getBoundingClientRect()
+    const point = box
+      ? flow.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 })
+      : { x: 300, y: 120 }
+    const shift = (added % 5) * 30
+    setAdded((count) => count + 1)
+    return { x: Math.round(point.x - 90 + shift), y: Math.round(point.y - 40 + shift) }
+  }
+
+  // 保存していない変更がある場合は, 閉じる前に確認
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (dirty) event.preventDefault()
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
+
+  // 部品はキャンバスの真ん中に置いて選択
+  const add = (unit: UnitSpec) => {
+    const next = addNode(spec, unit, center())
+    const name = Object.keys(next.nodes).find((key) => !(key in spec.nodes)) ?? null
+    setSpec(next)
+    setSelected(name)
+  }
+
+  if (units.isPending) return <Spinner label="部品の一覧を読み込み中" />
+  if (units.error) {
+    return (
+      <div className="p-6">
+        <ErrorBox error={units.error} />
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="flex h-screen flex-col bg-bg text-ink">
+        <Toolbar
+          // 開いた定義が変わったら, 保存する名前の欄を作り直す
+          key={fileName}
+          spec={spec}
+          fileName={fileName}
+          dirty={dirty}
+          check={check.data}
+          checking={check.isFetching || debounced !== spec}
+          onChange={setSpec}
+          onLoad={(name, loaded) => {
+            setSpec(loaded)
+            setSaved(JSON.stringify(loaded))
+            setFileName(name)
+            setSelected(null)
+          }}
+          onSaved={(name, savedSpec) => {
+            setFileName(name)
+            setSaved(JSON.stringify(savedSpec))
+          }}
+          center={center}
+          onSelect={setSelected}
+        />
+        <div className="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)_20rem]">
+          <aside aria-label="部品の一覧" className="min-h-0 border-r border-line bg-surface">
+            <Palette units={units.data} onAdd={add} />
+          </aside>
+          <main className="min-h-0">
+            <Canvas
+              spec={spec}
+              units={unitMap}
+              check={check.data}
+              selected={selected}
+              onChange={setSpec}
+              onSelect={setSelected}
+            />
+          </main>
+          <aside
+            aria-label="詳細"
+            className="min-h-0 overflow-y-auto border-l border-line bg-surface"
+          >
+            {check.error && (
+              <div className="p-3">
+                <ErrorBox error={check.error} live={false} />
+              </div>
+            )}
+            <Inspector
+              spec={spec}
+              units={unitMap}
+              check={check.data}
+              selected={selected}
+              onChange={setSpec}
+              onSelect={setSelected}
+            />
+          </aside>
+        </div>
+      </div>
+    </>
+  )
+}
