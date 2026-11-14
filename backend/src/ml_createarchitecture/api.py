@@ -207,11 +207,13 @@ def run_check(body: SpecBody) -> CheckResult:
     result: CheckResult
         誤りと注意, ノードごとの形とパラメータ数, YAML
     """
-    # 入力の例の要素数が大きすぎる場合は形を推定しない
+    # 定義として読めない場合と, 入力の例の要素数が大きすぎる場合は形を
+    # 推定しない. 他の誤りがあっても, 誤りのあるノードとその先を除いて
+    # 推定する (組み立ての途中でも形を確かめられるように)
     issues = validate(body.spec)
-    has_error = any(issue["severity"] == "error" for issue in issues)
+    unreadable = any(issue["code"] == "invalid_spec" for issue in issues)
     yaml_text = ""
-    if not any(issue["code"] == "invalid_spec" for issue in issues):
+    if not unreadable:
         yaml_text = dump_spec(load_spec(body.spec))
     too_large = input_too_large(body.spec)
     if too_large is not None:
@@ -219,7 +221,7 @@ def run_check(body: SpecBody) -> CheckResult:
             "severity": "warning", "code": "input_too_large",
             "message": too_large, "node": None, "location": "inputs"
         })
-    if has_error or not body.infer or too_large is not None:
+    if unreadable or not body.infer or too_large is not None:
         result = CheckResult(
             issues=[Issue(**issue) for issue in issues], inferred=False,
             yaml=yaml_text

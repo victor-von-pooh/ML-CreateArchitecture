@@ -104,11 +104,13 @@ def test_units_and_check(client: TestClient) -> None:
     assert result["params"] == 8
     assert "unit: nn.Linear" in result["yaml"]
 
-    # 誤りのある定義は確認の結果だけ
+    # 誤りのあるノードがあっても, そこを除いた部分は形を推定
     broken = {**SPEC, "nodes": {**SPEC["nodes"], "act": {"unit": "nn.Nope"}}}
     result = client.post("/api/check", json={"spec": broken}).json()
-    assert not result["inferred"]
     assert any(issue["code"] == "unknown_unit" for issue in result["issues"])
+    assert result["inferred"] and not result["ok"]
+    assert result["nodes"]["fc"]["outputs"]["out"]["shape"] == [4, 2]
+    assert result["nodes"]["act"]["status"] == "error"
 
     # 読めない定義 (新しい版) は YAML なし
     newer = {**SPEC, "format_version": 99}

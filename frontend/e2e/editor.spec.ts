@@ -261,3 +261,27 @@ test('保存した定義を開くの一覧から消せる', async ({ page }) => 
   await dialog.getByRole('button', { name: 'e2e_model を消す' }).click()
   await expect(dialog.getByRole('button', { name: /^e2e_model \d/ })).toHaveCount(0)
 })
+
+test('組み立ての途中 (出力が無い, つないでいないノードがある) でも形を出す', async ({ page }) => {
+  await page.goto('/')
+
+  // 出力を置く前でも, つないだノードには形が出る
+  await page.getByPlaceholder('部品を探す').fill('nn.Linear')
+  await page
+    .getByRole('button', { name: /^nn\.Linear/ })
+    .first()
+    .click()
+  await page.getByLabel('in_features').fill('16')
+  await page.getByLabel('in_features').press('Enter')
+  await page.getByLabel('out_features').fill('4')
+  await page.getByLabel('out_features').press('Enter')
+  await page.getByLabel(/^input/).selectOption('x')
+  await expect(page.locator('[data-id="linear1"]')).toContainText('[4, 4]', { timeout: 20_000 })
+
+  // 複製したつないでいないノードがあっても, 他のノードの形は消えない
+  await page.getByRole('button', { name: '複製' }).click()
+  await expect(page.locator('[data-id="linear2"]')).toBeVisible()
+  await page.waitForTimeout(1500)
+  await expect(page.locator('[data-id="linear1"]')).toContainText('[4, 4]')
+  await expect(page.locator('header')).toContainText('パラメータ数 68')
+})
