@@ -164,3 +164,30 @@ test('整列で, つながりの順に左から右へ並べ直し, 元に戻せ�
   await page.getByRole('button', { name: '元に戻す' }).click()
   await expect(page.getByRole('button', { name: '元に戻す' })).toBeDisabled()
 })
+
+test('ノードを引数ごと複製し, 写して貼れる', async ({ page }) => {
+  await page.goto('/')
+  await page.getByPlaceholder('部品を探す').fill('nn.Linear')
+  await page
+    .getByRole('button', { name: /^nn\.Linear/ })
+    .first()
+    .click()
+  await page.getByLabel('in_features').fill('16')
+  await page.getByLabel('in_features').press('Enter')
+
+  // 複製のボタンで, 引数の同じ写しが選ばれる
+  await page.getByRole('button', { name: '複製' }).click()
+  await expect(page.locator('[data-id="linear2"]')).toBeVisible()
+  await expect(page.getByLabel('名前', { exact: true })).toHaveValue('linear2')
+  await expect(page.getByLabel('in_features')).toHaveValue('16')
+
+  // Ctrl+C で写し, 何も選ばずに Ctrl+V で貼る. Ctrl+D でも複製
+  await page.locator('[data-id="linear1"]').click()
+  await page.keyboard.press('ControlOrMeta+c')
+  await page.locator('.react-flow__pane').click()
+  await page.keyboard.press('ControlOrMeta+v')
+  await expect(page.locator('[data-id="linear3"]')).toBeVisible()
+  await page.keyboard.press('ControlOrMeta+d')
+  await expect(page.locator('[data-id="linear4"]')).toBeVisible()
+  await expect(page.getByLabel('in_features')).toHaveValue('16')
+})

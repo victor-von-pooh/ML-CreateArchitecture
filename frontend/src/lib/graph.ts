@@ -236,6 +236,23 @@ export function addNode(spec: Spec, unit: UnitSpec, position: { x: number; y: nu
   return { ...spec, nodes: { ...spec.nodes, [name]: node } }
 }
 
+/**
+ * ノードの写しを置いた定義と, 写しの名前を返す
+ *
+ * 部品, 引数, 呼び出しの設定, 説明を写し, つなぎ先は写さない (別の所で
+ * つなぐことが多いため). 名前は部品から新しく付ける
+ */
+export function pasteNode(
+  spec: Spec,
+  source: NodeDef,
+  position: { x: number; y: number },
+): { spec: Spec; name: string } {
+  const name = freshName(spec, source.unit)
+  const copy = structuredClone(source)
+  const node: NodeDef = { ...copy, inputs: {}, ui: { ...copy.ui, ...position } }
+  return { spec: { ...spec, nodes: { ...spec.nodes, [name]: node } }, name }
+}
+
 /** ノードか入力を消し, それを参照するつなぎ先も外した定義を返す */
 export function removeItem(spec: Spec, units: Map<string, UnitSpec>, name: string): Spec {
   if (name.startsWith('output:')) {
