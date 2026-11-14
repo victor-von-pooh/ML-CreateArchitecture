@@ -36,6 +36,7 @@ ML-Dashboard と同じ構成と道具 (uv, pnpm, Ruff, mypy, Prettier, oxlint, O
 | --- | --- |
 | `GET /api/units` | 部品の一覧 (ML-ModelControl の `describe_units`) |
 | `POST /api/check` | 定義を確かめ, 誤りと注意, ノードごとの形とパラメータ数を返す (`validate` と `infer`) |
+| `GET /api/examples`, `GET /api/examples/{name}` | ML-ModelControl に同梱した例のモデルの一覧と読み込み (「開く」から例を選んで編集を始める) |
 | `GET /api/models` | 置き場の定義のファイルの一覧 |
 | `GET /api/models/{name}` | 定義を読み込む |
 | `PUT /api/models/{name}` | 定義を保存する |

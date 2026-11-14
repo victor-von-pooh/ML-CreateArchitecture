@@ -9,6 +9,7 @@ export type CheckResult = Schemas['CheckResult']
 export type ModelSummary = Schemas['ModelSummary']
 export type ModelFile = Schemas['ModelFile']
 export type ExportResult = Schemas['ExportResult']
+export type ExampleSummary = Schemas['ExampleSummary']
 
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
@@ -57,6 +58,8 @@ export const api = {
       body: JSON.stringify({ spec, class_name: className }),
     }),
   listModels: () => request<ModelSummary[]>('/api/models'),
+  listExamples: () => request<ExampleSummary[]>('/api/examples'),
+  getExample: (name: string) => request<ModelFile>(`/api/examples/${encodeURIComponent(name)}`),
   getModel: (name: string) => request<ModelFile>(`/api/models/${encodeURIComponent(name)}`),
   saveModel: (name: string, spec: Spec) =>
     request<ModelSummary>(`/api/models/${encodeURIComponent(name)}`, {

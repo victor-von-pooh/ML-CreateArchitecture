@@ -218,3 +218,24 @@ def test_review_fixes(client: TestClient, tmp_path: Path) -> None:
     odd = {**SPEC, "inputs": {"x": {"shape": [4, 3], "dtype": ["a"]}}}
     response = client.post("/api/check", json={"spec": odd})
     assert response.status_code == 200
+
+
+def test_examples(client: TestClient) -> None:
+    """
+    同梱した例の一覧と読み込みを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+
+    Returns
+    ----------
+    None
+    """
+    # 一覧に例があり, 読み込むと定義, 無い名前は 404
+    names = {item["name"] for item in client.get("/api/examples").json()}
+    assert "cnn_classifier" in names
+    model = client.get("/api/examples/cnn_classifier").json()
+    assert "conv1" in model["spec"]["nodes"]
+    assert client.get("/api/examples/nope").status_code == 404

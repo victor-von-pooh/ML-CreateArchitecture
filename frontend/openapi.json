@@ -107,6 +107,69 @@
         }
       }
     },
+    "/api/examples": {
+      "get": {
+        "summary": "List Example Models",
+        "description": "ML-ModelControl に同梱した例のモデルの一覧を返す関数\n\nParameters\n----------\nNone\n\nReturns\n----------\nexamples: list[ExampleSummary]\n    例の名前と説明",
+        "operationId": "list_example_models",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExampleSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Example Models"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/examples/{name}": {
+      "get": {
+        "summary": "Get Example",
+        "description": "例のモデルの定義を読み込む関数\n\nParameters\n----------\nname: str\n    例の名前\n\nReturns\n----------\nmodel: ModelFile\n    例の名前と定義",
+        "operationId": "get_example",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/models": {
       "get": {
         "summary": "List Models",
@@ -292,6 +355,24 @@
           "inferred"
         ],
         "title": "CheckResult"
+      },
+      "ExampleSummary": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "ExampleSummary"
       },
       "ExportBody": {
         "properties": {

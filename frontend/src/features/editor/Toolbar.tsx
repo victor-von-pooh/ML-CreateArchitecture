@@ -69,28 +69,61 @@ function TextView({ text }: { text: string }) {
   )
 }
 
-/** 保存した定義を選んで開く */
-function OpenDialog({ onOpen, onClose }: { onOpen: (name: string) => void; onClose: () => void }) {
+/** 保存した定義か, 同梱した例を選んで開く */
+function OpenDialog({
+  onOpen,
+  onClose,
+}: {
+  onOpen: (source: 'model' | 'example', name: string) => void
+  onClose: () => void
+}) {
   const models = useQuery({ queryKey: ['models'], queryFn: api.listModels })
+  const examples = useQuery({
+    queryKey: ['examples'],
+    queryFn: api.listExamples,
+    staleTime: Infinity,
+  })
   return (
     <Dialog title="定義を開く" onClose={onClose}>
+      <h3 className="mb-1 text-xs font-semibold text-ink-2">保存した定義</h3>
       {models.isPending ? (
         <Spinner />
       ) : models.error ? (
         <ErrorBox error={models.error} />
       ) : models.data.length === 0 ? (
-        <p className="text-sm text-ink-3">保存した定義はまだありません.</p>
+        <p className="mb-3 text-sm text-ink-3">保存した定義はまだありません.</p>
       ) : (
-        <ul className="divide-y divide-line">
+        <ul className="mb-4 divide-y divide-line">
           {models.data.map((model) => (
             <li key={model.name}>
               <button
                 type="button"
-                onClick={() => onOpen(model.name)}
+                onClick={() => onOpen('model', model.name)}
                 className="flex w-full items-center justify-between px-2 py-2 text-left hover:bg-surface-2"
               >
                 <span className="font-mono text-sm">{model.name}</span>
                 <span className="text-xs text-ink-3">{model.updated_at.replace('T', ' ')}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <h3 className="mb-1 text-xs font-semibold text-ink-2">例から始める</h3>
+      {examples.isPending ? (
+        <Spinner />
+      ) : examples.error ? (
+        <ErrorBox error={examples.error} />
+      ) : (
+        <ul className="divide-y divide-line">
+          {examples.data.map((example) => (
+            <li key={example.name}>
+              <button
+                type="button"
+                onClick={() => onOpen('example', example.name)}
+                className="w-full px-2 py-2 text-left hover:bg-surface-2"
+              >
+                <span className="block font-mono text-sm">{example.name}</span>
+                <span className="block text-xs text-ink-3">{example.description}</span>
               </button>
             </li>
           ))}
@@ -135,7 +168,8 @@ export function Toolbar({
     onSuccess: (summary, target) => onSaved(summary.name, target),
   })
   const open = useMutation({
-    mutationFn: (target: string) => api.getModel(target),
+    mutationFn: ({ source, target }: { source: 'model' | 'example'; target: string }) =>
+      source === 'model' ? api.getModel(target) : api.getExample(target),
     onSuccess: (model) => {
       onLoad(model.name, model.spec as unknown as Spec)
       setDialog(null)
@@ -248,9 +282,9 @@ export function Toolbar({
       )}
       {dialog === 'open' && (
         <OpenDialog
-          onOpen={(target) => {
+          onOpen={(source, target) => {
             if (!dirty || window.confirm('保存していない変更を捨てて, 定義を開きますか?')) {
-              open.mutate(target)
+              open.mutate({ source, target })
             }
           }}
           onClose={() => setDialog(null)}
