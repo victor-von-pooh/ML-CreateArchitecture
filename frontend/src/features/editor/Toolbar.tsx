@@ -30,7 +30,12 @@ function Dialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
+    // 開く前に操作していた所を覚え, 閉じたら (枠を外したら) そこに戻す
+    const before = document.activeElement
     ref.current?.showModal()
+    return () => {
+      if (before instanceof HTMLElement && before.isConnected) before.focus()
+    }
   }, [])
   return (
     <dialog

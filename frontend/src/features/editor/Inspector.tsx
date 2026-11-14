@@ -4,7 +4,7 @@ import { memo, useId, useState } from 'react'
 import type { CheckResult, Issue } from '../../api/client'
 import { Button } from '../../components/ui'
 import { formatCount, formatShape } from '../../lib/format'
-import { formatValue, parseShape, parseValue } from '../../lib/params'
+import { checkValue, formatValue, parseShape, parseValue } from '../../lib/params'
 import {
   isValidName,
   nodeInputs,
@@ -43,12 +43,23 @@ function ParamField({
   param,
   value,
   onChange,
+  check = (text) => checkValue(param, text),
 }: {
   param: ParamSpec
   value: unknown
   onChange: (value: unknown) => void
+  /** 入力欄の文字の確認 (合わない場合は理由. その値は定義に反映しない) */
+  check?: (text: string) => string | null
 }) {
   const id = useId()
+  const errorId = `${id}-error`
+  const [error, setError] = useState<string | null>(null)
+  // 確かめてから反映 (合わない値は理由を出して反映しない)
+  const commit = (text: string) => {
+    const message = check(text)
+    setError(message)
+    if (message === null) onChange(parseValue(param, text))
+  }
   const hint = [
     param.description,
     param.minimum !== null ? `${param.minimum} 以上` : '',
@@ -111,15 +122,13 @@ function ParamField({
           onChange={(event) => {
             // 候補から選んだ場合 (候補と同じ文字になった場合) はすぐに反映
             const text = event.target.value
-            if (param.suggestions?.some((choice) => String(choice) === text)) {
-              onChange(parseValue(param, text))
-            }
+            if (param.suggestions?.some((choice) => String(choice) === text)) commit(text)
           }}
-          onBlur={(event) => onChange(parseValue(param, event.target.value))}
-          onKeyDown={(event) =>
-            event.key === 'Enter' && onChange(parseValue(param, event.currentTarget.value))
-          }
-          className="h-7 w-full rounded-md border border-line bg-bg px-2 font-mono text-xs"
+          onBlur={(event) => commit(event.target.value)}
+          onKeyDown={(event) => event.key === 'Enter' && commit(event.currentTarget.value)}
+          aria-invalid={error !== null}
+          aria-describedby={error ? errorId : undefined}
+          className="h-7 w-full rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
         />
         {param.suggestions && listId && <Suggestions id={listId} suggestions={param.suggestions} />}
       </>
@@ -129,6 +138,11 @@ function ParamField({
     <div className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5">
       {label}
       {field}
+      {error && (
+        <p id={errorId} className="col-start-2 text-[11px] text-critical-text">
+          {error}
+        </p>
+      )}
       {hint && <p className="col-start-2 text-[10px] text-ink-3">{hint}</p>}
     </div>
   )
@@ -425,6 +439,7 @@ export function Inspector({
             choices: null,
           }}
           value={input.shape}
+          check={(text) => (parseShape(text) ? null : '0 以上の整数を並べてください (例: [4, 16])')}
           onChange={(value) => {
             const shape = parseShape(value)
             if (shape) update({ shape })
