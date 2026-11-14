@@ -7,8 +7,10 @@ import {
   LogIn,
   LogOut,
   Moon,
+  Redo2,
   Save,
   Sun,
+  Undo2,
 } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 
@@ -157,6 +159,8 @@ export function Toolbar({
   onSaved,
   onSelect,
   center,
+  onUndo,
+  onRedo,
 }: {
   spec: Spec
   fileName: string
@@ -168,6 +172,10 @@ export function Toolbar({
   onSaved: (name: string, spec: Spec) => void
   onSelect: (id: string) => void
   center: () => { x: number; y: number }
+  /** 元に戻す (戻せない場合は undefined) */
+  onUndo?: () => void
+  /** やり直す (やり直せない場合は undefined) */
+  onRedo?: () => void
 }) {
   const nameId = useId()
   const { theme, toggle } = useTheme()
@@ -258,6 +266,25 @@ export function Toolbar({
       >
         保存{dirty ? ' *' : ''}
       </Button>
+      <span className="mx-1 h-6 w-px bg-line" aria-hidden />
+      <Button
+        variant="ghost"
+        icon={Undo2}
+        disabled={!onUndo}
+        onClick={onUndo}
+        aria-label="元に戻す"
+        title="元に戻す (Ctrl+Z, Mac は Cmd+Z)"
+        aria-keyshortcuts="Control+Z Meta+Z"
+      />
+      <Button
+        variant="ghost"
+        icon={Redo2}
+        disabled={!onRedo}
+        onClick={onRedo}
+        aria-label="やり直す"
+        title="やり直す (Ctrl+Shift+Z, Mac は Cmd+Shift+Z)"
+        aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y"
+      />
       <span className="mx-1 h-6 w-px bg-line" aria-hidden />
       <Button variant="secondary" icon={LogIn} onClick={addInput}>
         入力

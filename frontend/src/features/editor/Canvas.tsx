@@ -39,7 +39,8 @@ export function Canvas({
   units: Map<string, UnitSpec>
   check: CheckResult | undefined
   selected: string | null
-  onChange: (spec: Spec) => void
+  /** 定義の変更 (merge に同じ印の続けての変更は, 元に戻すで 1 回分) */
+  onChange: (spec: Spec, merge?: string) => void
   onSelect: (id: string | null) => void
 }) {
   // 計測したノードの大きさ (線の位置の計算に使うので, 作り直しても保持)
@@ -60,11 +61,13 @@ export function Canvas({
   const onNodesChange = (changes: NodeChange[]) => {
     let next = spec
     const measured: Record<string, { width: number; height: number }> = {}
+    const moved: string[] = []
     for (const change of changes) {
       if (change.type === 'dimensions' && change.dimensions) {
         measured[change.id] = change.dimensions
       } else if (change.type === 'position' && change.position) {
         next = moveItem(next, change.id, change.position)
+        moved.push(change.id)
       } else if (change.type === 'select' && change.selected) {
         onSelect(change.id)
       } else if (change.type === 'remove') {
@@ -73,7 +76,8 @@ export function Canvas({
       }
     }
     if (Object.keys(measured).length > 0) setSizes((current) => ({ ...current, ...measured }))
-    if (next !== spec) onChange(next)
+    // 同じノードのドラッグの移動は 1 回分にまとめる
+    if (next !== spec) onChange(next, moved.length > 0 ? `move:${moved.join(',')}` : undefined)
   }
 
   // 線の削除を定義に反映
