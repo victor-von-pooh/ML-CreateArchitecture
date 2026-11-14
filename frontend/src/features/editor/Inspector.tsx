@@ -4,7 +4,7 @@ import { useId, useState } from 'react'
 import type { CheckResult, Issue } from '../../api/client'
 import { Button } from '../../components/ui'
 import { formatCount, formatShape } from '../../lib/format'
-import { formatValue, parseValue } from '../../lib/params'
+import { formatValue, parseShape, parseValue } from '../../lib/params'
 import {
   isValidName,
   removeItem,
@@ -60,10 +60,17 @@ function ParamField({
     field = (
       <select
         id={id}
-        value={formatValue(value ?? param.default)}
-        onChange={(event) => onChange(event.target.value)}
+        value={value === undefined ? '' : String(value)}
+        onChange={(event) =>
+          onChange(
+            event.target.value === ''
+              ? undefined
+              : param.choices!.find((choice) => String(choice) === event.target.value),
+          )
+        }
         className="h-7 w-full rounded-md border border-line bg-bg px-1 font-mono text-xs"
       >
+        <option value="">(未設定)</option>
         {param.choices.map((choice) => (
           <option key={String(choice)} value={String(choice)}>
             {String(choice)}
@@ -75,8 +82,6 @@ function ParamField({
     field = (
       <input
         id={id}
-        // 外 (別のノードを選んだ場合など) で値が変わったら作り直して合わせる
-        key={formatValue(value)}
         defaultValue={formatValue(value)}
         placeholder={param.default !== null ? formatValue(param.default) : ''}
         onBlur={(event) => onChange(parseValue(param, event.target.value))}
@@ -218,6 +223,7 @@ export function Inspector({
     return (
       <div className="space-y-3 p-3">
         <NameField
+          key={name}
           name={name}
           taken={(value) => value in spec.outputs || value in (spec.ui?.outputs ?? {})}
           onRename={(value) => {
@@ -258,6 +264,7 @@ export function Inspector({
     return (
       <div className="space-y-3 p-3">
         <NameField
+          key={selected}
           name={selected}
           taken={taken}
           onRename={(value) => {
@@ -281,7 +288,10 @@ export function Inspector({
             choices: null,
           }}
           value={input.shape}
-          onChange={(value) => update({ shape: Array.isArray(value) ? (value as number[]) : [] })}
+          onChange={(value) => {
+            const shape = parseShape(value)
+            if (shape) update({ shape })
+          }}
         />
         <ParamField
           param={{
@@ -312,7 +322,12 @@ export function Inspector({
           onChange={(value) => update({ fill: String(value) })}
         />
         <IssueList
-          issues={issuesFor((issue) => (issue.location ?? '').startsWith(`inputs.${selected}`))}
+          issues={issuesFor(
+            (issue) =>
+              !issue.node &&
+              (issue.location === `inputs.${selected}` ||
+                (issue.location ?? '').startsWith(`inputs.${selected}.`)),
+          )}
         />
         <Button variant="danger" icon={Trash2} onClick={remove}>
           入力を消す
@@ -335,6 +350,7 @@ export function Inspector({
   return (
     <div className="space-y-4 p-3">
       <NameField
+        key={selected}
         name={selected}
         taken={taken}
         onRename={(value) => {
@@ -368,7 +384,8 @@ export function Inspector({
           <legend className="mb-1 text-xs font-semibold">引数</legend>
           {unit!.params.map((param) => (
             <ParamField
-              key={param.name}
+              // ノードを選び直したら作り直して値を合わせる
+              key={`${selected}-${param.name}`}
               param={param}
               value={node.params?.[param.name]}
               onChange={(value) => setValue('params', param.name, value)}
@@ -381,7 +398,7 @@ export function Inspector({
           <legend className="mb-1 text-xs font-semibold">呼び出すときの設定</legend>
           {unit!.forward_params.map((param) => (
             <ParamField
-              key={param.name}
+              key={`${selected}-${param.name}`}
               param={param}
               value={node.forward_params?.[param.name]}
               onChange={(value) => setValue('forward_params', param.name, value)}

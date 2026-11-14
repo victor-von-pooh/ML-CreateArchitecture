@@ -40,6 +40,7 @@ class CheckResult(BaseModel):
     # 上限を超えて計算しなかったか, 保存する形の YAML
     issues: list[Issue]
     inferred: bool
+    ok: bool = False
     nodes: dict[str, NodeResult] = {}
     outputs: dict[str, Any] = {}
     params: Optional[int] = None
@@ -96,6 +97,46 @@ def get_store(request: Request) -> ModelStore:
     return store
 
 
+# 形の推定で作る入力の例の要素数の上限 (大きすぎる形でメモリを使い切らない)
+MAX_INPUT_ELEMENTS = 10_000_000
+
+
+def input_too_large(spec: dict[str, Any]) -> Optional[str]:
+    """
+    入力の例の要素数が上限を超えるかを確かめる関数
+
+    Parameters
+    ----------
+    spec: dict[str, Any]
+        モデルの定義
+
+    Returns
+    ----------
+    message: Optional[str]
+        超える場合の説明, 超えない場合は None
+    """
+    # 入力ごとに形の要素数を掛け合わせて確認
+    message = None
+    inputs = spec.get("inputs")
+    if not isinstance(inputs, dict):
+        return message
+    for name, value in inputs.items():
+        shape = value.get("shape") if isinstance(value, dict) else None
+        if not isinstance(shape, list):
+            continue
+        count = 1
+        for size in shape:
+            if isinstance(size, int) and size > 0:
+                count *= size
+        if count > MAX_INPUT_ELEMENTS:
+            message = (
+                f"入力 {name} の例の要素数 ({count}) が上限 "
+                f"({MAX_INPUT_ELEMENTS}) を超えるので, 形を推定しません"
+            )
+
+    return message
+
+
 @router.get("/units")
 def list_units() -> list[dict[str, Any]]:
     """
@@ -131,12 +172,48 @@ def check_spec(body: SpecBody) -> CheckResult:
         誤りと注意, ノードごとの形とパラメータ数, YAML
     """
     # 確かめて, 誤りが無ければ形を推定 (誤りがある場合は確認の結果だけ)
+    # 予期しないエラー (極端な形など) は, 定義全体の誤りとして返却
+    try:
+        result = run_check(body)
+    except Exception as error:
+        result = CheckResult(
+            issues=[Issue(
+                severity="error", code="check_failed",
+                message=f"確認できません: {type(error).__name__}: {error}"
+            )],
+            inferred=False
+        )
+
+    return result
+
+
+def run_check(body: SpecBody) -> CheckResult:
+    """
+    確認と形の推定を行う関数
+
+    Parameters
+    ----------
+    body: SpecBody
+        モデルの定義と, 形の推定もするか
+
+    Returns
+    ----------
+    result: CheckResult
+        誤りと注意, ノードごとの形とパラメータ数, YAML
+    """
+    # 入力の例の要素数が大きすぎる場合は形を推定しない
     issues = validate(body.spec)
     has_error = any(issue["severity"] == "error" for issue in issues)
     yaml_text = ""
     if not any(issue["code"] == "invalid_spec" for issue in issues):
         yaml_text = dump_spec(load_spec(body.spec))
-    if has_error or not body.infer:
+    too_large = input_too_large(body.spec)
+    if too_large is not None:
+        issues.append({
+            "severity": "warning", "code": "input_too_large",
+            "message": too_large, "node": None, "location": "inputs"
+        })
+    if has_error or not body.infer or too_large is not None:
         result = CheckResult(
             issues=[Issue(**issue) for issue in issues], inferred=False,
             yaml=yaml_text
@@ -145,7 +222,7 @@ def check_spec(body: SpecBody) -> CheckResult:
     inferred = infer(body.spec)
     result = CheckResult(
         issues=[Issue(**issue) for issue in inferred["issues"]],
-        inferred=not inferred["estimated_only"],
+        inferred=bool(inferred["nodes"]), ok=inferred["ok"],
         nodes={
             name: NodeResult(**value)
             for name, value in inferred["nodes"].items()
@@ -173,10 +250,10 @@ def export_spec(body: ExportBody) -> ExportResult:
     result: ExportResult
         Python のコード
     """
-    # 定義に誤りがある場合は 400
+    # 定義に誤りがある場合と, 書き出せない場合は 400
     try:
         code = export_python(body.spec, class_name=body.class_name)
-    except (SpecError, ValueError) as error:
+    except (SpecError, ValueError, TypeError) as error:
         raise HTTPException(400, str(error)) from error
     result = ExportResult(code=code)
 
@@ -252,14 +329,10 @@ def save_model(name: str, body: SpecBody, request: Request) -> ModelSummary:
         保存した定義の名前と更新時刻
     """
     # 名前の規則に合わない場合と, 版の読めない定義は 400
-    store = get_store(request)
     try:
-        store.save(name, body.spec)
+        saved = get_store(request).save(name, body.spec)
     except ModelError as error:
         raise HTTPException(400, str(error)) from error
-    summary = next(
-        ModelSummary(**item) for item in store.list_models()
-        if item["name"] == name
-    )
+    summary = ModelSummary(**saved)
 
     return summary

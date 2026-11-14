@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { parseShape } from './params'
 import {
   addNode,
   connect,
@@ -103,5 +104,33 @@ describe('graph', () => {
     expect(Object.keys(spec.inputs)).toEqual(['features'])
     expect(spec.nodes.head!.inputs).toEqual({ input: 'features' })
     expect(spec.outputs).toEqual({ y: 'head' })
+  })
+
+  it('同じノードを 2 回つないだ可変の口と出力から, 消したノードを外す', () => {
+    let spec: Spec = addNode(emptySpec(), units.get('op.Add')!, { x: 0, y: 0 })
+    spec = addNode(spec, units.get('nn.Linear')!, { x: 0, y: 0 })
+    spec = {
+      ...spec,
+      nodes: {
+        ...spec.nodes,
+        add1: { ...spec.nodes.add1!, inputs: { xs: ['linear1', 'x', 'linear1'] } },
+      },
+      outputs: { y: 'linear1' },
+    }
+    spec = removeItem(spec, units, 'linear1')
+    expect(spec.nodes.add1!.inputs).toEqual({ xs: ['x'] })
+    expect(spec.outputs).toEqual({})
+    // 出力の名前は残る (つなぎ直せるように)
+    expect(Object.keys(spec.ui?.outputs ?? {})).toEqual(['y'])
+  })
+})
+
+describe('params', () => {
+  it('形は [4, 16] と 4, 16 のどちらでも読み, 読めない値は null', () => {
+    expect(parseShape('[4, 16]')).toEqual([4, 16])
+    expect(parseShape('4, 16')).toEqual([4, 16])
+    expect(parseShape([2, 3])).toEqual([2, 3])
+    expect(parseShape('4, a')).toBeNull()
+    expect(parseShape('')).toBeNull()
   })
 })

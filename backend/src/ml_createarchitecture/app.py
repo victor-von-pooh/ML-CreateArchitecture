@@ -1,3 +1,4 @@
+import hashlib
 import os
 import secrets
 from collections.abc import Awaitable, Callable
@@ -19,7 +20,7 @@ from ml_createarchitecture.store import ModelStore
 STATIC_DIR = (Path(__file__).parent / "static").resolve()
 
 # ローカルからだけ使う前提で受け付けるホスト名
-ALLOWED_HOSTS = ["127.0.0.1", "localhost", "testserver"]
+ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 
 # 状態を変えるメソッド
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -124,7 +125,7 @@ def make_auth_check(
         path = request.url.path
         if path.startswith("/api") and path != AUTH_PATH:
             given = [
-                request.cookies.get(TOKEN_COOKIE, ""),
+                request.cookies.get(cookie_name(token), ""),
                 request.headers.get("x-createarchitecture-token", "")
             ]
             if not any(same_token(value, token) for value in given):
@@ -142,6 +143,29 @@ def make_auth_check(
         return response
 
     return check
+
+
+def cookie_name(token: str) -> str:
+    """
+    トークンを保存する Cookie の名前を作る関数
+
+    Cookie はポートを区別しないので, 同じ端末で動かす別のインスタンス
+    (開発用のサーバーなど) と重ならないように, トークンから名前を作る
+
+    Parameters
+    ----------
+    token: str
+        起動ごとのトークン
+
+    Returns
+    ----------
+    name: str
+        Cookie の名前
+    """
+    digest = hashlib.sha256(token.encode()).hexdigest()[:12]
+    name = f"{TOKEN_COOKIE}_{digest}"
+
+    return name
 
 
 def same_token(given: str, token: str) -> bool:
@@ -238,7 +262,8 @@ def mount_frontend(app: FastAPI, static_dir: Path) -> None:
 
 
 def create_app(
-    data_dir: Optional[Path] = None, token: Optional[str] = None
+    data_dir: Optional[Path] = None, token: Optional[str] = None,
+    allowed_hosts: Optional[list[str]] = None
 ) -> FastAPI:
     """
     アプリを組み立てる関数
@@ -249,6 +274,8 @@ def create_app(
         アプリのデータの置き場, None の場合は既定の場所
     token: Optional[str] = None
         API の呼び出しに求めるトークン, None の場合は環境変数かランダムに作成
+    allowed_hosts: Optional[list[str]] = None
+        受け付けるホスト名, None の場合は 127.0.0.1 と localhost
 
     Returns
     ----------
@@ -276,7 +303,9 @@ def create_app(
         )
     app.middleware("http")(make_auth_check(app.state.token))
     app.middleware("http")(check_origin)
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+    app.add_middleware(
+        TrustedHostMiddleware, allowed_hosts=allowed_hosts or ALLOWED_HOSTS
+    )
 
     @app.get(AUTH_PATH, include_in_schema=False)
     def authenticate(token: str = "") -> Response:
@@ -301,7 +330,7 @@ def create_app(
 
         response = RedirectResponse("/", status_code=303)
         response.set_cookie(
-            TOKEN_COOKIE, token, httponly=True, samesite="strict"
+            cookie_name(token), token, httponly=True, samesite="strict"
         )
 
         return response

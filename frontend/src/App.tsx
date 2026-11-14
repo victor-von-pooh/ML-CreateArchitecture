@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ReactFlowProvider } from '@xyflow/react'
+import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { api } from './api/client'
@@ -22,12 +22,23 @@ function useDebounced<T>(value: T, delay: number): T {
 
 /** モデルの定義を部品の一覧, キャンバス, 詳細で編集する画面 */
 export function App() {
+  return (
+    <ReactFlowProvider>
+      <Editor />
+    </ReactFlowProvider>
+  )
+}
+
+/** 編集の画面の本体 (キャンバスの表示範囲を使うので ReactFlowProvider の中) */
+function Editor() {
   const units = useQuery({ queryKey: ['units'], queryFn: api.listUnits, staleTime: Infinity })
   const [spec, setSpec] = useState<Spec>(() => emptySpec())
   const [fileName, setFileName] = useState('model')
-  const [saved, setSaved] = useState<Spec | null>(null)
+  // 保存した (か開いた) 時点の定義. 今の定義と比べて, 保存していない変更を判定
+  const [saved, setSaved] = useState(() => JSON.stringify(emptySpec()))
   const [selected, setSelected] = useState<string | null>(null)
   const [added, setAdded] = useState(0)
+  const flow = useReactFlow()
 
   // 定義が落ち着いたら確認と形の推定 (前の結果は次が届くまで表示)
   const debounced = useDebounced(spec, 500)
@@ -42,7 +53,18 @@ export function App() {
     () => new Map((units.data ?? []).map((unit) => [unit.name, unit])),
     [units.data],
   )
-  const dirty = saved !== spec && Object.keys(spec.nodes).length > 0
+  const dirty = useMemo(() => JSON.stringify(spec) !== saved, [spec, saved])
+
+  // 新しく置くものは, キャンバスに見えている範囲の真ん中 (少しずつずらす)
+  const center = () => {
+    const box = document.querySelector('.react-flow')?.getBoundingClientRect()
+    const point = box
+      ? flow.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 })
+      : { x: 300, y: 120 }
+    const shift = (added % 5) * 30
+    setAdded((count) => count + 1)
+    return { x: Math.round(point.x - 90 + shift), y: Math.round(point.y - 40 + shift) }
+  }
 
   // 保存していない変更がある場合は, 閉じる前に確認
   useEffect(() => {
@@ -53,14 +75,12 @@ export function App() {
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
 
-  // 部品を置く位置は, 少しずつずらして重ならないようにする
+  // 部品はキャンバスの真ん中に置いて選択
   const add = (unit: UnitSpec) => {
-    const position = { x: 300 + (added % 5) * 40, y: 120 + (added % 5) * 40 }
-    const next = addNode(spec, unit, position)
+    const next = addNode(spec, unit, center())
     const name = Object.keys(next.nodes).find((key) => !(key in spec.nodes)) ?? null
     setSpec(next)
     setSelected(name)
-    setAdded((count) => count + 1)
   }
 
   if (units.isPending) return <Spinner label="部品の一覧を読み込み中" />
@@ -73,7 +93,7 @@ export function App() {
   }
 
   return (
-    <ReactFlowProvider>
+    <>
       <div className="flex h-screen flex-col bg-bg text-ink">
         <Toolbar
           // 開いた定義が変わったら, 保存する名前の欄を作り直す
@@ -86,14 +106,15 @@ export function App() {
           onChange={setSpec}
           onLoad={(name, loaded) => {
             setSpec(loaded)
-            setSaved(loaded)
+            setSaved(JSON.stringify(loaded))
             setFileName(name)
             setSelected(null)
           }}
-          onSaved={(name) => {
+          onSaved={(name, savedSpec) => {
             setFileName(name)
-            setSaved(spec)
+            setSaved(JSON.stringify(savedSpec))
           }}
+          center={center}
           onSelect={setSelected}
         />
         <div className="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)_20rem]">
@@ -130,6 +151,6 @@ export function App() {
           </aside>
         </div>
       </div>
-    </ReactFlowProvider>
+    </>
   )
 }

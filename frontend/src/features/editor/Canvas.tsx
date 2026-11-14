@@ -51,7 +51,9 @@ export function Canvas({
       ),
     [spec, units, check, selected, sizes],
   )
-  const edges = useMemo(() => flowEdges(spec, units), [spec, units])
+  // 選んだ線 (Delete で消せるように, 定義とは別に保持)
+  const [selectedEdge, setSelectedEdge] = useState<string | null>(null)
+  const edges = useMemo(() => flowEdges(spec, units, selectedEdge), [spec, units, selectedEdge])
   const { theme } = useTheme()
 
   // ノードの移動, 選択, 削除を定義に反映
@@ -79,6 +81,10 @@ export function Canvas({
     let next = spec
     for (const change of changes) {
       if (change.type === 'remove') next = disconnect(next, units, change.id)
+      else if (change.type === 'select') {
+        setSelectedEdge(change.selected ? change.id : null)
+        if (change.selected) onSelect(null)
+      }
     }
     if (next !== spec) onChange(next)
   }
@@ -110,7 +116,10 @@ export function Canvas({
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       isValidConnection={isValidConnection}
-      onPaneClick={() => onSelect(null)}
+      onPaneClick={() => {
+        onSelect(null)
+        setSelectedEdge(null)
+      }}
       deleteKeyCode={['Backspace', 'Delete']}
       fitView
       colorMode={theme}

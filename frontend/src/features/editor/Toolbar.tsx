@@ -111,6 +111,7 @@ export function Toolbar({
   onLoad,
   onSaved,
   onSelect,
+  center,
 }: {
   spec: Spec
   fileName: string
@@ -119,17 +120,19 @@ export function Toolbar({
   checking: boolean
   onChange: (spec: Spec) => void
   onLoad: (name: string, spec: Spec) => void
-  onSaved: (name: string) => void
+  onSaved: (name: string, spec: Spec) => void
   onSelect: (id: string) => void
+  center: () => { x: number; y: number }
 }) {
   const nameId = useId()
   const { theme, toggle } = useTheme()
   const [name, setName] = useState(fileName)
   const [dialog, setDialog] = useState<'open' | 'yaml' | 'python' | null>(null)
 
+  // 保存した時点の定義を, 保存していない変更の判定に使う
   const save = useMutation({
-    mutationFn: () => api.saveModel(name, { ...spec, name }),
-    onSuccess: (summary) => onSaved(summary.name),
+    mutationFn: (target: Spec) => api.saveModel(name, target),
+    onSuccess: (summary, target) => onSaved(summary.name, target),
   })
   const open = useMutation({
     mutationFn: (target: string) => api.getModel(target),
@@ -150,7 +153,7 @@ export function Toolbar({
     const input = freshName(spec, 'input')
     onChange({
       ...spec,
-      inputs: { ...spec.inputs, [input]: { shape: [4, 16], ui: { x: 40, y: 40 } } },
+      inputs: { ...spec.inputs, [input]: { shape: [4, 16], ui: center() } },
     })
     onSelect(input)
   }
@@ -161,7 +164,7 @@ export function Toolbar({
     const output = `out${index}`
     onChange({
       ...spec,
-      ui: { ...spec.ui, outputs: { ...(spec.ui?.outputs ?? {}), [output]: { x: 900, y: 160 } } },
+      ui: { ...spec.ui, outputs: { ...(spec.ui?.outputs ?? {}), [output]: center() } },
     })
     onSelect(`output:${output}`)
   }
@@ -196,7 +199,7 @@ export function Toolbar({
       <Button
         icon={Save}
         disabled={!validName || save.isPending}
-        onClick={() => save.mutate()}
+        onClick={() => save.mutate({ ...spec, name })}
         title={validName ? undefined : '名前は英数字, _, - にしてください'}
       >
         保存{dirty ? ' *' : ''}
@@ -244,7 +247,14 @@ export function Toolbar({
         </div>
       )}
       {dialog === 'open' && (
-        <OpenDialog onOpen={(target) => open.mutate(target)} onClose={() => setDialog(null)} />
+        <OpenDialog
+          onOpen={(target) => {
+            if (!dirty || window.confirm('保存していない変更を捨てて, 定義を開きますか?')) {
+              open.mutate(target)
+            }
+          }}
+          onClose={() => setDialog(null)}
+        />
       )}
       {dialog === 'yaml' && (
         <Dialog title="YAML (保存する形)" onClose={() => setDialog(null)}>

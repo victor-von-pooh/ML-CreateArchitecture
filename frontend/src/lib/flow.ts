@@ -69,9 +69,14 @@ export function flowNodes(
 }
 
 /** 定義から, キャンバスの線の一覧を作る */
-export function flowEdges(spec: Spec, units: Map<string, UnitSpec>): Edge[] {
+export function flowEdges(
+  spec: Spec,
+  units: Map<string, UnitSpec>,
+  selected: string | null = null,
+): Edge[] {
   return specWires(spec, units).map((wire) => ({
     id: wire.id,
+    selected: wire.id === selected,
     source: wire.source,
     sourceHandle: `out:${wire.sourcePort}`,
     target: wire.target,

@@ -38,8 +38,10 @@ def client(tmp_path: Path) -> TestClient:
     client: TestClient
         API を呼ぶクライアント
     """
-    # 一時ディレクトリを置き場にして, トークンの URL を開いた状態にする
-    app = create_app(data_dir=tmp_path, token="secret")
+    # 一時ディレクトリを置き場にして, トークンの URL を開いた状態に設定
+    app = create_app(
+        data_dir=tmp_path, token="secret", allowed_hosts=["testserver"]
+    )
     client = TestClient(app)
     client.get("/api/auth?token=secret", follow_redirects=False)
 
@@ -61,7 +63,9 @@ def test_requires_token(tmp_path: Path) -> None:
     None
     """
     # トークンが無い場合と違う場合は 401
-    client = TestClient(create_app(data_dir=tmp_path, token="secret"))
+    client = TestClient(create_app(
+        data_dir=tmp_path, token="secret", allowed_hosts=["testserver"]
+    ))
     assert client.get("/api/units").status_code == 401
     assert client.get("/api/auth?token=wrong").status_code == 401
 
@@ -171,3 +175,46 @@ def test_models_save_and_load(client: TestClient, tmp_path: Path) -> None:
         "/api/models/a.b", json={"spec": SPEC}
     ).status_code == 400
     assert client.get("/api/models/missing").status_code == 404
+
+
+def test_review_fixes(client: TestClient, tmp_path: Path) -> None:
+    """
+    壊れた定義のファイル, 末尾の改行の名前, 大きすぎる入力, 形の無い入力,
+    型の誤りの扱いを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # YAML として読めないファイルは 404 (500 ではない)
+    (tmp_path / "models").mkdir(exist_ok=True)
+    (tmp_path / "models" / "bad.yaml").write_text("a: [\n", encoding="utf-8")
+    assert client.get("/api/models/bad").status_code == 404
+
+    # 末尾に改行のある名前は不可
+    assert client.put(
+        "/api/models/abc%0A", json={"spec": SPEC}
+    ).status_code == 400
+
+    # 大きすぎる入力の例は形を推定せずに注意
+    huge = {**SPEC, "inputs": {"x": {"shape": [100000, 100000]}}}
+    result = client.post("/api/check", json={"spec": huge}).json()
+    assert not result["inferred"]
+    assert "input_too_large" in {issue["code"] for issue in result["issues"]}
+
+    # 形の無い入力は計算しない (推定したことにしない)
+    no_shape = {**SPEC, "inputs": {"x": {}}}
+    result = client.post("/api/check", json={"spec": no_shape}).json()
+    assert not result["inferred"]
+
+    # 型にリストを書いても 500 にならない
+    odd = {**SPEC, "inputs": {"x": {"shape": [4, 3], "dtype": ["a"]}}}
+    response = client.post("/api/check", json={"spec": odd})
+    assert response.status_code == 200

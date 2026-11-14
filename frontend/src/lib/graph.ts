@@ -192,8 +192,9 @@ export function disconnect(spec: Spec, units: Map<string, UnitSpec>, wireId: str
     const output = wire.target.slice('output:'.length)
     const outputs = { ...spec.outputs }
     delete outputs[output]
+    // 出力の名前と位置は残す (つなぎ直せるように, 画面の情報に名前を追加)
     const uiOutputs = { ...(spec.ui?.outputs ?? {}) }
-    // 出力の名前と位置は残す (つなぎ直せるように空のつなぎ先にはしない)
+    uiOutputs[output] ??= {}
     return { ...spec, outputs, ui: { ...spec.ui, outputs: uiOutputs } }
   }
   const node = spec.nodes[wire.target]!
@@ -247,12 +248,27 @@ export function removeItem(spec: Spec, units: Map<string, UnitSpec>, name: strin
   const inputs = { ...spec.inputs }
   delete nodes[name]
   delete inputs[name]
-  let next: Spec = { ...spec, nodes, inputs }
-  // 消したものを参照する線を外す
-  for (const wire of specWires(next, units)) {
-    if (wire.source === name) next = disconnect(next, units, wire.id)
+  // 消したものを参照するつなぎ先を, 全ての口と出力から 1 度に外す
+  const refers = (ref: string) => parseRef(ref).name === name
+  const cleaned = Object.fromEntries(
+    Object.entries(nodes).map(([key, node]) => {
+      const current = nodeInputs(node, units.get(node.unit))
+      const variadic = (port: string) =>
+        units.get(node.unit)?.inputs.find((item) => item.name === port)?.variadic
+      const kept: Record<string, string | string[]> = {}
+      for (const [port, refs] of Object.entries(current)) {
+        const left = refs.filter((ref) => !refers(ref))
+        if (left.length > 0) kept[port] = variadic(port) ? left : left[0]!
+      }
+      return [key, node.inputs === undefined ? node : { ...node, inputs: kept }]
+    }),
+  )
+  const outputs = Object.fromEntries(Object.entries(spec.outputs).filter(([, ref]) => !refers(ref)))
+  const uiOutputs = { ...(spec.ui?.outputs ?? {}) }
+  for (const output of Object.keys(spec.outputs)) {
+    if (!(output in outputs)) uiOutputs[output] ??= {}
   }
-  return next
+  return { ...spec, nodes: cleaned, inputs, outputs, ui: { ...spec.ui, outputs: uiOutputs } }
 }
 
 /** 名前を変え, それを参照するつなぎ先も書き換えた定義を返す */

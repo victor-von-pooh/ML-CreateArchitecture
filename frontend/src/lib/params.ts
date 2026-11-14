@@ -23,3 +23,19 @@ export function formatValue(value: unknown): string {
   if (typeof value === 'string') return value
   return JSON.stringify(value)
 }
+
+/** 形の入力 ([4, 16] か 4, 16) を整数のリストにする (読めない場合は null) */
+export function parseShape(value: unknown): number[] | null {
+  const items = Array.isArray(value)
+    ? value
+    : String(value ?? '')
+        .replace(/[[\]]/g, '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map(Number)
+  if (items.length === 0) return null
+  return items.every((item) => Number.isInteger(item) && (item as number) >= 0)
+    ? (items as number[])
+    : null
+}
