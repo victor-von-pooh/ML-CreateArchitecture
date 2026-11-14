@@ -121,16 +121,40 @@ function Editor() {
 
   // 元に戻す・やり直すで選んでいるものが無くなる場合は, 選択を外す
   const { undo, redo, previous, next: following } = history
+  // 名前の変更を戻す (やり直す) 場合は, 選択も元の (新しい) 名前に移す
+  const reselect = useCallback(
+    (target: Spec) => {
+      if (selected === null || has(target, selected)) return
+      // ノード, 入力, 出力 (output: を付けた id) の名前を比べる
+      const ids = (item: Spec) => [
+        ...Object.keys(item.nodes),
+        ...Object.keys(item.inputs),
+        ...[...Object.keys(item.outputs), ...Object.keys(item.ui?.outputs ?? {})].map(
+          (name) => `output:${name}`,
+        ),
+      ]
+      const now = new Set(ids(spec))
+      const then = new Set(ids(target))
+      const gone = [...then].filter((id) => !now.has(id))
+      const added = [...now].filter((id) => !then.has(id))
+      if (gone.length === 1 && added.length === 1 && added[0] === selected) {
+        setSelected(gone[0]!)
+      } else {
+        setSelected(null)
+      }
+    },
+    [selected, spec],
+  )
   const undoSpec = useCallback(() => {
     if (!previous) return
-    if (selected !== null && !has(previous, selected)) setSelected(null)
+    reselect(previous)
     undo()
-  }, [previous, selected, undo])
+  }, [previous, reselect, undo])
   const redoSpec = useCallback(() => {
     if (!following) return
-    if (selected !== null && !has(following, selected)) setSelected(null)
+    reselect(following)
     redo()
-  }, [following, selected, redo])
+  }, [following, reselect, redo])
 
   // 写したノード (部品, 引数, 呼び出しの設定, 説明)
   const [clipboard, setClipboard] = useState<NodeDef | null>(null)
@@ -169,6 +193,19 @@ function Editor() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
+      // Ctrl+S (Mac は Cmd+S) は文字の欄の中でも保存 (ブラウザのページの保存の
+      // 代わり). 欄の打ちかけの値は, 欄を離れて反映してから保存. ダイアログの
+      // 中では何もしない
+      const modifier = (event.ctrlKey || event.metaKey) && !event.altKey
+      if (modifier && event.key.toLowerCase() === 's' && !event.shiftKey) {
+        event.preventDefault()
+        if (target?.closest('dialog[open]')) return
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+        window.requestAnimationFrame(() =>
+          document.querySelector<HTMLButtonElement>('[data-save]:not(:disabled)')?.click(),
+        )
+        return
+      }
       if (target?.closest('dialog[open], textarea, [contenteditable="true"]')) return
       if (
         target instanceof HTMLInputElement &&
@@ -192,7 +229,8 @@ function Editor() {
 
   // 部品はキャンバスの真ん中に置いて選択
   // 部品のノードを選んでいる場合は, その右 (つなぐ先になることが多い) に置く
-  const add = (unit: UnitSpec) => {
+  // focus: キーボードで置いた場合 (検索欄の Enter) は詳細の最初の欄に移る
+  const add = (unit: UnitSpec, focus = false) => {
     const from = current !== null ? (spec.nodes[current] ?? spec.inputs[current]) : undefined
     const near =
       from?.ui?.x !== undefined && from.ui.y !== undefined
@@ -202,6 +240,15 @@ function Editor() {
     const name = Object.keys(next.nodes).find((key) => !(key in spec.nodes)) ?? null
     setSpec(next)
     setSelected(name)
+    // キーボードで続けて操作できるように, 詳細の最初の欄に移る
+    if (!focus) return
+    window.requestAnimationFrame(() =>
+      document
+        .querySelector<HTMLElement>(
+          'aside[aria-label="詳細"] select, aside[aria-label="詳細"] input',
+        )
+        ?.focus(),
+    )
   }
 
   if (units.isPending) return <Spinner label="部品の一覧を読み込み中" />

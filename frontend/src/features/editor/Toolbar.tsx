@@ -203,7 +203,10 @@ export function Toolbar({
   onLoad: (name: string, spec: Spec, source: 'model' | 'example' | 'new') => void
   onSaved: (name: string, spec: Spec) => void
   onSelect: (id: string) => void
-  center: () => { x: number; y: number }
+  center: (
+    size?: { width: number; height: number },
+    near?: { x: number; y: number },
+  ) => { x: number; y: number }
   /** 元に戻す (戻せない場合は undefined) */
   onUndo?: () => void
   /** やり直す (やり直せない場合は undefined) */
@@ -274,11 +277,26 @@ export function Toolbar({
   const validName = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(name)
 
   // 入力と出力は, 使われていない名前で右下に追加
+  // 入力は一番左のノードの左, 出力は一番右のノードの右 (流れの向きに合わせる)
+  const placed = Object.values(spec.nodes).flatMap((node) =>
+    node.ui?.x !== undefined && node.ui.y !== undefined ? [{ x: node.ui.x, y: node.ui.y }] : [],
+  )
+  const leftOf = () => {
+    if (placed.length === 0) return undefined
+    const first = placed.reduce((a, b) => (b.x < a.x ? b : a))
+    return { x: first.x - 260, y: first.y }
+  }
+  const rightOf = () => {
+    if (placed.length === 0) return undefined
+    const last = placed.reduce((a, b) => (b.x > a.x ? b : a))
+    return { x: last.x + 280, y: last.y }
+  }
+
   const addInput = () => {
     const input = freshName(spec, 'input')
     onChange({
       ...spec,
-      inputs: { ...spec.inputs, [input]: { shape: [4, 16], ui: center() } },
+      inputs: { ...spec.inputs, [input]: { shape: [4, 16], ui: center(undefined, leftOf()) } },
     })
     onSelect(input)
   }
@@ -289,7 +307,10 @@ export function Toolbar({
     const output = `out${index}`
     onChange({
       ...spec,
-      ui: { ...spec.ui, outputs: { ...(spec.ui?.outputs ?? {}), [output]: center() } },
+      ui: {
+        ...spec.ui,
+        outputs: { ...(spec.ui?.outputs ?? {}), [output]: center(undefined, rightOf()) },
+      },
     })
     onSelect(`output:${output}`)
   }
@@ -337,6 +358,7 @@ export function Toolbar({
       )}
       <Button
         icon={Save}
+        data-save
         disabled={!validName || save.isPending || asking}
         onClick={() => void requestSave()}
         title={validName ? undefined : '名前は英数字, _, - にしてください'}
