@@ -335,9 +335,11 @@ export function refOptions(
   exclude: string | null,
 ): { value: string; label: string }[] {
   // 新しく足したノードほどつなぐことが多いので, ノードは新しい順, 入力は最後
+  // 選んだノード自身とその先のノード (つなぐと循環になる) は除く
+  const below = exclude !== null ? downstream(spec, units, exclude) : new Set<string>()
   const options: { value: string; label: string }[] = []
   for (const [name, node] of Object.entries(spec.nodes).reverse()) {
-    if (name === exclude) continue
+    if (name === exclude || below.has(name)) continue
     const outputs = units.get(node.unit)?.outputs ?? []
     if (outputs.length <= 1) {
       options.push({ value: name, label: `${name} (${node.unit})` })
@@ -351,6 +353,23 @@ export function refOptions(
     options.push({ value: name, label: `${name} (入力)` })
   }
   return options
+}
+
+/** ノードの先にある (そのノードの出力を使う) ノードの名前 */
+export function downstream(spec: Spec, units: Map<string, UnitSpec>, name: string): Set<string> {
+  const next = new Map<string, string[]>()
+  for (const wire of specWires(spec, units)) {
+    next.set(wire.source, [...(next.get(wire.source) ?? []), wire.target])
+  }
+  const found = new Set<string>()
+  const stack = [...(next.get(name) ?? [])]
+  while (stack.length > 0) {
+    const item = stack.pop()!
+    if (found.has(item) || item === name) continue
+    found.add(item)
+    stack.push(...(next.get(item) ?? []))
+  }
+  return found
 }
 
 /** ノードの 1 つの口のつなぎ先を置き換えた定義を返す (空のリストは未接続) */

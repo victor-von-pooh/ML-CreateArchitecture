@@ -97,7 +97,8 @@ export function ErrorBox({
     >
       <AlertTriangle className="mt-0.5 size-4 shrink-0 text-critical-text" aria-hidden />
       <div className="min-w-0">
-        <p className="break-words">{message}</p>
+        {/* 複数の誤り (書き出せない理由など) は 1 行ずつ */}
+        <p className="break-words whitespace-pre-line">{message}</p>
         {children}
       </div>
     </div>

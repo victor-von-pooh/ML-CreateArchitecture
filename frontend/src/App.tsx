@@ -184,8 +184,14 @@ function Editor() {
   }, [undoSpec, redoSpec])
 
   // 部品はキャンバスの真ん中に置いて選択
+  // 部品のノードを選んでいる場合は, その右 (つなぐ先になることが多い) に置く
   const add = (unit: UnitSpec) => {
-    const next = addNode(spec, unit, center(unitSize(unit)))
+    const from = current !== null ? spec.nodes[current] : undefined
+    const near =
+      from?.ui?.x !== undefined && from.ui.y !== undefined
+        ? { x: from.ui.x + 280, y: from.ui.y }
+        : undefined
+    const next = addNode(spec, unit, center(unitSize(unit), near))
     const name = Object.keys(next.nodes).find((key) => !(key in spec.nodes)) ?? null
     setSpec(next)
     setSelected(name)

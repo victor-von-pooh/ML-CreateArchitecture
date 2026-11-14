@@ -436,7 +436,15 @@ export function Toolbar({
           ) : exported.error ? (
             <ErrorBox error={exported.error} />
           ) : (
-            <TextView text={exported.data?.code ?? ''} />
+            <>
+              {failedNodes(check, spec).length > 0 && (
+                <p className="mb-2 rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text">
+                  形の推定で失敗したノードがあるので, このコードは実行すると失敗します
+                  (詳細の一覧で理由を確かめてください).
+                </p>
+              )}
+              <TextView text={exported.data?.code ?? ''} />
+            </>
           )}
         </Dialog>
       )}

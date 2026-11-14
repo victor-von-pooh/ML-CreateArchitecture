@@ -1,4 +1,4 @@
-import { AlertTriangle, Copy, Info, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, Copy, Info, Plus, Trash2 } from 'lucide-react'
 import { memo, useEffect, useId, useRef, useState } from 'react'
 
 import type { CheckResult, Issue } from '../../api/client'
@@ -365,6 +365,14 @@ function NameField({
 }
 
 /** 口のつなぎ先を選ぶ欄 (線を引かずに, キーボードでもつなげる) */
+/** リストの 2 つの要素を入れ替えたリスト */
+function swap<T>(items: T[], a: number, b: number): T[] {
+  const next = [...items]
+  ;[next[a], next[b]] = [next[b] as T, next[a] as T]
+  return next
+}
+
+/** 入力の口のつなぎ先の欄 (1 つは選択, 複数は並びと追加の選択) */
 function PortRefs({
   port,
   refs,
@@ -420,6 +428,27 @@ function PortRefs({
             <li key={`${ref}-${index}`} className="flex items-center gap-1 font-mono text-xs">
               <span className="text-ink-3">{index + 1}.</span>
               <span className="min-w-0 flex-1 truncate">{ref}</span>
+              {/* 順に意味がある口 (Concat など) のための並べ替え */}
+              <button
+                type="button"
+                disabled={index === 0}
+                onClick={() => onChange(swap(refs, index, index - 1))}
+                aria-label={`${port} の ${index + 1} 番目のつなぎ先 ${ref} を上へ`}
+                title="上へ"
+                className="rounded px-1 text-ink-3 hover:bg-surface-2 hover:text-ink disabled:opacity-30"
+              >
+                <ArrowUp className="size-3" aria-hidden />
+              </button>
+              <button
+                type="button"
+                disabled={index === refs.length - 1}
+                onClick={() => onChange(swap(refs, index, index + 1))}
+                aria-label={`${port} の ${index + 1} 番目のつなぎ先 ${ref} を下へ`}
+                title="下へ"
+                className="rounded px-1 text-ink-3 hover:bg-surface-2 hover:text-ink disabled:opacity-30"
+              >
+                <ArrowDown className="size-3" aria-hidden />
+              </button>
               <button
                 type="button"
                 onClick={() => onChange(refs.filter((_, position) => position !== index))}

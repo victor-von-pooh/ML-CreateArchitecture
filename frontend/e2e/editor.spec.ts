@@ -285,3 +285,28 @@ test('組み立ての途中 (出力が無い, つないでいないノードが�
   await expect(page.locator('[data-id="linear1"]')).toContainText('[4, 4]')
   await expect(page.locator('header')).toContainText('パラメータ数 68')
 })
+
+test('複数つなぐ口のつなぎ先を並べ替えられる', async ({ page }) => {
+  await page.goto('/')
+  await page.getByPlaceholder('部品を探す').fill('op.Concat')
+  await page
+    .getByRole('button', { name: /^op\.Concat/ })
+    .first()
+    .click()
+  await page.getByPlaceholder('部品を探す').fill('nn.ReLU')
+  await page
+    .getByRole('button', { name: /^nn\.ReLU / })
+    .first()
+    .click()
+  await page.getByLabel(/^input/).selectOption('x')
+
+  // concat1 に x と relu1 の順でつなぎ, relu1 を上へ
+  await page.locator('[data-id="concat1"]').click()
+  await page.getByLabel('xs につなぎ先を加える').selectOption('x')
+  await page.getByLabel('xs につなぎ先を加える').selectOption('relu1')
+  await page.getByRole('button', { name: 'xs の 2 番目のつなぎ先 relu1 を上へ' }).click()
+  await expect(
+    page.getByRole('button', { name: 'xs の 1 番目のつなぎ先 relu1 を外す' }),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'xs の 2 番目のつなぎ先 x を外す' })).toBeVisible()
+})
