@@ -343,9 +343,8 @@ test('キーボードだけで部品を置き, 名前を変えて戻し, Ctrl+S 
   await page.keyboard.press('ControlOrMeta+z')
   await expect(page.getByLabel('名前', { exact: true })).toHaveValue('linear1')
 
-  // Ctrl+S で保存する (保存していない変更の印が消える)
+  // 保存する名前の欄の中でも Ctrl+S で保存する (保存していない変更の印が消える)
   await page.getByLabel('保存する名前').fill('keyboard_model')
-  await page.locator('.react-flow__pane').click()
-  await page.keyboard.press('ControlOrMeta+s')
+  await page.getByLabel('保存する名前').press('ControlOrMeta+s')
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible()
 })

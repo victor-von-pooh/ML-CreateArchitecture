@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react'
 import { useDeferredValue, useId, useMemo, useState } from 'react'
 
 import type { UnitSpec } from '../../lib/graph'
+import { firstMatch } from '../../lib/search'
 
 // 出どころの表示名と並び順
 const SOURCES: Record<string, string> = {
@@ -21,7 +22,14 @@ const SOURCES: Record<string, string> = {
 }
 
 /** 部品を出どころと分類ごとに並べ, 検索して選べる一覧 */
-export function Palette({ units, onAdd }: { units: UnitSpec[]; onAdd: (unit: UnitSpec) => void }) {
+export function Palette({
+  units,
+  onAdd,
+}: {
+  units: UnitSpec[]
+  /** 部品を置く (focus はキーボードで置いた場合) */
+  onAdd: (unit: UnitSpec, focus?: boolean) => void
+}) {
   const searchId = useId()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState<Record<string, boolean>>({ ml_modelcontrol: true })
@@ -63,10 +71,12 @@ export function Palette({ units, onAdd }: { units: UnitSpec[]; onAdd: (unit: Uni
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           // Enter で, 絞り込んだ一番上の使える部品を置く (キーボードだけで置くため)
+          // (日本語の変換の確定の Enter では置かない. Safari は keyCode 229)
           onKeyDown={(event) => {
-            if (event.key !== 'Enter' || event.nativeEvent.isComposing || !query.trim()) return
-            const first = groups.flatMap(([, items]) => items).find((unit) => unit.available)
-            if (first) onAdd(first)
+            if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+            if (event.keyCode === 229 || event.repeat) return
+            const first = firstMatch(units, query)
+            if (first) onAdd(first, true)
           }}
           aria-describedby={`${searchId}-hint`}
           placeholder="部品を探す (例: conv, gcn)"

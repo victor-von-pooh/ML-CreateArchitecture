@@ -125,8 +125,18 @@ function Editor() {
   const reselect = useCallback(
     (target: Spec) => {
       if (selected === null || has(target, selected)) return
-      const gone = Object.keys(target.nodes).filter((name) => !(name in spec.nodes))
-      const added = Object.keys(spec.nodes).filter((name) => !(name in target.nodes))
+      // ノード, 入力, 出力 (output: を付けた id) の名前を比べる
+      const ids = (item: Spec) => [
+        ...Object.keys(item.nodes),
+        ...Object.keys(item.inputs),
+        ...[...Object.keys(item.outputs), ...Object.keys(item.ui?.outputs ?? {})].map(
+          (name) => `output:${name}`,
+        ),
+      ]
+      const now = new Set(ids(spec))
+      const then = new Set(ids(target))
+      const gone = [...then].filter((id) => !now.has(id))
+      const added = [...now].filter((id) => !then.has(id))
       if (gone.length === 1 && added.length === 1 && added[0] === selected) {
         setSelected(gone[0]!)
       } else {
@@ -183,6 +193,19 @@ function Editor() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
+      // Ctrl+S (Mac は Cmd+S) は文字の欄の中でも保存 (ブラウザのページの保存の
+      // 代わり). 欄の打ちかけの値は, 欄を離れて反映してから保存. ダイアログの
+      // 中では何もしない
+      const modifier = (event.ctrlKey || event.metaKey) && !event.altKey
+      if (modifier && event.key.toLowerCase() === 's' && !event.shiftKey) {
+        event.preventDefault()
+        if (target?.closest('dialog[open]')) return
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+        window.requestAnimationFrame(() =>
+          document.querySelector<HTMLButtonElement>('[data-save]:not(:disabled)')?.click(),
+        )
+        return
+      }
       if (target?.closest('dialog[open], textarea, [contenteditable="true"]')) return
       if (
         target instanceof HTMLInputElement &&
@@ -192,12 +215,6 @@ function Editor() {
       }
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return
       const key = event.key.toLowerCase()
-      // Ctrl+S で保存 (ブラウザのページの保存の代わり)
-      if (key === 's' && !event.shiftKey) {
-        event.preventDefault()
-        document.querySelector<HTMLButtonElement>('[data-save]:not(:disabled)')?.click()
-        return
-      }
       if (key === 'z' && !event.shiftKey) undoSpec()
       else if ((key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey)) redoSpec()
       else if (event.shiftKey || !['c', 'v', 'd'].includes(key)) return
@@ -212,7 +229,8 @@ function Editor() {
 
   // 部品はキャンバスの真ん中に置いて選択
   // 部品のノードを選んでいる場合は, その右 (つなぐ先になることが多い) に置く
-  const add = (unit: UnitSpec) => {
+  // focus: キーボードで置いた場合 (検索欄の Enter) は詳細の最初の欄に移る
+  const add = (unit: UnitSpec, focus = false) => {
     const from = current !== null ? (spec.nodes[current] ?? spec.inputs[current]) : undefined
     const near =
       from?.ui?.x !== undefined && from.ui.y !== undefined
@@ -223,6 +241,7 @@ function Editor() {
     setSpec(next)
     setSelected(name)
     // キーボードで続けて操作できるように, 詳細の最初の欄に移る
+    if (!focus) return
     window.requestAnimationFrame(() =>
       document
         .querySelector<HTMLElement>(
