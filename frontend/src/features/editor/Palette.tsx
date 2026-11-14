@@ -10,6 +10,13 @@ const SOURCES: Record<string, string> = {
   'torch.nn': 'PyTorch',
   torch_geometric: 'PyTorch Geometric',
   transformers: 'Hugging Face',
+  torchvision: 'torchvision',
+  timm: 'timm',
+  torchaudio: 'torchaudio',
+  einops: 'einops',
+  kornia: 'Kornia',
+  monai: 'MONAI',
+  segmentation_models_pytorch: 'segmentation_models_pytorch',
   custom: '自作',
 }
 

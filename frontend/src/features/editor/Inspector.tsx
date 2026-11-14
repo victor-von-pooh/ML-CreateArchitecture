@@ -82,17 +82,29 @@ function ParamField({
       </select>
     )
   } else {
+    // 候補がある引数 (モデルの名前など) は, 打ちながら候補から選べる
+    const listId = param.suggestions ? `${id}-suggestions` : undefined
     field = (
-      <input
-        id={id}
-        defaultValue={formatValue(value)}
-        placeholder={param.default !== null ? formatValue(param.default) : ''}
-        onBlur={(event) => onChange(parseValue(param, event.target.value))}
-        onKeyDown={(event) =>
-          event.key === 'Enter' && onChange(parseValue(param, event.currentTarget.value))
-        }
-        className="h-7 w-full rounded-md border border-line bg-bg px-2 font-mono text-xs"
-      />
+      <>
+        <input
+          id={id}
+          list={listId}
+          defaultValue={formatValue(value)}
+          placeholder={param.default !== null ? formatValue(param.default) : ''}
+          onBlur={(event) => onChange(parseValue(param, event.target.value))}
+          onKeyDown={(event) =>
+            event.key === 'Enter' && onChange(parseValue(param, event.currentTarget.value))
+          }
+          className="h-7 w-full rounded-md border border-line bg-bg px-2 font-mono text-xs"
+        />
+        {param.suggestions && (
+          <datalist id={listId}>
+            {param.suggestions.map((choice) => (
+              <option key={String(choice)} value={String(choice)} />
+            ))}
+          </datalist>
+        )}
+      </>
     )
   }
   return (
