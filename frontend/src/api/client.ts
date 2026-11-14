@@ -45,6 +45,8 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     throw new ApiError(response.status, await readError(response))
   }
+  // 中身の無い応答 (消した場合の 204) は undefined
+  if (response.status === 204) return undefined as T
   return (await response.json()) as T
 }
 
@@ -61,6 +63,8 @@ export const api = {
   listExamples: () => request<ExampleSummary[]>('/api/examples'),
   getExample: (name: string) => request<ModelFile>(`/api/examples/${encodeURIComponent(name)}`),
   getModel: (name: string) => request<ModelFile>(`/api/models/${encodeURIComponent(name)}`),
+  deleteModel: (name: string) =>
+    request<void>(`/api/models/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   saveModel: (name: string, spec: Spec) =>
     request<ModelSummary>(`/api/models/${encodeURIComponent(name)}`, {
       method: 'PUT',

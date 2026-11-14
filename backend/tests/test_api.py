@@ -176,6 +176,16 @@ def test_models_save_and_load(client: TestClient, tmp_path: Path) -> None:
     ).status_code == 400
     assert client.get("/api/models/missing").status_code == 404
 
+    # 消すと一覧から外れ, 無い定義と規則に合わない名前は消せない
+    assert client.delete("/api/models/mlp").status_code == 204
+    assert client.get("/api/models").json() == []
+    assert client.delete("/api/models/mlp").status_code == 404
+    assert client.delete("/api/models/a.b").status_code == 400
+
+    # 消せない場合 (同じ名前のディレクトリなど) は, 無い場合と分けて 500
+    (tmp_path / "models" / "dir.yaml").mkdir()
+    assert client.delete("/api/models/dir").status_code == 500
+
 
 def test_review_fixes(client: TestClient, tmp_path: Path) -> None:
     """

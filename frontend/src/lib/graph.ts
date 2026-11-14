@@ -334,8 +334,9 @@ export function refOptions(
   units: Map<string, UnitSpec>,
   exclude: string | null,
 ): { value: string; label: string }[] {
-  const options = Object.keys(spec.inputs).map((name) => ({ value: name, label: `${name} (入力)` }))
-  for (const [name, node] of Object.entries(spec.nodes)) {
+  // 新しく足したノードほどつなぐことが多いので, ノードは新しい順, 入力は最後
+  const options: { value: string; label: string }[] = []
+  for (const [name, node] of Object.entries(spec.nodes).reverse()) {
     if (name === exclude) continue
     const outputs = units.get(node.unit)?.outputs ?? []
     if (outputs.length <= 1) {
@@ -345,6 +346,9 @@ export function refOptions(
         options.push({ value: `${name}:${port.name}`, label: `${name}:${port.name}` })
       }
     }
+  }
+  for (const name of Object.keys(spec.inputs)) {
+    options.push({ value: name, label: `${name} (入力)` })
   }
   return options
 }

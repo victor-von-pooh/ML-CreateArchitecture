@@ -226,7 +226,22 @@ export interface paths {
          */
         put: operations["save_model"];
         post?: never;
-        delete?: never;
+        /**
+         * Delete Model
+         * @description 保存した定義を消す関数
+         *
+         *     Parameters
+         *     ----------
+         *     name: str
+         *         定義の名前
+         *     request: Request
+         *         リクエスト
+         *
+         *     Returns
+         *     ----------
+         *     None
+         */
+        delete: operations["delete_model"];
         options?: never;
         head?: never;
         patch?: never;
@@ -605,6 +620,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ModelSummary"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_model: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
