@@ -144,3 +144,23 @@ test('元に戻す・やり直すで, 部品の追加と引数の変更を戻せ
   await expect(page.locator('[data-id="linear1"]')).toBeVisible()
   await expect(redo).toBeDisabled()
 })
+
+test('整列で, つながりの順に左から右へ並べ直し, 元に戻せる', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く' }).click()
+  await page.getByRole('button', { name: /^residual_mlp/ }).click()
+  const left = async (id: string) => (await page.locator(`[data-id="${id}"]`).boundingBox())!.x
+
+  // 並べ直すと, 入力, つなぎ先の順に右へ
+  await page.getByRole('button', { name: '整列' }).click()
+  await page.waitForTimeout(400)
+  expect(await left('x')).toBeLessThan(await left('fc1'))
+  expect(await left('fc1')).toBeLessThan(await left('act'))
+  expect(await left('act')).toBeLessThan(await left('add'))
+  expect(await left('add')).toBeLessThan(await left('head'))
+  await page.screenshot({ path: 'test-results/arranged.png' })
+
+  // 元に戻すで, 並べ直す前の位置
+  await page.getByRole('button', { name: '元に戻す' }).click()
+  await expect(page.getByRole('button', { name: '元に戻す' })).toBeDisabled()
+})

@@ -3,11 +3,7 @@ import type { Edge, Node } from '@xyflow/react'
 import type { CheckResult } from '../api/client'
 import { formatShape } from './format'
 import { specWires, type Spec, type UnitSpec } from './graph'
-
-/** 位置の無いノードの置き場所 (横に並べる) */
-function fallbackPosition(index: number, row: number): { x: number; y: number } {
-  return { x: 40 + index * 240, y: 60 + row * 200 }
-}
+import { layoutPositions } from './layout'
 
 /** 定義から, キャンバスのノードの一覧を作る */
 export function flowNodes(
@@ -24,22 +20,25 @@ export function flowNodes(
     errors.set(key, (errors.get(key) ?? 0) + 1)
   }
 
+  // 位置の無いもの (手で書いた定義など) は, つながりの深さで段に分けた位置
+  const layout = layoutPositions(spec, units)
+  const fallback = (id: string) => layout.get(id) ?? { x: 40, y: 60 }
+
   const nodes: Node[] = []
-  Object.entries(spec.inputs).forEach(([name, input], index) => {
+  Object.entries(spec.inputs).forEach(([name, input]) => {
     nodes.push({
       id: name,
       type: 'modelInput',
-      position: { x: input.ui?.x ?? 40, y: input.ui?.y ?? 60 + index * 120 },
+      position: { x: input.ui?.x ?? fallback(name).x, y: input.ui?.y ?? fallback(name).y },
       data: { name, input, errors: errors.get(`inputs.${name}`) ?? 0 },
       selected: selected === name,
     })
   })
-  Object.entries(spec.nodes).forEach(([name, node], index) => {
-    const fallback = fallbackPosition(index + 1, 0)
+  Object.entries(spec.nodes).forEach(([name, node]) => {
     nodes.push({
       id: name,
       type: 'unit',
-      position: { x: node.ui?.x ?? fallback.x, y: node.ui?.y ?? fallback.y },
+      position: { x: node.ui?.x ?? fallback(name).x, y: node.ui?.y ?? fallback(name).y },
       data: {
         name,
         unit: units.get(node.unit),
@@ -53,14 +52,14 @@ export function flowNodes(
   const outputNames = [
     ...new Set([...Object.keys(spec.outputs), ...Object.keys(spec.ui?.outputs ?? {})]),
   ]
-  outputNames.forEach((name, index) => {
+  outputNames.forEach((name) => {
     const ui = spec.ui?.outputs?.[name]
-    const fallback = fallbackPosition(Object.keys(spec.nodes).length + 1, index)
+    const id = `output:${name}`
     const shape = check?.outputs?.[name]
     nodes.push({
-      id: `output:${name}`,
+      id,
       type: 'modelOutput',
-      position: { x: ui?.x ?? fallback.x, y: ui?.y ?? fallback.y },
+      position: { x: ui?.x ?? fallback(id).x, y: ui?.y ?? fallback(id).y },
       data: { name, shape: shape ? formatShape(shape) : null, connected: name in spec.outputs },
       selected: selected === `output:${name}`,
     })
