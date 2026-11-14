@@ -45,6 +45,7 @@ make dev-backend    # API (変更を自動で読み直す)
 make dev-frontend   # 画面 (別の端末で. http://localhost:5173)
 make check          # lint, 型検査, テスト
 make api            # API を変えたら, 画面の型を作り直す
+cd frontend && pnpm e2e   # 画面の通しのテスト (アプリを起動してブラウザで操作する)
 ```
 
 | ディレクトリ | 内容 |

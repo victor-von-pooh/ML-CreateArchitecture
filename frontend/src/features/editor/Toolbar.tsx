@@ -206,9 +206,11 @@ export function Toolbar({
   return (
     <header className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-3 py-2">
       <h1 className="mr-2 text-sm font-semibold">ML-CreateArchitecture</h1>
+      {/* 保存の結果が別の定義に反映されないよう, 保存の間は新規と開くを止める */}
       <Button
         variant="secondary"
         icon={FileText}
+        disabled={save.isPending}
         onClick={() => {
           if (!dirty || window.confirm('保存していない変更を捨てて, 新しい定義を作りますか?')) {
             onLoad('model', emptySpec())
@@ -217,7 +219,12 @@ export function Toolbar({
       >
         新規
       </Button>
-      <Button variant="secondary" icon={FolderOpen} onClick={() => setDialog('open')}>
+      <Button
+        variant="secondary"
+        icon={FolderOpen}
+        disabled={save.isPending}
+        onClick={() => setDialog('open')}
+      >
         開く
       </Button>
       <label htmlFor={nameId} className="sr-only">

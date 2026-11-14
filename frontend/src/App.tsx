@@ -111,6 +111,8 @@ function Editor() {
             setSelected(null)
           }}
           onSaved={(name, savedSpec) => {
+            // 保存した定義の名前を今の定義にも反映 (保存の間の編集は残す)
+            setSpec((current) => ({ ...current, name: savedSpec.name }))
             setFileName(name)
             setSaved(JSON.stringify(savedSpec))
           }}
