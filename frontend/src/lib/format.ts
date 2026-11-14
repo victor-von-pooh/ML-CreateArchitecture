@@ -1,3 +1,12 @@
+import type { CheckResult } from '../api/client'
+
+/** 形の推定で失敗したノード (名前とエラーの文) */
+export function failedNodes(check: CheckResult | undefined): { node: string; error: string }[] {
+  return Object.entries(check?.nodes ?? {})
+    .filter(([, result]) => result.status === 'error')
+    .map(([node, result]) => ({ node, error: result.error ?? '' }))
+}
+
 /** 形の推定の結果 (ML-ModelControl の describe の形) */
 export interface ShapeInfo {
   kind: string

@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
   Code2,
@@ -17,7 +17,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 
 import { api, type CheckResult } from '../../api/client'
 import { Button, ErrorBox, Spinner } from '../../components/ui'
-import { formatCount } from '../../lib/format'
+import { failedNodes, formatCount } from '../../lib/format'
 import { emptySpec, freshName, type Spec } from '../../lib/graph'
 import { useTheme } from '../../lib/themeContext'
 
@@ -163,6 +163,7 @@ export function Toolbar({
   onUndo,
   onRedo,
   onArrange,
+  ownFile,
 }: {
   spec: Spec
   fileName: string
@@ -170,7 +171,7 @@ export function Toolbar({
   check: CheckResult | undefined
   checking: boolean
   onChange: (spec: Spec) => void
-  onLoad: (name: string, spec: Spec) => void
+  onLoad: (name: string, spec: Spec, source: 'model' | 'example' | 'new') => void
   onSaved: (name: string, spec: Spec) => void
   onSelect: (id: string) => void
   center: () => { x: number; y: number }
@@ -180,7 +181,10 @@ export function Toolbar({
   onRedo?: () => void
   /** 全てをつながりの深さで段に分けて並べ直す */
   onArrange: () => void
+  /** 今の定義を開いた (か保存した) 保存した定義の名前 (新規と例は null) */
+  ownFile: string | null
 }) {
+  const queryClient = useQueryClient()
   const nameId = useId()
   const { theme, toggle } = useTheme()
   const [name, setName] = useState(fileName)
@@ -189,13 +193,32 @@ export function Toolbar({
   // 保存した時点の定義を, 保存していない変更の判定に使う
   const save = useMutation({
     mutationFn: (target: Spec) => api.saveModel(name, target),
-    onSuccess: (summary, target) => onSaved(summary.name, target),
+    onSuccess: (summary, target) => {
+      void queryClient.invalidateQueries({ queryKey: ['models'] })
+      onSaved(summary.name, target)
+    },
   })
+  // 開いたものと違う名前で保存する場合, 同じ名前の保存した定義があれば
+  // 上書きしてよいかを確かめる (一覧を読めない場合は確かめずに保存)
+  const requestSave = async () => {
+    if (name !== ownFile) {
+      const models = await queryClient
+        .fetchQuery({ queryKey: ['models'], queryFn: api.listModels, staleTime: 0 })
+        .catch(() => [])
+      if (
+        models.some((model) => model.name === name) &&
+        !window.confirm(`保存した定義 ${name} があります. 上書きしますか?`)
+      ) {
+        return
+      }
+    }
+    save.mutate({ ...spec, name })
+  }
   const open = useMutation({
     mutationFn: ({ source, target }: { source: 'model' | 'example'; target: string }) =>
       source === 'model' ? api.getModel(target) : api.getExample(target),
-    onSuccess: (model) => {
-      onLoad(model.name, model.spec as unknown as Spec)
+    onSuccess: (model, { source }) => {
+      onLoad(model.name, model.spec as unknown as Spec, source)
       setDialog(null)
     },
   })
@@ -203,7 +226,10 @@ export function Toolbar({
     mutationFn: () => api.exportPython(spec, 'Model'),
   })
 
-  const errors = (check?.issues ?? []).filter((issue) => issue.severity === 'error').length
+  // 誤りは, 定義の誤りと形の推定で失敗したノードの数
+  const errors =
+    (check?.issues ?? []).filter((issue) => issue.severity === 'error').length +
+    failedNodes(check).length
   const validName = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/.test(name)
 
   // 入力と出力は, 使われていない名前で右下に追加
@@ -237,7 +263,7 @@ export function Toolbar({
         disabled={save.isPending}
         onClick={() => {
           if (!dirty || window.confirm('保存していない変更を捨てて, 新しい定義を作りますか?')) {
-            onLoad('model', emptySpec())
+            onLoad('model', emptySpec(), 'new')
           }
         }}
       >
@@ -260,12 +286,18 @@ export function Toolbar({
         value={name}
         onChange={(event) => setName(event.target.value)}
         aria-invalid={!validName}
+        aria-describedby={validName ? undefined : `${nameId}-error`}
         className="h-8 w-40 rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
       />
+      {!validName && (
+        <span id={`${nameId}-error`} role="alert" className="text-[11px] text-critical-text">
+          名前は英数字, _, - (64 文字まで)
+        </span>
+      )}
       <Button
         icon={Save}
         disabled={!validName || save.isPending}
-        onClick={() => save.mutate({ ...spec, name })}
+        onClick={() => void requestSave()}
         title={validName ? undefined : '名前は英数字, _, - にしてください'}
       >
         保存{dirty ? ' *' : ''}

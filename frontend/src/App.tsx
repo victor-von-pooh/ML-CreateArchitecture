@@ -39,6 +39,8 @@ function Editor() {
   const spec = history.value
   const setSpec = history.set
   const [fileName, setFileName] = useState('model')
+  // 今の定義を開いた (か保存した) 保存した定義の名前 (上書きの確認に使う)
+  const [ownFile, setOwnFile] = useState<string | null>(null)
   // 保存した (か開いた) 時点の定義. 今の定義と比べて, 保存していない変更を判定
   const [saved, setSaved] = useState(() => JSON.stringify(emptySpec()))
   const [selected, setSelected] = useState<string | null>(null)
@@ -187,7 +189,8 @@ function Editor() {
           check={check.data}
           checking={check.isFetching || debounced !== spec}
           onChange={setSpec}
-          onLoad={(name, loaded) => {
+          onLoad={(name, loaded, source) => {
+            setOwnFile(source === 'model' ? name : null)
             // 位置の無いもの (手で書いた定義など) は, 開いたときに一度だけ
             // 段に分けた位置を書く (後の編集で動かないように)
             const placed = placeMissing(loaded, unitMap)
@@ -196,7 +199,9 @@ function Editor() {
             setFileName(name)
             setSelected(null)
           }}
+          ownFile={ownFile}
           onSaved={(name, savedSpec) => {
+            setOwnFile(name)
             // 保存した定義の名前を今の定義にも反映 (保存の間の編集は残す)
             history.replace((current) => ({ ...current, name: savedSpec.name }))
             setFileName(name)
@@ -236,6 +241,8 @@ function Editor() {
               </div>
             )}
             <Inspector
+              // 選び直したら作り直し, 前に選んだものの欄を残さない
+              key={current ?? ''}
               spec={spec}
               units={unitMap}
               check={check.data}
