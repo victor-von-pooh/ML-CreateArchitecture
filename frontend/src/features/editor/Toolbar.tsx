@@ -11,6 +11,7 @@ import {
   Redo2,
   Save,
   Sun,
+  Trash2,
   Undo2,
 } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
@@ -93,6 +94,12 @@ function OpenDialog({
   onClose: () => void
 }) {
   const models = useQuery({ queryKey: ['models'], queryFn: api.listModels })
+  const queryClient = useQueryClient()
+  // 保存した定義を消す (確かめてから. 消した後は一覧を読み直す)
+  const remove = useMutation({
+    mutationFn: (name: string) => api.deleteModel(name),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['models'] }),
+  })
   const examples = useQuery({
     queryKey: ['examples'],
     queryFn: api.listExamples,
@@ -110,19 +117,32 @@ function OpenDialog({
       ) : (
         <ul className="mb-4 divide-y divide-line">
           {models.data.map((model) => (
-            <li key={model.name}>
+            <li key={model.name} className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => onOpen('model', model.name)}
-                className="flex w-full items-center justify-between px-2 py-2 text-left hover:bg-surface-2"
+                className="flex min-w-0 flex-1 items-center justify-between px-2 py-2 text-left hover:bg-surface-2"
               >
                 <span className="font-mono text-sm">{model.name}</span>
                 <span className="text-xs text-ink-3">{model.updated_at.replace('T', ' ')}</span>
               </button>
+              <Button
+                variant="ghost"
+                icon={Trash2}
+                disabled={remove.isPending}
+                onClick={() => {
+                  if (window.confirm(`保存した定義 ${model.name} を消しますか? 元に戻せません.`)) {
+                    remove.mutate(model.name)
+                  }
+                }}
+                aria-label={`${model.name} を消す`}
+                title={`${model.name} を消す`}
+              />
             </li>
           ))}
         </ul>
       )}
+      {remove.error && <ErrorBox error={remove.error} />}
       <h3 className="mb-1 text-xs font-semibold text-ink-2">例から始める</h3>
       {examples.isPending ? (
         <Spinner />

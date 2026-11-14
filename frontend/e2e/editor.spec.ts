@@ -46,7 +46,7 @@ test('部品を置いて選択の欄でつなぎ, 保存して開き直す', asy
   await page.getByRole('button', { name: '新規' }).click()
   await expect(page.locator('[data-id="linear1"]')).toHaveCount(0)
   await page.getByRole('button', { name: '開く' }).click()
-  await page.getByRole('button', { name: /^e2e_model/ }).click()
+  await page.getByRole('button', { name: /^e2e_model \d/ }).click()
   await expect(page.locator('[data-id="linear1"]')).toBeVisible()
   await expect(page.locator('.react-flow__edge')).toHaveCount(2)
 })
@@ -54,7 +54,7 @@ test('部品を置いて選択の欄でつなぎ, 保存して開き直す', asy
 test('線を選んで Delete で外すと, 誤りが出る', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '開く' }).click()
-  await page.getByRole('button', { name: /^e2e_model/ }).click()
+  await page.getByRole('button', { name: /^e2e_model \d/ }).click()
   await expect(page.locator('.react-flow__edge')).toHaveCount(2)
 
   // 入力から全結合への線を外すと, 必須の口が未接続の誤り
@@ -97,7 +97,7 @@ test('合わない値はその場で理由を出し, ダイアログを閉じる
   await expect(page.getByRole('button', { name: 'YAML' })).toBeFocused()
   page.once('dialog', (dialog) => void dialog.accept())
   await open.click()
-  await page.getByRole('button', { name: /^e2e_model/ }).click()
+  await page.getByRole('button', { name: /^e2e_model \d/ }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '開く' })).toBeFocused()
 })
@@ -229,4 +229,19 @@ test('出力を選んだ後も欄が残らず, 形の推定の失敗を誤りに
   await page.waitForTimeout(500)
   expect(await (await request.get('/api/models/e2e_model')).text()).toBe(before)
   await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
+})
+
+test('保存した定義を開くの一覧から消せる', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('button', { name: /^e2e_model \d/ })).toBeVisible()
+
+  // 確かめを断ると残り, 受けると一覧から外れる
+  page.once('dialog', (confirm) => void confirm.dismiss())
+  await dialog.getByRole('button', { name: 'e2e_model を消す' }).click()
+  await expect(dialog.getByRole('button', { name: /^e2e_model \d/ })).toBeVisible()
+  page.once('dialog', (confirm) => void confirm.accept())
+  await dialog.getByRole('button', { name: 'e2e_model を消す' }).click()
+  await expect(dialog.getByRole('button', { name: /^e2e_model \d/ })).toHaveCount(0)
 })

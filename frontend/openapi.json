@@ -279,6 +279,37 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "Delete Model",
+        "description": "保存した定義を消す関数\n\nParameters\n----------\nname: str\n    定義の名前\nrequest: Request\n    リクエスト\n\nReturns\n----------\nNone",
+        "operationId": "delete_model",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },

@@ -133,10 +133,10 @@ describe('inputs editor', () => {
     let spec: Spec = addNode(emptySpec(), units.get('nn.LSTM')!, { x: 0, y: 0 })
     spec = addNode(spec, units.get('op.Add')!, { x: 0, y: 0 })
     expect(refOptions(spec, units, 'add1').map((option) => option.value)).toEqual([
-      'x',
       'lstm1:output',
       'lstm1:h_n',
       'lstm1:c_n',
+      'x',
     ])
     spec = setPortRefs(spec, units, 'add1', 'xs', ['x', 'lstm1:h_n'])
     expect(spec.nodes.add1!.inputs).toEqual({ xs: ['x', 'lstm1:h_n'] })

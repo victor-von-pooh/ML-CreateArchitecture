@@ -1,4 +1,4 @@
-import { AlertTriangle, Copy, Info, Trash2 } from 'lucide-react'
+import { AlertTriangle, Copy, Info, Plus, Trash2 } from 'lucide-react'
 import { memo, useEffect, useId, useRef, useState } from 'react'
 
 import type { CheckResult, Issue } from '../../api/client'
@@ -183,6 +183,89 @@ function ParamField({
         </p>
       )}
     </div>
+  )
+}
+
+/**
+ * 一覧に無い引数 (**kwargs で受け取る部品の, einops の式の大きさ h=2 など)
+ * の欄. 名前を書いて加え, 値は JSON (読めなければ文字) として読む
+ */
+function ExtraParams({
+  known,
+  values,
+  onChange,
+}: {
+  known: Set<string>
+  values: Record<string, unknown>
+  onChange: (key: string, value: unknown) => void
+}) {
+  const id = useId()
+  const [draft, setDraft] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const extra = Object.entries(values).filter(([key]) => !known.has(key))
+  const add = () => {
+    const key = draft.trim()
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))
+      return setError('英字か _ で始まる名前にしてください')
+    if (known.has(key) || key in values) return setError('その引数は既にあります')
+    setError(null)
+    setDraft('')
+    onChange(key, 0)
+  }
+  return (
+    <fieldset className="space-y-2">
+      <legend className="mb-1 text-xs font-semibold">一覧に無い引数</legend>
+      {extra.map(([key, value]) => (
+        <div key={key} className="flex items-start gap-1">
+          <div className="min-w-0 flex-1">
+            <ParamField
+              param={{
+                name: key,
+                kind: 'any',
+                default: null,
+                required: false,
+                description: '',
+                minimum: null,
+                maximum: null,
+                choices: null,
+              }}
+              value={value}
+              onChange={(next) => onChange(key, next)}
+            />
+          </div>
+          <Button
+            variant="ghost"
+            icon={Trash2}
+            onClick={() => onChange(key, undefined)}
+            aria-label={`引数 ${key} を外す`}
+            title={`引数 ${key} を外す`}
+          />
+        </div>
+      ))}
+      <div className="flex items-center gap-1">
+        <label htmlFor={id} className="sr-only">
+          加える引数の名前
+        </label>
+        <input
+          id={id}
+          value={draft}
+          placeholder="引数の名前 (例: h)"
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => event.key === 'Enter' && add()}
+          aria-invalid={error !== null}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className="h-7 min-w-0 flex-1 rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
+        />
+        <Button variant="secondary" icon={Plus} onClick={add}>
+          加える
+        </Button>
+      </div>
+      {error && (
+        <p id={`${id}-error`} role="alert" className="text-[11px] text-critical-text">
+          {error}
+        </p>
+      )}
+    </fieldset>
   )
 }
 
@@ -482,7 +565,7 @@ export function Inspector({
     return (
       <div className="space-y-3 p-3">
         <NameField
-          key={selected}
+          key={`name:${selected}`}
           name={selected}
           taken={taken}
           onRename={(value) => {
@@ -575,7 +658,7 @@ export function Inspector({
   return (
     <div className="space-y-4 p-3">
       <NameField
-        key={selected}
+        key={`name:${selected}`}
         name={selected}
         taken={taken}
         onRename={(value) => {
@@ -633,6 +716,15 @@ export function Inspector({
             />
           ))}
         </fieldset>
+      )}
+      {unit?.extra_params && (
+        <ExtraParams
+          // 兄弟の名前の欄 (key は selected) と重ならない key
+          key={`extra:${selected}`}
+          known={new Set(unit.params.map((param) => param.name))}
+          values={node.params ?? {}}
+          onChange={(key, value) => setValue('params', key, value)}
+        />
       )}
       {(unit?.forward_params.length ?? 0) > 0 && (
         <fieldset className="space-y-2">

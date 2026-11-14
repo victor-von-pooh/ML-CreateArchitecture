@@ -156,3 +156,30 @@ class ModelStore:
         }
 
         return summary
+
+    def delete(self, name: str) -> None:
+        """
+        保存した定義を消す関数
+
+        Parameters
+        ----------
+        name: str
+            定義の名前
+
+        Returns
+        ----------
+        None
+
+        Raises
+        ----------
+        ModelError
+            名前の規則に合わない場合, ファイルが無い場合, 消せない場合
+        """
+        # 名前の規則で置き場の中に限定し, 無い場合は誤り
+        path = self.path_for(name)
+        try:
+            path.unlink()
+        except FileNotFoundError as error:
+            raise ModelError(f"定義 {name} はありません") from error
+        except OSError as error:
+            raise ModelError(f"定義 {name} を消せません: {error}") from error
