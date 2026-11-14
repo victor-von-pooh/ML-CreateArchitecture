@@ -90,8 +90,10 @@ export function layoutPositions(spec: Spec, units: Map<string, UnitSpec>): Map<s
   const offset = (column: number) => (lifted.has(column) ? LANE : 0)
 
   // 段が多い場合は, 全体が横に長くなりすぎないように折り返して行に並べる
+  // 飛び越すつなぎ (U-Net の skip など) がある図は, 折り返すと線が行を
+  // またいで読めないので折り返さない
   const count = last + 1
-  const rows = Math.ceil(count / WRAP_AFTER)
+  const rows = lifted.size > 0 ? 1 : Math.ceil(count / WRAP_AFTER)
   const perRow = Math.ceil(count / rows)
   const heights = new Map<number, number>()
   for (const [column, ids] of columns) {

@@ -215,8 +215,10 @@ export function disconnect(spec: Spec, units: Map<string, UnitSpec>, wireId: str
 
 /** 名前の空間 (入力とノード) で使われていない, 部品の名前から作った名前 */
 export function freshName(spec: Spec, base: string): string {
+  // 長すぎる名前の部品は短い頭にする (Hugging Face の種類, 名前で作るモデル)
+  const short = base.startsWith('hf.') ? 'hf' : base.endsWith('.Model') ? base.split('.')[0]! : base
   const stem =
-    base
+    short
       .split('.')
       .pop()!
       .replace(/[^A-Za-z0-9_]/g, '_')

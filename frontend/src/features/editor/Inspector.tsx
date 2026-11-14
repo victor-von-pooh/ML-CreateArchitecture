@@ -153,9 +153,13 @@ function ParamField({
           defaultValue={text}
           placeholder={param.default !== null ? formatValue(param.default) : ''}
           onChange={(event) => {
-            // 候補から選んだ場合 (候補と同じ文字になった場合) はすぐに反映
+            // 候補の一覧から選んだ場合だけすぐに反映 (打っている途中で候補と
+            // 同じ文字になった場合は, Enter か欄を離れたときに反映)
             const text = event.target.value
-            if (param.suggestions?.some((choice) => String(choice) === text)) commit(text)
+            const picked =
+              !(event.nativeEvent instanceof InputEvent) ||
+              event.nativeEvent.inputType === 'insertReplacementText'
+            if (picked && param.suggestions?.some((choice) => String(choice) === text)) commit(text)
           }}
           onBlur={(event) => commit(event.target.value)}
           onKeyDown={(event) => event.key === 'Enter' && commit(event.currentTarget.value)}
