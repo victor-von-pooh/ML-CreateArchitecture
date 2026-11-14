@@ -243,7 +243,7 @@ test('狭い画面では上の操作をアイコンにし, ミニマップを出
   }
   expect((await page.locator('header').boundingBox())!.height).toBeLessThan(60)
   // 新規の直後 (部品が無い) は, 誤りの数ではなく始め方
-  await expect(page.locator('header')).toContainText('部品を置いて始める')
+  await expect(page.locator('header')).toContainText('部品なし')
   await expect(page.locator('.react-flow__minimap')).toBeHidden()
 })
 

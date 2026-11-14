@@ -435,7 +435,7 @@ export function Toolbar({
         </span>
         {/* 部品がまだ無い (新規の直後) は, 誤りの数ではなく始め方を出す */}
         {Object.keys(spec.nodes).length === 0 ? (
-          <span className="text-ink-3">部品を置いて始める</span>
+          <span className="text-ink-3">部品なし</span>
         ) : (
           <span
             className={errors > 0 ? 'flex items-center gap-1 text-critical-text' : 'text-ink-3'}
