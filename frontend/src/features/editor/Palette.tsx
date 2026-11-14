@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react'
-import { useId, useMemo, useState } from 'react'
+import { useDeferredValue, useId, useMemo, useState } from 'react'
 
 import type { UnitSpec } from '../../lib/graph'
 
@@ -10,6 +10,13 @@ const SOURCES: Record<string, string> = {
   'torch.nn': 'PyTorch',
   torch_geometric: 'PyTorch Geometric',
   transformers: 'Hugging Face',
+  torchvision: 'torchvision',
+  timm: 'timm',
+  torchaudio: 'torchaudio',
+  einops: 'einops',
+  kornia: 'Kornia',
+  monai: 'MONAI',
+  segmentation_models_pytorch: 'segmentation_models_pytorch',
   custom: '自作',
 }
 
@@ -20,8 +27,10 @@ export function Palette({ units, onAdd }: { units: UnitSpec[]; onAdd: (unit: Uni
   const [open, setOpen] = useState<Record<string, boolean>>({ ml_modelcontrol: true })
 
   // 名前と説明で絞り込み, 出どころごとにまとめる
+  // 打鍵の間は前の結果を見せ, 多くの部品の描き直しで入力を止めない
+  const deferred = useDeferredValue(query)
   const groups = useMemo(() => {
-    const text = query.trim().toLowerCase()
+    const text = deferred.trim().toLowerCase()
     const matched = units.filter(
       (unit) =>
         !text ||
@@ -31,14 +40,16 @@ export function Palette({ units, onAdd }: { units: UnitSpec[]; onAdd: (unit: Uni
     const order = Object.keys(SOURCES)
     const bySource = new Map<string, UnitSpec[]>()
     for (const unit of matched) {
-      bySource.set(unit.source, [...(bySource.get(unit.source) ?? []), unit])
+      const list = bySource.get(unit.source)
+      if (list) list.push(unit)
+      else bySource.set(unit.source, [unit])
     }
     const rank = (source: string) => {
       const index = order.indexOf(source)
       return index < 0 ? order.length : index
     }
     return [...bySource.entries()].sort(([a], [b]) => rank(a) - rank(b))
-  }, [units, query])
+  }, [units, deferred])
 
   return (
     <div className="flex h-full flex-col">

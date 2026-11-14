@@ -20,9 +20,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# PyTorch Geometric と Hugging Face の部品を使う場合
-geometric = ["torch_geometric>=2.4"]
-huggingface = ["transformers>=4.40"]
+# 外部のライブラリの部品を使う場合 (ML-ModelControl の任意の依存と同じ.
+# all で全て)
+geometric = ["ml-modelcontrol[geometric]"]
+huggingface = ["ml-modelcontrol[huggingface]"]
+all = ["ml-modelcontrol[all]"]
 
 [project.scripts]
 ml-createarchitecture = "ml_createarchitecture.cli:main"

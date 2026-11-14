@@ -22,11 +22,14 @@ make serve   # 画面をビルドして http://127.0.0.1:8766 で起動 (端末�
 
 起動すると, 起動ごとのトークンが付いた URL (`http://127.0.0.1:8766/api/auth?token=...`) が表示されるので, それを開く. 毎回同じトークンにする場合は, 環境変数 `ML_CREATEARCHITECTURE_TOKEN` で指定する. ポートは `make serve PORT=8800` のように変えられる.
 
-PyTorch Geometric の層と Hugging Face のモデルを部品として使う場合は, バックエンドに入れる.
+外部のライブラリ (PyTorch Geometric, Hugging Face, torchvision, timm, torchaudio, einops, Kornia, MONAI, segmentation_models_pytorch) の部品を使う場合は, `make setup` に `EXTRAS` を付けてバックエンドに入れる (入れていないライブラリの部品は, 一覧に「使えない」と理由が出る). 全て入れると数 GB になり時間がかかる. `EXTRAS` を付けずに `make setup` をやり直すと, 入れたライブラリは外れる.
 
 ```bash
-cd backend && uv sync --extra geometric --extra huggingface
+make setup EXTRAS=all                       # 全て
+make setup EXTRAS="geometric huggingface"   # 一部だけ
 ```
+
+torchvision と timm のモデル (`tv.Model`, `timm.Model`) は, 右の詳細の名前の欄に打つと候補が出る.
 
 ## 使い方
 

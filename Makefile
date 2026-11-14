@@ -9,10 +9,11 @@ DEV_TOKEN := $(or $(DEV_TOKEN),$(shell python3 -c 'import secrets; print(secrets
 
 .PHONY: setup dev-backend dev-frontend build serve api check
 
-# 依存のインストール
+# 依存のインストール (外部のライブラリの部品も使う場合は make setup EXTRAS=all)
+EXTRAS ?=
 setup:
 	git submodule update --init
-	cd backend && uv sync
+	cd backend && uv sync $(foreach extra,$(EXTRAS),--extra $(extra))
 	cd frontend && pnpm install
 
 # 開発用のサーバー (2 つの端末で起動)
