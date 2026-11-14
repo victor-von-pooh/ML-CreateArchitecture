@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ml-createarchitecture"
+version = "0.1.0"
+description = "ML-ModelControl の部品を GUI で並べてつなぎ, モデルを組み立てるローカルの Web アプリ"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "ml-modelcontrol",
+    "pydantic>=2.9",
+    "pyyaml>=6.0",
+    # ML-ModelControl が使う. Linux では下の pytorch-cpu から取る
+    "torch>=2.2",
+    "uvicorn>=0.32"
+]
+
+[project.optional-dependencies]
+# PyTorch Geometric と Hugging Face の部品を使う場合
+geometric = ["torch_geometric>=2.4"]
+huggingface = ["transformers>=4.40"]
+
+[project.scripts]
+ml-createarchitecture = "ml_createarchitecture.cli:main"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "ruff>=0.8",
+    "types-pyyaml>=6.0"
+]
+
+[tool.uv.sources]
+ml-modelcontrol = { path = "../ML-ModelControl", editable = true }
+# Linux (CI) では CUDA の無い軽い PyTorch を使う
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ml_createarchitecture"]
+
+[tool.ruff]
+line-length = 79
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "UP007", "UP045"]
+
+[tool.mypy]
+strict = true
+python_version = "3.10"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

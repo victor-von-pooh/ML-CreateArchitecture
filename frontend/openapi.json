@@ -1,0 +1,519 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ML-CreateArchitecture",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/units": {
+      "get": {
+        "summary": "List Units",
+        "description": "部品の一覧を返す関数\n\nParameters\n----------\nNone\n\nReturns\n----------\nunits: list[dict[str, Any]]\n    ML-ModelControl の部品ごとの名前, 説明, 引数, 口",
+        "operationId": "list_units",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response List Units"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/check": {
+      "post": {
+        "summary": "Check Spec",
+        "description": "モデルの定義を確かめ, 誤りがなければ形を推定する関数\n\nParameters\n----------\nbody: SpecBody\n    モデルの定義と, 形の推定もするか\n\nReturns\n----------\nresult: CheckResult\n    誤りと注意, ノードごとの形とパラメータ数, YAML",
+        "operationId": "check_spec",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpecBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/export": {
+      "post": {
+        "summary": "Export Spec",
+        "description": "モデルの定義から Python のコードを書き出す関数\n\nParameters\n----------\nbody: ExportBody\n    モデルの定義とクラスの名前\n\nReturns\n----------\nresult: ExportResult\n    Python のコード",
+        "operationId": "export_spec",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/models": {
+      "get": {
+        "summary": "List Models",
+        "description": "保存した定義の一覧を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\n\nReturns\n----------\nmodels: list[ModelSummary]\n    名前と更新時刻 (新しい順)",
+        "operationId": "list_models",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModelSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Models"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/models/{name}": {
+      "get": {
+        "summary": "Get Model",
+        "description": "保存した定義を読み込む関数\n\nParameters\n----------\nname: str\n    定義の名前\nrequest: Request\n    リクエスト\n\nReturns\n----------\nmodel: ModelFile\n    定義の名前と中身",
+        "operationId": "get_model",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Save Model",
+        "description": "定義を保存する関数 (誤りがあっても途中の状態として保存できる)\n\nParameters\n----------\nname: str\n    定義の名前\nbody: SpecBody\n    モデルの定義\nrequest: Request\n    リクエスト\n\nReturns\n----------\nsummary: ModelSummary\n    保存した定義の名前と更新時刻",
+        "operationId": "save_model",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpecBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CheckResult": {
+        "properties": {
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/Issue"
+            },
+            "type": "array",
+            "title": "Issues"
+          },
+          "inferred": {
+            "type": "boolean",
+            "title": "Inferred"
+          },
+          "nodes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NodeResult"
+            },
+            "type": "object",
+            "title": "Nodes",
+            "default": {}
+          },
+          "outputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Outputs",
+            "default": {}
+          },
+          "params": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Params"
+          },
+          "trainable": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trainable"
+          },
+          "estimated_only": {
+            "type": "boolean",
+            "title": "Estimated Only",
+            "default": false
+          },
+          "yaml": {
+            "type": "string",
+            "title": "Yaml",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "issues",
+          "inferred"
+        ],
+        "title": "CheckResult"
+      },
+      "ExportBody": {
+        "properties": {
+          "spec": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Spec"
+          },
+          "class_name": {
+            "type": "string",
+            "title": "Class Name",
+            "default": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "spec"
+        ],
+        "title": "ExportBody"
+      },
+      "ExportResult": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "ExportResult"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Issue": {
+        "properties": {
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          }
+        },
+        "type": "object",
+        "required": [
+          "severity",
+          "code",
+          "message"
+        ],
+        "title": "Issue"
+      },
+      "ModelFile": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "spec": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Spec"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "spec"
+        ],
+        "title": "ModelFile"
+      },
+      "ModelSummary": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "updated_at"
+        ],
+        "title": "ModelSummary"
+      },
+      "NodeResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "outputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Outputs",
+            "default": {}
+          },
+          "params": {
+            "type": "integer",
+            "title": "Params",
+            "default": 0
+          },
+          "trainable": {
+            "type": "integer",
+            "title": "Trainable",
+            "default": 0
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "NodeResult"
+      },
+      "SpecBody": {
+        "properties": {
+          "spec": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Spec"
+          },
+          "infer": {
+            "type": "boolean",
+            "title": "Infer",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "spec"
+        ],
+        "title": "SpecBody"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
