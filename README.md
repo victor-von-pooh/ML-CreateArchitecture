@@ -39,7 +39,7 @@ torchvision と timm のモデル (`tv.Model`, `timm.Model`) は, 右の詳細�
 4. 上の「入力」と「出力」でモデルの入力と出力を足す. 入力は形 (`[4, 16]` のように, バッチの次元も含む) と型 (単語の番号や `edge_index` は `int64`) を決める
 5. 名前を付けて「保存」. 「開く」で保存した定義か, 例 (全結合, 残差, CNN, LSTM, Transformer, GCN, BERT の分類) を開き, 「YAML」で保存する形, 「Python」で同じ計算をするコードを見られる
 
-保存した定義は `~/.ml-createarchitecture/models/` に YAML で置かれる (環境変数 `ML_CREATEARCHITECTURE_HOME` で変えられる). ML-ModelControl の `build_model` でそのまま `nn.Module` にできる.
+保存した定義は `~/.ml-createarchitecture/models/` に YAML で置かれる (環境変数 `ML_CREATEARCHITECTURE_HOME` で変えられる). ML-ModelControl の `build_model` でそのまま `nn.Module` にできる. ML-Found で学習する手順は ML-ModelControl の README の「ML-Found で学習する」にある (定義のファイルの置き場をプロジェクトの config に書き, 学習スクリプトで組み立てる).
 
 ## 開発
 
