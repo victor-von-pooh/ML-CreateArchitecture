@@ -9,8 +9,17 @@ export function failedNodes(
   check: CheckResult | undefined,
   spec: { nodes: Record<string, unknown>; outputs: Record<string, unknown> },
 ): { id: string; label: string; error: string }[] {
+  // 確認の誤りのあるノードは確認の誤りとして数えるので除く (形の推定でも
+  // error になるため)
+  const flagged = new Set(
+    (check?.issues ?? [])
+      .filter((issue) => issue.severity === 'error' && issue.node)
+      .map((issue) => issue.node),
+  )
   const nodes = Object.entries(check?.nodes ?? {})
-    .filter(([name, result]) => result.status === 'error' && name in spec.nodes)
+    .filter(
+      ([name, result]) => result.status === 'error' && name in spec.nodes && !flagged.has(name),
+    )
     .map(([name, result]) => ({ id: name, label: name, error: result.error ?? '' }))
   const outputs = Object.entries(check?.outputs ?? {})
     .filter(([name, value]) => {
