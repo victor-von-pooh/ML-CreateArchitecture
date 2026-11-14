@@ -4,6 +4,10 @@ import { specWires, type Spec, type Ui, type UnitSpec } from './graph'
 const COLUMN = 300
 const GAP = 40
 
+// 段の数がこれより多い場合は折り返し, 行の間を空ける
+const WRAP_AFTER = 6
+const ROW_GAP = 80
+
 // ノードの高さの見積もり (見出しと, 口の行ごとの高さ)
 const HEADER = 60
 const PORT_ROW = 22
@@ -32,7 +36,8 @@ function heightOf(id: string, spec: Spec, units: Map<string, UnitSpec>): number 
  * つながりの深さで左から右に段を分けた, 全てのもの (入力, ノード, 出力) の位置
  *
  * 入力は最初の段, ノードはつなぎ元の最も深い段の次, 出力は最後の段.
- * 同じ段の中は定義に書いた順に上から並べる
+ * 同じ段の中は定義に書いた順に上から並べる. 段が多い場合は, 段を
+ * 折り返して下の行に続ける
  */
 export function layoutPositions(spec: Spec, units: Map<string, UnitSpec>): Map<string, Point> {
   // ノードごとのつなぎ元
@@ -69,12 +74,28 @@ export function layoutPositions(spec: Spec, units: Map<string, UnitSpec>): Map<s
   const last = Math.max(0, ...nodeDepths.map(([, value]) => value)) + 1
   outputNames(spec).forEach((name) => place(`output:${name}`, last))
 
+  // 段が多い場合は, 全体が横に長くなりすぎないように折り返して行に並べる
+  const count = last + 1
+  const perRow = count > WRAP_AFTER ? Math.max(4, Math.ceil(Math.sqrt(count * 1.5))) : count
+  const heights = new Map<number, number>()
+  for (const [column, ids] of columns) {
+    const total = ids.reduce((sum, id) => sum + heightOf(id, spec, units) + GAP, 0)
+    const row = Math.floor(column / perRow)
+    heights.set(row, Math.max(heights.get(row) ?? 0, total))
+  }
+  const top = (row: number) => {
+    let y = 60
+    for (let index = 0; index < row; index += 1) y += (heights.get(index) ?? 0) + ROW_GAP
+    return y
+  }
+
   // 段の中は見積もった高さで上から詰める
   const positions = new Map<string, Point>()
   for (const [column, ids] of columns) {
-    let y = 60
+    const row = Math.floor(column / perRow)
+    let y = top(row)
     for (const id of ids) {
-      positions.set(id, { x: 40 + column * COLUMN, y })
+      positions.set(id, { x: 40 + (column % perRow) * COLUMN, y })
       y += heightOf(id, spec, units) + GAP
     }
   }
@@ -130,4 +151,40 @@ export function placeMissing(spec: Spec, units: Map<string, UnitSpec>): Spec {
     ]),
   )
   return { ...spec, inputs, nodes, ui: { ...spec.ui, outputs } }
+}
+
+/** 置いてあるものの枠 */
+export interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * 望む位置の近くで, 置いてあるものと重ならない新しいノードの位置
+ *
+ * 望む位置から, 縦と横に少しずつ離れた所を近い順に試す
+ */
+export function freeSpot(rects: Rect[], wanted: Point, size = { width: 200, height: 100 }): Point {
+  const margin = 20
+  const overlaps = (point: Point) =>
+    rects.some(
+      (rect) =>
+        point.x < rect.x + rect.width + margin &&
+        point.x + size.width + margin > rect.x &&
+        point.y < rect.y + rect.height + margin &&
+        point.y + size.height + margin > rect.y,
+    )
+  const candidates: Point[] = []
+  for (let row = -6; row <= 6; row += 1) {
+    for (let column = -4; column <= 4; column += 1) {
+      candidates.push({ x: wanted.x + column * 240, y: wanted.y + row * 130 })
+    }
+  }
+  candidates.sort(
+    (a, b) =>
+      Math.hypot(a.x - wanted.x, a.y - wanted.y) - Math.hypot(b.x - wanted.x, b.y - wanted.y),
+  )
+  return candidates.find((point) => !overlaps(point)) ?? wanted
 }

@@ -10,7 +10,7 @@ import { Palette } from './features/editor/Palette'
 import { Toolbar } from './features/editor/Toolbar'
 import { addNode, emptySpec, pasteNode, type NodeDef, type Spec, type UnitSpec } from './lib/graph'
 import { useHistory } from './lib/history'
-import { arrangeSpec, placeMissing } from './lib/layout'
+import { arrangeSpec, freeSpot, placeMissing } from './lib/layout'
 
 /** 書き換えている途中の値が落ち着いてから使う (確認の回数を抑える) */
 function useDebounced<T>(value: T, delay: number): T {
@@ -44,7 +44,6 @@ function Editor() {
   // 保存した (か開いた) 時点の定義. 今の定義と比べて, 保存していない変更を判定
   const [saved, setSaved] = useState(() => JSON.stringify(emptySpec()))
   const [selected, setSelected] = useState<string | null>(null)
-  const [added, setAdded] = useState(0)
   const flow = useReactFlow()
 
   // 定義が落ち着いたら確認と形の推定 (前の結果は次が届くまで表示)
@@ -62,15 +61,20 @@ function Editor() {
   )
   const dirty = useMemo(() => JSON.stringify(spec) !== saved, [spec, saved])
 
-  // 新しく置くものは, キャンバスに見えている範囲の真ん中 (少しずつずらす)
+  // 新しく置くものは, キャンバスに見えている範囲の真ん中の近くで, 他の
+  // ノードと重ならない所
   const center = () => {
     const box = document.querySelector('.react-flow')?.getBoundingClientRect()
     const point = box
       ? flow.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 })
       : { x: 300, y: 120 }
-    const shift = (added % 5) * 30
-    setAdded((count) => count + 1)
-    return { x: Math.round(point.x - 90 + shift), y: Math.round(point.y - 40 + shift) }
+    const rects = flow.getNodes().map((node) => ({
+      x: node.position.x,
+      y: node.position.y,
+      width: node.measured?.width ?? 200,
+      height: node.measured?.height ?? 100,
+    }))
+    return freeSpot(rects, { x: Math.round(point.x - 100), y: Math.round(point.y - 50) })
   }
 
   // 保存していない変更がある場合は, 閉じる前に確認
@@ -196,6 +200,10 @@ function Editor() {
             const placed = placeMissing(loaded, unitMap)
             history.reset(placed)
             setSaved(JSON.stringify(placed))
+            // 開いた定義の全体が見えるように表示の範囲を合わせる
+            window.requestAnimationFrame(
+              () => void flow.fitView({ duration: 200, maxZoom: 1, padding: 0.1 }),
+            )
             setFileName(name)
             setSelected(null)
           }}
@@ -212,7 +220,10 @@ function Editor() {
           onArrange={() => {
             setSpec((current) => arrangeSpec(current, unitMap))
             // 並べ直した全体が見えるように表示の範囲を合わせる
-            window.requestAnimationFrame(() => void flow.fitView({ duration: 200 }))
+            // (文字が読める倍率より小さくはしない)
+            window.requestAnimationFrame(
+              () => void flow.fitView({ duration: 200, maxZoom: 1, minZoom: 0.5, padding: 0.1 }),
+            )
           }}
           onUndo={previous ? undoSpec : undefined}
           onRedo={following ? redoSpec : undefined}

@@ -129,13 +129,17 @@ export function Canvas({
       }}
       deleteKeyCode={['Backspace', 'Delete']}
       fitView
+      fitViewOptions={{ maxZoom: 1, padding: 0.1 }}
+      // 長いモデルの全体も見られるように, 小さくする限度を下げる
+      minZoom={0.2}
       colorMode={theme}
       proOptions={{ hideAttribution: true }}
       aria-label="モデルのキャンバス"
     >
       <Background gap={20} />
       <Controls showInteractive={false} />
-      <MiniMap pannable zoomable />
+      {/* 狭い画面ではノードを隠すので出さない */}
+      <MiniMap pannable zoomable className="max-2xl:!hidden" />
     </ReactFlow>
   )
 }
