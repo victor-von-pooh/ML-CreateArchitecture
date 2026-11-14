@@ -235,3 +235,14 @@ test('出力を選んだ後も欄が残らず, 形の推定の失敗を誤りに
   expect(await (await request.get('/api/models/e2e_model')).text()).toBe(before)
   await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
 })
+
+test('狭い画面では上の操作をアイコンにし, ミニマップを出さない', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  // 文字は読み上げの名前として残り, 上の操作は 1 行 (高さが 1 行分)
+  for (const name of ['整列', '入力', '出力', 'YAML', 'Python']) {
+    await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
+  }
+  expect((await page.locator('header').boundingBox())!.height).toBeLessThan(60)
+  await expect(page.locator('.react-flow__minimap')).toBeHidden()
+})

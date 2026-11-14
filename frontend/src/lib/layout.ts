@@ -4,9 +4,9 @@ import { specWires, type Spec, type Ui, type UnitSpec } from './graph'
 const COLUMN = 300
 const GAP = 40
 
-// 段の数がこれより多い場合は折り返し, 行の間を空ける
-const WRAP_AFTER = 6
-const ROW_GAP = 80
+// 1 行の段の数の上限 (超える場合は折り返し, 行の段の数を揃える) と, 行の間
+const WRAP_AFTER = 8
+const ROW_GAP = 120
 
 // ノードの高さの見積もり (見出しと, 口の行ごとの高さ)
 const HEADER = 60
@@ -76,7 +76,8 @@ export function layoutPositions(spec: Spec, units: Map<string, UnitSpec>): Map<s
 
   // 段が多い場合は, 全体が横に長くなりすぎないように折り返して行に並べる
   const count = last + 1
-  const perRow = count > WRAP_AFTER ? Math.max(4, Math.ceil(Math.sqrt(count * 1.5))) : count
+  const rows = Math.ceil(count / WRAP_AFTER)
+  const perRow = Math.ceil(count / rows)
   const heights = new Map<number, number>()
   for (const [column, ids] of columns) {
     const total = ids.reduce((sum, id) => sum + heightOf(id, spec, units) + GAP, 0)
@@ -164,9 +165,15 @@ export interface Rect {
 /**
  * 望む位置の近くで, 置いてあるものと重ならない新しいノードの位置
  *
- * 望む位置から, 縦と横に少しずつ離れた所を近い順に試す
+ * 望む位置から, 縦と横に少しずつ離れた所を近い順に試す. 見えている範囲
+ * (bounds) の中に空きが無い場合は望む位置 (重なる)
  */
-export function freeSpot(rects: Rect[], wanted: Point, size = { width: 200, height: 100 }): Point {
+export function freeSpot(
+  rects: Rect[],
+  wanted: Point,
+  size = { width: 200, height: 100 },
+  bounds?: Rect,
+): Point {
   const margin = 20
   const overlaps = (point: Point) =>
     rects.some(
@@ -182,9 +189,22 @@ export function freeSpot(rects: Rect[], wanted: Point, size = { width: 200, heig
       candidates.push({ x: wanted.x + column * 240, y: wanted.y + row * 130 })
     }
   }
+  // 見えている範囲が分かる場合は, その中に収まる所だけを試す
+  const inside = (point: Point) =>
+    !bounds ||
+    (point.x >= bounds.x &&
+      point.y >= bounds.y &&
+      point.x + size.width <= bounds.x + bounds.width &&
+      point.y + size.height <= bounds.y + bounds.height)
   candidates.sort(
     (a, b) =>
       Math.hypot(a.x - wanted.x, a.y - wanted.y) - Math.hypot(b.x - wanted.x, b.y - wanted.y),
   )
-  return candidates.find((point) => !overlaps(point)) ?? wanted
+  return candidates.find((point) => inside(point) && !overlaps(point)) ?? wanted
+}
+
+/** 部品のノードの大きさの見積もり (口の数から. 新しく置く所を探すため) */
+export function unitSize(unit: UnitSpec | undefined): { width: number; height: number } {
+  const rows = Math.max(unit?.inputs.length ?? 1, unit?.outputs.length ?? 1, 1)
+  return { width: 220, height: HEADER + rows * PORT_ROW }
 }

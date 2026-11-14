@@ -77,9 +77,20 @@ describe('layout', () => {
 
   it('置いてあるものと重ならない近くの位置を選ぶ', () => {
     expect(freeSpot([], { x: 0, y: 0 })).toEqual({ x: 0, y: 0 })
-    const spot = freeSpot([{ x: 0, y: 0, width: 200, height: 100 }], { x: 10, y: 10 })
+    const placed = { x: 0, y: 0, width: 200, height: 100 }
+    const spot = freeSpot([placed], { x: 10, y: 10 })
     expect(spot).not.toEqual({ x: 10, y: 10 })
     expect(Math.abs(spot.y - 10) + Math.abs(spot.x - 10)).toBeLessThanOrEqual(240)
+    // 返した位置は置いてあるものと重ならない
+    const apart =
+      spot.x >= placed.x + placed.width ||
+      spot.x + 200 <= placed.x ||
+      spot.y >= placed.y + placed.height ||
+      spot.y + 100 <= placed.y
+    expect(apart).toBe(true)
+    // 見えている範囲の外は選ばない (空きが無ければ望む位置)
+    const bounds = { x: 0, y: 0, width: 220, height: 120 }
+    expect(freeSpot([placed], { x: 10, y: 10 }, undefined, bounds)).toEqual({ x: 10, y: 10 })
   })
 
   it('段が多い場合は折り返して下の行に続ける', () => {
@@ -93,7 +104,7 @@ describe('layout', () => {
     const positions = layoutPositions(chain, units)
     const xs = [...positions.values()].map((point) => point.x)
     const ys = new Set([...positions.values()].map((point) => point.y))
-    expect(Math.max(...xs)).toBeLessThan(40 + 6 * 300)
+    expect(Math.max(...xs)).toBeLessThan(40 + 8 * 300)
     expect(ys.size).toBeGreaterThan(1)
     expect(positions.get('fc10')!.y).toBeGreaterThan(positions.get('fc1')!.y)
   })

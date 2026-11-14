@@ -342,7 +342,13 @@ export function Toolbar({
         <span className="max-2xl:sr-only">出力</span>
       </Button>
       <span className="mx-1 h-6 w-px bg-line" aria-hidden />
-      <Button variant="ghost" icon={FileText} onClick={() => setDialog('yaml')} data-return="yaml">
+      <Button
+        variant="ghost"
+        icon={FileText}
+        onClick={() => setDialog('yaml')}
+        data-return="yaml"
+        title="保存する形 (YAML) を見る"
+      >
         <span className="max-2xl:sr-only">YAML</span>
       </Button>
       <Button
