@@ -6,6 +6,7 @@ import {
   connect,
   disconnect,
   emptySpec,
+  downstream,
   pasteNode,
   removeItem,
   refOptions,
@@ -170,5 +171,25 @@ describe('params', () => {
     expect(copy.ui).toEqual({ x: 50, y: 60, note: 'keep' })
     ;(copy.params!.sizes as number[]).push(3)
     expect(source.params.sizes).toEqual([1, 2])
+  })
+
+  it('先のノード (つなぐと循環になる) を候補から除く', () => {
+    const spec: Spec = {
+      ...emptySpec(),
+      nodes: {
+        a: { unit: 'nn.Linear', inputs: { input: 'x' } },
+        b: { unit: 'nn.Linear', inputs: { input: 'a' } },
+        c: { unit: 'nn.Linear', inputs: { input: 'b' } },
+      },
+    }
+    expect([...downstream(spec, units, 'a')].sort()).toEqual(['b', 'c'])
+    expect(refOptions(spec, units, 'a').map((option) => option.value)).toEqual(['x'])
+    expect(refOptions(spec, units, 'c').map((option) => option.value)).toEqual(['b', 'a', 'x'])
+    // 循環していても, 既につないであるものは候補に残す
+    const cycle: Spec = {
+      ...spec,
+      nodes: { ...spec.nodes, a: { unit: 'nn.Linear', inputs: { input: 'c' } } },
+    }
+    expect(refOptions(cycle, units, 'a').map((option) => option.value)).toContain('c')
   })
 })

@@ -86,10 +86,17 @@ function Editor() {
       width: node.measured?.width ?? 200,
       height: node.measured?.height ?? 100,
     }))
-    const wanted = near ?? {
-      x: Math.round(point.x - size.width / 2),
-      y: Math.round(point.y - size.height / 2),
-    }
+    // 望む位置が見えている範囲の外なら, 見えている範囲の真ん中
+    const visible =
+      near &&
+      (!bounds ||
+        (near.x >= bounds.x &&
+          near.y >= bounds.y &&
+          near.x + size.width <= bounds.x + bounds.width &&
+          near.y + size.height <= bounds.y + bounds.height))
+    const wanted = visible
+      ? near
+      : { x: Math.round(point.x - size.width / 2), y: Math.round(point.y - size.height / 2) }
     return freeSpot(rects, wanted, size, bounds)
   }
 
@@ -184,8 +191,14 @@ function Editor() {
   }, [undoSpec, redoSpec])
 
   // 部品はキャンバスの真ん中に置いて選択
+  // 部品のノードを選んでいる場合は, その右 (つなぐ先になることが多い) に置く
   const add = (unit: UnitSpec) => {
-    const next = addNode(spec, unit, center(unitSize(unit)))
+    const from = current !== null ? (spec.nodes[current] ?? spec.inputs[current]) : undefined
+    const near =
+      from?.ui?.x !== undefined && from.ui.y !== undefined
+        ? { x: from.ui.x + 280, y: from.ui.y }
+        : undefined
+    const next = addNode(spec, unit, center(unitSize(unit), near))
     const name = Object.keys(next.nodes).find((key) => !(key in spec.nodes)) ?? null
     setSpec(next)
     setSelected(name)

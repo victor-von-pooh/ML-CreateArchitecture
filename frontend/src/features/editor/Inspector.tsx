@@ -1,4 +1,4 @@
-import { AlertTriangle, Copy, Info, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, Copy, Info, Plus, Trash2 } from 'lucide-react'
 import { memo, useEffect, useId, useRef, useState } from 'react'
 
 import type { CheckResult, Issue } from '../../api/client'
@@ -365,6 +365,14 @@ function NameField({
 }
 
 /** 口のつなぎ先を選ぶ欄 (線を引かずに, キーボードでもつなげる) */
+/** リストの 2 つの要素を入れ替えたリスト */
+function swap<T>(items: T[], a: number, b: number): T[] {
+  const next = [...items]
+  ;[next[a], next[b]] = [next[b] as T, next[a] as T]
+  return next
+}
+
+/** 入力の口のつなぎ先の欄 (1 つは選択, 複数は並びと追加の選択) */
 function PortRefs({
   port,
   refs,
@@ -381,6 +389,18 @@ function PortRefs({
   onChange: (refs: string[]) => void
 }) {
   const id = useId()
+  // つなぎ先を 1 つ上か下へ動かし, 動かした先の行の同じ向き (端なら逆向き) の
+  // ボタンにフォーカスを移す
+  const move = (index: number, step: -1 | 1) => {
+    const target = index + step
+    if (refs[index] === refs[target]) return
+    onChange(swap(refs, index, target))
+    const edge = target === 0 || target === refs.length - 1
+    const direction = (step === -1) !== edge ? 'up' : 'down'
+    window.requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>(`[data-move="${id}-${target}-${direction}"]`)?.focus(),
+    )
+  }
   const label = (
     <label htmlFor={id} className="font-mono text-xs text-ink-2">
       {port}
@@ -417,9 +437,33 @@ function PortRefs({
       <div className="space-y-1">
         <ol className="space-y-1">
           {refs.map((ref, index) => (
-            <li key={`${ref}-${index}`} className="flex items-center gap-1 font-mono text-xs">
+            // 並べ替えても行を作り直さない (押したボタンのフォーカスを保つ)
+            <li key={index} className="flex items-center gap-1 font-mono text-xs">
               <span className="text-ink-3">{index + 1}.</span>
               <span className="min-w-0 flex-1 truncate">{ref}</span>
+              {/* 順に意味がある口 (Concat など) のための並べ替え */}
+              <button
+                type="button"
+                disabled={index === 0}
+                data-move={`${id}-${index}-up`}
+                onClick={() => move(index, -1)}
+                aria-label={`${port} の ${index + 1} 番目のつなぎ先 ${ref} を上へ`}
+                title="上へ"
+                className="rounded px-1 text-ink-3 hover:bg-surface-2 hover:text-ink disabled:opacity-30"
+              >
+                <ArrowUp className="size-3" aria-hidden />
+              </button>
+              <button
+                type="button"
+                disabled={index === refs.length - 1}
+                data-move={`${id}-${index}-down`}
+                onClick={() => move(index, 1)}
+                aria-label={`${port} の ${index + 1} 番目のつなぎ先 ${ref} を下へ`}
+                title="下へ"
+                className="rounded px-1 text-ink-3 hover:bg-surface-2 hover:text-ink disabled:opacity-30"
+              >
+                <ArrowDown className="size-3" aria-hidden />
+              </button>
               <button
                 type="button"
                 onClick={() => onChange(refs.filter((_, position) => position !== index))}
