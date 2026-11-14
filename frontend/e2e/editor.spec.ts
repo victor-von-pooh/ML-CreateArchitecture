@@ -101,3 +101,39 @@ test('合わない値はその場で理由を出し, ダイアログを閉じる
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '開く' })).toBeFocused()
 })
+
+test('元に戻す・やり直すで, 部品の追加と引数の変更を戻せる', async ({ page }) => {
+  await page.goto('/')
+  const undo = page.getByRole('button', { name: '元に戻す' })
+  const redo = page.getByRole('button', { name: 'やり直す' })
+  await expect(undo).toBeDisabled()
+
+  // 部品を置いて引数を変え, 引数の変更から順に戻す
+  await page.getByPlaceholder('部品を探す').fill('nn.Linear')
+  await page
+    .getByRole('button', { name: /^nn\.Linear/ })
+    .first()
+    .click()
+  await expect(page.locator('[data-id="linear1"]')).toBeVisible()
+  await page.waitForTimeout(600)
+  await page.getByLabel('in_features').fill('8')
+  await page.getByLabel('in_features').press('Enter')
+  await page.locator('.react-flow__pane').click()
+  await page.waitForTimeout(600)
+  await page.keyboard.press('ControlOrMeta+z')
+  await page.locator('[data-id="linear1"]').click()
+  await expect(page.getByLabel('in_features')).toHaveValue('')
+  await page.locator('.react-flow__pane').click()
+  await undo.click()
+  await expect(page.locator('[data-id="linear1"]')).toHaveCount(0)
+
+  // やり直すと部品が戻り, 文字の欄の中の Ctrl+Z は定義を戻さない
+  await redo.click()
+  await expect(page.locator('[data-id="linear1"]')).toBeVisible()
+  await page.keyboard.press('ControlOrMeta+Shift+z')
+  await page.locator('[data-id="linear1"]').click()
+  await expect(page.getByLabel('in_features')).toHaveValue('8')
+  await page.getByLabel('in_features').press('ControlOrMeta+z')
+  await expect(page.locator('[data-id="linear1"]')).toBeVisible()
+  await expect(redo).toBeDisabled()
+})

@@ -1,5 +1,5 @@
 import { AlertTriangle, Info, Trash2 } from 'lucide-react'
-import { memo, useId, useState } from 'react'
+import { memo, useEffect, useId, useRef, useState } from 'react'
 
 import type { CheckResult, Issue } from '../../api/client'
 import { Button } from '../../components/ui'
@@ -53,19 +53,35 @@ function ParamField({
 }) {
   const id = useId()
   const errorId = `${id}-error`
-  const [error, setError] = useState<string | null>(null)
+  // 誤りは, 出したときの定義の値と一緒に持つ (元に戻すなどで値が変わったら消す)
+  const [failure, setFailure] = useState<{ message: string; value: string } | null>(null)
   // 確かめてから反映 (合わない値は理由を出して反映しない)
   const commit = (text: string) => {
     const message = check(text)
     // 反映しない場合は, 定義に残る値も示す (欄の文字と定義の値が違うため)
-    setError(
-      message === null || value === undefined
-        ? message
-        : `${message} (定義は前の値 ${formatValue(value)} のまま)`,
+    setFailure(
+      message === null
+        ? null
+        : {
+            message:
+              value === undefined
+                ? message
+                : `${message} (定義は前の値 ${formatValue(value)} のまま)`,
+            value: formatValue(value),
+          },
     )
     if (message === null) onChange(parseValue(param, text))
   }
   const hintId = `${id}-hint`
+  // 欄の外で値が変わった場合 (元に戻すなど) は, 打っている途中でなければ
+  // 欄の文字を定義の値に合わせる
+  const inputRef = useRef<HTMLInputElement>(null)
+  const text = formatValue(value)
+  const error = failure && failure.value === text ? failure.message : null
+  useEffect(() => {
+    const input = inputRef.current
+    if (input && document.activeElement !== input) input.value = text
+  }, [text])
   const hint = [
     param.description,
     param.minimum !== null ? `${param.minimum} 以上` : '',
@@ -121,9 +137,10 @@ function ParamField({
     field = (
       <>
         <input
+          ref={inputRef}
           id={id}
           list={listId}
-          defaultValue={formatValue(value)}
+          defaultValue={text}
           placeholder={param.default !== null ? formatValue(param.default) : ''}
           onChange={(event) => {
             // 候補から選んだ場合 (候補と同じ文字になった場合) はすぐに反映

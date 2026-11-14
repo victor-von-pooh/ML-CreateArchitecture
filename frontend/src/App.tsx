@@ -9,6 +9,7 @@ import { Inspector } from './features/editor/Inspector'
 import { Palette } from './features/editor/Palette'
 import { Toolbar } from './features/editor/Toolbar'
 import { addNode, emptySpec, type Spec, type UnitSpec } from './lib/graph'
+import { useHistory } from './lib/history'
 
 /** 書き換えている途中の値が落ち着いてから使う (確認の回数を抑える) */
 function useDebounced<T>(value: T, delay: number): T {
@@ -32,7 +33,10 @@ export function App() {
 /** 編集の画面の本体 (キャンバスの表示範囲を使うので ReactFlowProvider の中) */
 function Editor() {
   const units = useQuery({ queryKey: ['units'], queryFn: api.listUnits, staleTime: Infinity })
-  const [spec, setSpec] = useState<Spec>(() => emptySpec())
+  // 定義は元に戻す・やり直すができる値で持つ
+  const history = useHistory<Spec>(() => emptySpec())
+  const spec = history.value
+  const setSpec = history.set
   const [fileName, setFileName] = useState('model')
   // 保存した (か開いた) 時点の定義. 今の定義と比べて, 保存していない変更を判定
   const [saved, setSaved] = useState(() => JSON.stringify(emptySpec()))
@@ -75,6 +79,33 @@ function Editor() {
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
 
+  // Ctrl (Mac は Cmd) + Z で元に戻し, Shift も押すか Ctrl + Y でやり直す
+  // 文字の欄の中ではブラウザの標準の操作 (文字の取り消し) を使う
+  const { undo, redo } = history
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+      const key = event.key.toLowerCase()
+      if (key === 'z' && !event.shiftKey) undo()
+      else if ((key === 'z' && event.shiftKey) || key === 'y') redo()
+      else return
+      event.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [undo, redo])
+
+  // 戻した結果で無くなったノードは選んでいないものとする
+  const exists =
+    selected === null ||
+    selected in spec.nodes ||
+    selected in spec.inputs ||
+    (selected.startsWith('output:') &&
+      (selected.slice(7) in spec.outputs || selected.slice(7) in (spec.ui?.outputs ?? {})))
+  const current = exists ? selected : null
+
   // 部品はキャンバスの真ん中に置いて選択
   const add = (unit: UnitSpec) => {
     const next = addNode(spec, unit, center())
@@ -105,19 +136,21 @@ function Editor() {
           checking={check.isFetching || debounced !== spec}
           onChange={setSpec}
           onLoad={(name, loaded) => {
-            setSpec(loaded)
+            history.reset(loaded)
             setSaved(JSON.stringify(loaded))
             setFileName(name)
             setSelected(null)
           }}
           onSaved={(name, savedSpec) => {
             // 保存した定義の名前を今の定義にも反映 (保存の間の編集は残す)
-            setSpec((current) => ({ ...current, name: savedSpec.name }))
+            history.replace((current) => ({ ...current, name: savedSpec.name }))
             setFileName(name)
             setSaved(JSON.stringify(savedSpec))
           }}
           center={center}
           onSelect={setSelected}
+          onUndo={history.canUndo ? undo : undefined}
+          onRedo={history.canRedo ? redo : undefined}
         />
         <div className="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)_20rem]">
           <aside aria-label="部品の一覧" className="min-h-0 border-r border-line bg-surface">
@@ -128,7 +161,7 @@ function Editor() {
               spec={spec}
               units={unitMap}
               check={check.data}
-              selected={selected}
+              selected={current}
               onChange={setSpec}
               onSelect={setSelected}
             />
@@ -146,7 +179,7 @@ function Editor() {
               spec={spec}
               units={unitMap}
               check={check.data}
-              selected={selected}
+              selected={current}
               onChange={setSpec}
               onSelect={setSelected}
             />
