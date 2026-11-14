@@ -234,6 +234,11 @@
             "type": "boolean",
             "title": "Inferred"
           },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": false
+          },
           "nodes": {
             "additionalProperties": {
               "$ref": "#/components/schemas/NodeResult"

@@ -184,6 +184,11 @@ export interface components {
             /** Inferred */
             inferred: boolean;
             /**
+             * Ok
+             * @default false
+             */
+            ok: boolean;
+            /**
              * Nodes
              * @default {}
              */
