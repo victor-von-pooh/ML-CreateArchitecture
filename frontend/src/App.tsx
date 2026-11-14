@@ -122,7 +122,9 @@ function Editor() {
   // いる場合だけ (それ以外はブラウザの標準の操作)
   const onClipboardKey = useEffectEvent((key: string): boolean => {
     const node = current !== null ? spec.nodes[current] : undefined
-    if (key === 'c' && node) setClipboard(node)
+    // 文字を選んでいる場合の Ctrl+C は, その文字の写し (ブラウザの標準)
+    const text = !(window.getSelection()?.isCollapsed ?? true)
+    if (key === 'c' && node && !text) setClipboard(node)
     else if (key === 'v' && clipboard) paste(clipboard, center())
     else if (key === 'd' && node && current !== null) duplicate(current)
     else return false
@@ -146,7 +148,10 @@ function Editor() {
       const key = event.key.toLowerCase()
       if (key === 'z' && !event.shiftKey) undoSpec()
       else if ((key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey)) redoSpec()
-      else if (event.shiftKey || !onClipboardKey(key)) return
+      else if (event.shiftKey || !['c', 'v', 'd'].includes(key)) return
+      // 押し続けた場合の繰り返しでは, 写しを増やさない
+      else if (event.repeat) return
+      else if (!onClipboardKey(key)) return
       event.preventDefault()
     }
     window.addEventListener('keydown', onKey)

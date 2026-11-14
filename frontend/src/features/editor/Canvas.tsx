@@ -54,7 +54,10 @@ export function Canvas({
   )
   // 選んだ線 (Delete で消せるように, 定義とは別に保持)
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null)
-  const edges = useMemo(() => flowEdges(spec, units, selectedEdge), [spec, units, selectedEdge])
+  // ノードを選んだら (貼り付けなど), 線の選択は外れたものとする (続けての
+  // Delete で線まで消さないため)
+  const activeEdge = selected === null ? selectedEdge : null
+  const edges = useMemo(() => flowEdges(spec, units, activeEdge), [spec, units, activeEdge])
   const { theme } = useTheme()
 
   // ノードの移動, 選択, 削除を定義に反映
