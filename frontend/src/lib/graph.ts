@@ -105,7 +105,8 @@ export function nodeInputs(node: NodeDef, unit: UnitSpec | undefined): Record<st
   const inputs = node.inputs
   if (inputs === undefined) return {}
   if (typeof inputs === 'string') {
-    // 省略形は必須の口がちょうど 1 つの部品だけ (ML-ModelControl と同じ規則)
+    // 省略形は, 必須の口がちょうど 1 つの部品はその口, 必須の口が無く可変の
+    // 数の口だけの部品 (op.Add など) はその口 (ML-ModelControl と同じ規則)
     const required = (unit?.inputs ?? []).filter((port) => !port.optional && !port.variadic)
     const port = required.length === 1 ? required[0]!.name : (unit?.inputs[0]?.name ?? 'input')
     return { [port]: [inputs] }
