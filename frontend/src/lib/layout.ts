@@ -1,7 +1,7 @@
 import { specWires, type Spec, type Ui, type UnitSpec } from './graph'
 
 // 段 (つながりの深さ) の間の横の間隔と, 同じ段の中の縦の間隔
-const COLUMN = 300
+const COLUMN = 260
 const GAP = 40
 
 // 1 行の段の数の上限 (超える場合は折り返し, 行の段の数を揃える) と, 行の間
