@@ -352,18 +352,24 @@ export function Toolbar({
         onClick={onArrange}
         title="つながりの順に左から右へ並べ直す (元に戻すで戻せる)"
       >
-        整列
+        <span className="max-2xl:sr-only">整列</span>
       </Button>
       <span className="mx-1 h-6 w-px bg-line" aria-hidden />
-      <Button variant="secondary" icon={LogIn} onClick={addInput}>
-        入力
+      <Button variant="secondary" icon={LogIn} onClick={addInput} title="入力を加える">
+        <span className="max-2xl:sr-only">入力</span>
       </Button>
-      <Button variant="secondary" icon={LogOut} onClick={addOutput}>
-        出力
+      <Button variant="secondary" icon={LogOut} onClick={addOutput} title="出力を加える">
+        <span className="max-2xl:sr-only">出力</span>
       </Button>
       <span className="mx-1 h-6 w-px bg-line" aria-hidden />
-      <Button variant="ghost" icon={FileText} onClick={() => setDialog('yaml')} data-return="yaml">
-        YAML
+      <Button
+        variant="ghost"
+        icon={FileText}
+        onClick={() => setDialog('yaml')}
+        data-return="yaml"
+        title="保存する形 (YAML) を見る"
+      >
+        <span className="max-2xl:sr-only">YAML</span>
       </Button>
       <Button
         variant="ghost"
@@ -373,8 +379,9 @@ export function Toolbar({
           setDialog('python')
         }}
         data-return="python"
+        title="同じ計算をする Python のコードを見る"
       >
-        Python
+        <span className="max-2xl:sr-only">Python</span>
       </Button>
       <div className="ml-auto flex items-center gap-3 text-xs" aria-live="polite">
         {checking && <span className="text-ink-3">確認中…</span>}

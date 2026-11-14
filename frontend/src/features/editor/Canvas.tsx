@@ -27,6 +27,9 @@ import { InputNode, OutputNode, UnitNode } from './nodes'
 const nodeTypes = { unit: UnitNode, modelInput: InputNode, modelOutput: OutputNode }
 
 /** モデルの定義を編集するキャンバス */
+// 最初に表示の範囲を合わせるときの設定 (描くたびに作らない定数)
+const FIT_OPTIONS = { maxZoom: 1, padding: 0.1 }
+
 export function Canvas({
   spec,
   units,
@@ -129,13 +132,17 @@ export function Canvas({
       }}
       deleteKeyCode={['Backspace', 'Delete']}
       fitView
+      fitViewOptions={FIT_OPTIONS}
+      // 長いモデルの全体も見られるように, 小さくする限度を下げる
+      minZoom={0.2}
       colorMode={theme}
       proOptions={{ hideAttribution: true }}
       aria-label="モデルのキャンバス"
     >
       <Background gap={20} />
       <Controls showInteractive={false} />
-      <MiniMap pannable zoomable />
+      {/* 狭い画面ではノードを隠すので出さない */}
+      <MiniMap pannable zoomable className="max-2xl:!hidden" />
     </ReactFlow>
   )
 }

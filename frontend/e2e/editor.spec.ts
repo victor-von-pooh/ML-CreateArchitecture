@@ -149,15 +149,20 @@ test('整列で, つながりの順に左から右へ並べ直し, 元に戻せ�
   await page.goto('/')
   await page.getByRole('button', { name: '開く' }).click()
   await page.getByRole('button', { name: /^residual_mlp/ }).click()
-  const left = async (id: string) => (await page.locator(`[data-id="${id}"]`).boundingBox())!.x
+  const box = async (id: string) => (await page.locator(`[data-id="${id}"]`).boundingBox())!
+  // 同じ行なら左にあるか, 折り返した場合は上の行にあるか
+  const before = async (a: string, b: string) => {
+    const [first, second] = [await box(a), await box(b)]
+    return Math.abs(first.y - second.y) < 20 ? first.x < second.x : first.y < second.y
+  }
 
-  // 並べ直すと, 入力, つなぎ先の順に右へ
+  // 並べ直すと, 入力, つなぎ先の順に右へ (長い場合は折り返して下の行へ)
   await page.getByRole('button', { name: '整列' }).click()
   await page.waitForTimeout(400)
-  expect(await left('x')).toBeLessThan(await left('fc1'))
-  expect(await left('fc1')).toBeLessThan(await left('act'))
-  expect(await left('act')).toBeLessThan(await left('add'))
-  expect(await left('add')).toBeLessThan(await left('head'))
+  expect(await before('x', 'fc1')).toBe(true)
+  expect(await before('fc1', 'act')).toBe(true)
+  expect(await before('act', 'add')).toBe(true)
+  expect(await before('add', 'head')).toBe(true)
   await page.screenshot({ path: 'test-results/arranged.png' })
 
   // 元に戻すで, 並べ直す前の位置
@@ -229,6 +234,17 @@ test('出力を選んだ後も欄が残らず, 形の推定の失敗を誤りに
   await page.waitForTimeout(500)
   expect(await (await request.get('/api/models/e2e_model')).text()).toBe(before)
   await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
+})
+
+test('狭い画面では上の操作をアイコンにし, ミニマップを出さない', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  // 文字は読み上げの名前として残り, 上の操作は 1 行 (高さが 1 行分)
+  for (const name of ['整列', '入力', '出力', 'YAML', 'Python']) {
+    await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
+  }
+  expect((await page.locator('header').boundingBox())!.height).toBeLessThan(60)
+  await expect(page.locator('.react-flow__minimap')).toBeHidden()
 })
 
 test('保存した定義を開くの一覧から消せる', async ({ page }) => {
