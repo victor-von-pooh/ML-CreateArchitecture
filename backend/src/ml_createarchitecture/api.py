@@ -7,6 +7,8 @@ from ml_modelcontrol import (
     dump_spec,
     export_python,
     infer,
+    list_examples,
+    load_example,
     load_spec,
     validate,
 )
@@ -258,6 +260,56 @@ def export_spec(body: ExportBody) -> ExportResult:
     result = ExportResult(code=code)
 
     return result
+
+
+class ExampleSummary(BaseModel):
+    # 例の名前と説明
+    name: str
+    description: str
+
+
+@router.get("/examples")
+def list_example_models() -> list[ExampleSummary]:
+    """
+    ML-ModelControl に同梱した例のモデルの一覧を返す関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    examples: list[ExampleSummary]
+        例の名前と説明
+    """
+    examples = [ExampleSummary(**item) for item in list_examples()]
+
+    return examples
+
+
+@router.get("/examples/{name}")
+def get_example(name: str) -> ModelFile:
+    """
+    例のモデルの定義を読み込む関数
+
+    Parameters
+    ----------
+    name: str
+        例の名前
+
+    Returns
+    ----------
+    model: ModelFile
+        例の名前と定義
+    """
+    # 一覧に無い名前は 404
+    try:
+        spec = load_example(name)
+    except KeyError as error:
+        raise HTTPException(404, f"例 {name} はありません") from error
+    model = ModelFile(name=name, spec=spec)
+
+    return model
 
 
 @router.get("/models")

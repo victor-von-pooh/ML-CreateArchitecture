@@ -93,6 +93,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/examples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Example Models
+         * @description ML-ModelControl に同梱した例のモデルの一覧を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     None
+         *
+         *     Returns
+         *     ----------
+         *     examples: list[ExampleSummary]
+         *         例の名前と説明
+         */
+        get: operations["list_example_models"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/examples/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Example
+         * @description 例のモデルの定義を読み込む関数
+         *
+         *     Parameters
+         *     ----------
+         *     name: str
+         *         例の名前
+         *
+         *     Returns
+         *     ----------
+         *     model: ModelFile
+         *         例の名前と定義
+         */
+        get: operations["get_example"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/models": {
         parameters: {
             query?: never;
@@ -216,6 +275,13 @@ export interface components {
              * @default
              */
             yaml: string;
+        };
+        /** ExampleSummary */
+        ExampleSummary: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
         };
         /** ExportBody */
         ExportBody: {
@@ -401,6 +467,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_example_models: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExampleSummary"][];
+                };
+            };
+        };
+    };
+    get_example: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelFile"];
                 };
             };
             /** @description Validation Error */
