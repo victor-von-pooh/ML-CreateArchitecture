@@ -342,12 +342,19 @@ function NameField({
 }) {
   const id = useId()
   const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const commit = (value: string) => {
     if (value === name) return setError(null)
     if (!isValidName(value)) return setError('英字か _ で始まり, 英数字と _ だけにしてください')
     if (taken(value)) return setError('同じ名前が既にあります')
     setError(null)
     onRename(value)
+    // 名前を変えると欄を作り直すので, 新しい名前の欄にフォーカスを戻す
+    if (document.activeElement === inputRef.current) {
+      window.requestAnimationFrame(() =>
+        document.querySelector<HTMLInputElement>('[data-name-field]')?.focus(),
+      )
+    }
   }
   return (
     <div>
@@ -355,6 +362,8 @@ function NameField({
         名前
       </label>
       <input
+        ref={inputRef}
+        data-name-field
         id={id}
         key={name}
         defaultValue={name}

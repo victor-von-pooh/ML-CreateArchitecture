@@ -323,3 +323,29 @@ test('大きすぎて形を推定しない場合は, 上の欄で知らせる', 
   await page.getByLabel('shape').press('Enter')
   await expect(page.locator('header')).not.toContainText('形は未推定', { timeout: 20_000 })
 })
+
+test('キーボードだけで部品を置き, 名前を変えて戻し, Ctrl+S で保存する', async ({ page }) => {
+  await page.goto('/')
+
+  // 検索欄の Enter で一番上の部品を置き, 詳細の最初の欄に移る
+  await page.getByPlaceholder('部品を探す').fill('nn.Linear')
+  await page.getByPlaceholder('部品を探す').press('Enter')
+  await expect(page.locator('[data-id="linear1"]')).toBeVisible()
+  await expect(page.getByLabel('名前', { exact: true })).toBeFocused()
+
+  // 名前を Enter で変えても名前の欄に残り, 元に戻すと元の名前を選んだまま
+  await page.getByLabel('名前', { exact: true }).fill('fc')
+  await page.getByLabel('名前', { exact: true }).press('Enter')
+  await expect(page.getByLabel('名前', { exact: true })).toBeFocused()
+  await expect(page.getByLabel('名前', { exact: true })).toHaveValue('fc')
+  await page.locator('.react-flow__pane').click()
+  await page.locator('[data-id="fc"]').click()
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(page.getByLabel('名前', { exact: true })).toHaveValue('linear1')
+
+  // Ctrl+S で保存する (保存していない変更の印が消える)
+  await page.getByLabel('保存する名前').fill('keyboard_model')
+  await page.locator('.react-flow__pane').click()
+  await page.keyboard.press('ControlOrMeta+s')
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible()
+})

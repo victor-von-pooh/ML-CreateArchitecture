@@ -62,9 +62,19 @@ export function Palette({ units, onAdd }: { units: UnitSpec[]; onAdd: (unit: Uni
           id={searchId}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
+          // Enter で, 絞り込んだ一番上の使える部品を置く (キーボードだけで置くため)
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' || event.nativeEvent.isComposing || !query.trim()) return
+            const first = groups.flatMap(([, items]) => items).find((unit) => unit.available)
+            if (first) onAdd(first)
+          }}
+          aria-describedby={`${searchId}-hint`}
           placeholder="部品を探す (例: conv, gcn)"
           className="h-8 w-full rounded-md border border-line bg-bg pr-2 pl-7 text-xs"
         />
+        <p id={`${searchId}-hint`} className="sr-only">
+          Enter で一番上の部品を置きます
+        </p>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
         {groups.map(([source, items]) => {

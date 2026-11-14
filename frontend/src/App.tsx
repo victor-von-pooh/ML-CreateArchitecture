@@ -121,16 +121,30 @@ function Editor() {
 
   // 元に戻す・やり直すで選んでいるものが無くなる場合は, 選択を外す
   const { undo, redo, previous, next: following } = history
+  // 名前の変更を戻す (やり直す) 場合は, 選択も元の (新しい) 名前に移す
+  const reselect = useCallback(
+    (target: Spec) => {
+      if (selected === null || has(target, selected)) return
+      const gone = Object.keys(target.nodes).filter((name) => !(name in spec.nodes))
+      const added = Object.keys(spec.nodes).filter((name) => !(name in target.nodes))
+      if (gone.length === 1 && added.length === 1 && added[0] === selected) {
+        setSelected(gone[0]!)
+      } else {
+        setSelected(null)
+      }
+    },
+    [selected, spec],
+  )
   const undoSpec = useCallback(() => {
     if (!previous) return
-    if (selected !== null && !has(previous, selected)) setSelected(null)
+    reselect(previous)
     undo()
-  }, [previous, selected, undo])
+  }, [previous, reselect, undo])
   const redoSpec = useCallback(() => {
     if (!following) return
-    if (selected !== null && !has(following, selected)) setSelected(null)
+    reselect(following)
     redo()
-  }, [following, selected, redo])
+  }, [following, reselect, redo])
 
   // 写したノード (部品, 引数, 呼び出しの設定, 説明)
   const [clipboard, setClipboard] = useState<NodeDef | null>(null)
@@ -178,6 +192,12 @@ function Editor() {
       }
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return
       const key = event.key.toLowerCase()
+      // Ctrl+S で保存 (ブラウザのページの保存の代わり)
+      if (key === 's' && !event.shiftKey) {
+        event.preventDefault()
+        document.querySelector<HTMLButtonElement>('[data-save]:not(:disabled)')?.click()
+        return
+      }
       if (key === 'z' && !event.shiftKey) undoSpec()
       else if ((key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey)) redoSpec()
       else if (event.shiftKey || !['c', 'v', 'd'].includes(key)) return
@@ -202,6 +222,14 @@ function Editor() {
     const name = Object.keys(next.nodes).find((key) => !(key in spec.nodes)) ?? null
     setSpec(next)
     setSelected(name)
+    // キーボードで続けて操作できるように, 詳細の最初の欄に移る
+    window.requestAnimationFrame(() =>
+      document
+        .querySelector<HTMLElement>(
+          'aside[aria-label="詳細"] select, aside[aria-label="詳細"] input',
+        )
+        ?.focus(),
+    )
   }
 
   if (units.isPending) return <Spinner label="部品の一覧を読み込み中" />
