@@ -178,7 +178,7 @@ function PortRefs({
         >
           <option value="">(未接続)</option>
           {refs[0] && !options.some((option) => option.value === refs[0]) && (
-            <option value={refs[0]}>{refs[0]} (見つかりません)</option>
+            <option value={refs[0]}>{refs[0]} (候補に無い書き方)</option>
           )}
           {options.map((option) => (
             <option key={option.value} value={option.value}>
@@ -202,6 +202,7 @@ function PortRefs({
                 type="button"
                 onClick={() => onChange(refs.filter((_, position) => position !== index))}
                 aria-label={`${port} の ${index + 1} 番目のつなぎ先 ${ref} を外す`}
+                title="外す"
                 className="rounded px-1 text-ink-3 hover:bg-surface-2 hover:text-critical-text"
               >
                 <Trash2 className="size-3" aria-hidden />
@@ -212,6 +213,7 @@ function PortRefs({
         <select
           id={id}
           value=""
+          aria-label={`${port} につなぎ先を加える`}
           onChange={(event) => event.target.value && onChange([...refs, event.target.value])}
           className="h-7 w-full rounded-md border border-line bg-bg px-1 font-mono text-xs"
         >
@@ -288,7 +290,8 @@ export function Inspector({
       <div className="space-y-3 p-3 text-xs">
         <p className="text-ink-3">
           ノードを選ぶと, 引数と推定した出力の形を確かめて編集できます. 左の一覧から部品を加え,
-          口から口へドラッグしてつなぎます. 線とノードは選んで Delete で消せます.
+          口から口へドラッグするか, ノードの「入力のつなぎ先」から選んでつなぎます.
+          線とノードは選んで Delete で消せます.
         </p>
         <dl className="grid grid-cols-2 gap-1">
           <dt className="text-ink-3">パラメータ数</dt>
@@ -331,11 +334,9 @@ export function Inspector({
         <p className="text-xs text-ink-3">
           モデルの出力. 出力が 1 つならその値, 2 つ以上なら名前ごとの辞書を返します.
         </p>
-        <p className="font-mono text-xs">
-          {name in spec.outputs
-            ? `${spec.outputs[name]} → ${shape ? formatShape(shape) : '?'}`
-            : '未接続'}
-        </p>
+        {name in spec.outputs && (
+          <p className="font-mono text-xs">形: {shape ? formatShape(shape) : '?'}</p>
+        )}
         <PortRefs
           key={name}
           port="つなぎ先"
