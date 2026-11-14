@@ -63,3 +63,41 @@ test('線を選んで Delete で外すと, 誤りが出る', async ({ page }) =>
   await expect(page.locator('.react-flow__edge')).toHaveCount(1)
   await expect(page.locator('header')).toContainText('誤り 1 件', { timeout: 20_000 })
 })
+
+test('合わない値はその場で理由を出し, ダイアログを閉じると元の所に戻る', async ({ page }) => {
+  await page.goto('/')
+
+  // 整数の引数に文字, 範囲の外の数を入れると理由が出て, 直すと消える
+  await page.getByPlaceholder('部品を探す').fill('nn.Linear')
+  await page
+    .getByRole('button', { name: /^nn\.Linear/ })
+    .first()
+    .click()
+  const field = page.getByLabel('in_features')
+  await field.fill('abc')
+  await field.press('Enter')
+  await expect(page.getByText('整数を入れてください', { exact: true })).toBeVisible()
+  await expect(field).toHaveAttribute('aria-invalid', 'true')
+  await field.fill('0')
+  await field.press('Enter')
+  await expect(page.getByText('1 以上にしてください', { exact: true })).toBeVisible()
+  await field.fill('8')
+  await field.press('Enter')
+  await expect(field).toHaveAttribute('aria-invalid', 'false')
+
+  // ダイアログを閉じるボタンで閉じても, 定義を開いて上の操作が作り直されても,
+  // 開いたボタンに戻る
+  const open = page.getByRole('button', { name: '開く' })
+  await open.click()
+  await page.getByRole('dialog').getByRole('button', { name: '閉じる' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(open).toBeFocused()
+  await page.getByRole('button', { name: 'YAML' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '閉じる' }).click()
+  await expect(page.getByRole('button', { name: 'YAML' })).toBeFocused()
+  page.once('dialog', (dialog) => void dialog.accept())
+  await open.click()
+  await page.getByRole('button', { name: /^e2e_model/ }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '開く' })).toBeFocused()
+})
