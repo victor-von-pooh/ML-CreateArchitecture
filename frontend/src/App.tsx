@@ -209,6 +209,8 @@ function Editor() {
       if (draft === null) clearDraft()
       return
     }
+    // 前の下書きを戻すかを聞いている間は, 前の下書きを上書きしない
+    if (draft !== null) return
     const timer = window.setTimeout(
       () => writeDraft({ spec: whole, fileName, ownFile, time: new Date().toISOString() }),
       1000,
@@ -624,6 +626,7 @@ function Editor() {
           }}
           onSaved={(name, savedSpec) => {
             clearDraft()
+            if (draft?.tab === tabId()) setDraft(null)
             setSavedNotice(`${name} に保存しました`)
             window.setTimeout(() => setSavedNotice(''), 3000)
             setOwnFile(name)
@@ -646,8 +649,8 @@ function Editor() {
           onRedo={following ? redoSpec : undefined}
         />
         {draft && (
-          <div
-            role="status"
+          <section
+            aria-label="保存していない定義の下書き"
             className="flex flex-wrap items-center gap-2 border-b border-line bg-accent-soft px-3 py-1.5 text-xs"
           >
             <span>
@@ -657,8 +660,26 @@ function Editor() {
             <button
               type="button"
               onClick={() => {
-                const placed = placeMissing(draft.spec, unitsFor(draft.spec))
+                if (
+                  dirty &&
+                  !window.confirm('保存していない今の変更を捨てて, 下書きを戻しますか?')
+                ) {
+                  return
+                }
+                let placed: Spec
+                try {
+                  placed = placeMissing(draft.spec, unitsFor(draft.spec))
+                } catch {
+                  clearDraft(draft.tab)
+                  setDraft(null)
+                  return
+                }
+                // 戻した下書きは, この画面のものとして書き直す
+                if (draft.tab !== tabId()) clearDraft(draft.tab)
                 history.reset(placed)
+                window.requestAnimationFrame(
+                  () => void flow.fitView({ duration: 200, maxZoom: 1, padding: 0.1 }),
+                )
                 setFileName(draft.fileName)
                 setOwnFile(draft.ownFile)
                 // 保存していない変更として戻す
@@ -674,14 +695,14 @@ function Editor() {
             <button
               type="button"
               onClick={() => {
-                clearDraft()
+                clearDraft(draft.tab)
                 setDraft(null)
               }}
               className="rounded px-2 py-0.5 text-ink-2 hover:bg-surface-2"
             >
               捨てる
             </button>
-          </div>
+          </section>
         )}
         <div
           className="grid min-h-0 flex-1"
@@ -886,50 +907,98 @@ function Editor() {
   )
 }
 
-// 保存していない定義の下書きを置くブラウザの保存場所の名前
-const DRAFT_KEY = 'ml-createarchitecture:draft'
+// 保存していない定義の下書きを置くブラウザの保存場所の名前 (画面ごとの下書きの辞書)
+const DRAFT_KEY = 'ml-createarchitecture:drafts'
+// 画面 (タブ) ごとの印を置く場所 (読み込み直しても同じタブなら同じ印)
+const TAB_KEY = 'ml-createarchitecture:tab'
+// 下書きを戻せる期間 (それより古いものは出さずに消す)
+const DRAFT_DAYS = 14
 
-/** 保存していない定義の下書き */
+/** 保存していない定義の下書き (どの画面のものか) */
 interface Draft {
   spec: Spec
   fileName: string
   ownFile: string | null
   time: string
+  tab: string
 }
 
-/** 下書きを読む (無いか読めない場合は null) */
+/** この画面 (タブ) の印 */
+function tabId(): string {
+  try {
+    let id = window.sessionStorage.getItem(TAB_KEY)
+    if (!id) {
+      id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      window.sessionStorage.setItem(TAB_KEY, id)
+    }
+    return id
+  } catch {
+    return 'tab'
+  }
+}
+
+/** 下書きの辞書を読む (読めない場合は空. 形の合わない下書きと古い下書きは除く) */
+function readDrafts(): Record<string, Draft> {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(DRAFT_KEY) ?? '{}') as Record<
+      string,
+      Partial<Draft>
+    >
+    const limit = Date.now() - DRAFT_DAYS * 24 * 60 * 60 * 1000
+    const drafts: Record<string, Draft> = {}
+    for (const [tab, item] of Object.entries(value ?? {})) {
+      const spec = item?.spec as Partial<Spec> | undefined
+      const time = Date.parse(String(item?.time))
+      if (
+        spec &&
+        typeof spec === 'object' &&
+        spec.nodes &&
+        typeof spec.nodes === 'object' &&
+        spec.inputs &&
+        typeof spec.inputs === 'object' &&
+        typeof item.fileName === 'string' &&
+        (item.ownFile === null || typeof item.ownFile === 'string') &&
+        Number.isFinite(time) &&
+        time > limit
+      ) {
+        drafts[tab] = { ...(item as Draft), tab }
+      }
+    }
+    return drafts
+  } catch {
+    return {}
+  }
+}
+
+/** 戻すかを聞く下書き (この画面のもの. 無ければ他の画面の一番新しいもの) */
 function readDraft(): Draft | null {
+  const drafts = readDrafts()
+  const own = drafts[tabId()]
+  if (own) return own
+  const others = Object.values(drafts).sort((a, b) => b.time.localeCompare(a.time))
+  return others[0] ?? null
+}
+
+/** この画面の下書きを書く (書けない場合は古い下書きを残さないように消す) */
+function writeDraft(draft: Omit<Draft, 'tab'>): void {
+  const tab = tabId()
   try {
-    const text = window.localStorage.getItem(DRAFT_KEY)
-    if (!text) return null
-    const value = JSON.parse(text) as Partial<Draft>
-    if (!value.spec || typeof value.fileName !== 'string' || typeof value.time !== 'string') {
-      return null
-    }
-    return {
-      spec: value.spec,
-      fileName: value.fileName,
-      ownFile: value.ownFile ?? null,
-      time: value.time,
-    }
+    window.localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({ ...readDrafts(), [tab]: { ...draft, tab } }),
+    )
   } catch {
-    return null
+    clearDraft(tab)
   }
 }
 
-/** 下書きを書く (書けない場合は何もしない) */
-function writeDraft(draft: Draft): void {
+/** 下書きを消す (指定しなければこの画面のもの) */
+function clearDraft(tab = tabId()): void {
   try {
-    window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
-  } catch {
-    // 保存場所が使えない (容量やプライベートの窓) 場合は下書きを残さない
-  }
-}
-
-/** 下書きを消す */
-function clearDraft(): void {
-  try {
-    window.localStorage.removeItem(DRAFT_KEY)
+    const drafts = readDrafts()
+    if (!(tab in drafts)) return
+    delete drafts[tab]
+    window.localStorage.setItem(DRAFT_KEY, JSON.stringify(drafts))
   } catch {
     // 保存場所が使えない場合は何もしない
   }
