@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
-import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
 import { api } from './api/client'
 import { ErrorBox, Spinner } from './components/ui'
@@ -21,6 +21,7 @@ import {
   subgraphView,
   makesCycle,
   subgraphOrigin,
+  refreshSubgraph,
   usageShapes,
   withInputShapes,
   subgraphCheckTarget,
@@ -59,6 +60,11 @@ function Editor() {
   // 保存する定義 (whole) と, 画面で編集している定義 (spec. 部分モデルを
   // 編集している間はその部分モデル)
   const whole = history.value
+  // 最新の定義 (読み込みを待つ操作が, 待った後の定義を使うため)
+  const latest = useRef(whole)
+  useEffect(() => {
+    latest.current = whole
+  }, [whole])
   // 編集している部分モデルの並び (入れ子で開いた順. 空なら本体)
   const [editPath, setEditPath] = useState<string[]>([])
   // 元に戻すなどで部分モデルが無くなった場合は, あるところまでに戻す
@@ -388,20 +394,18 @@ function Editor() {
         origin.kind === 'model'
           ? await api.getModel(origin.name)
           : await api.getExample(origin.name)
-      const source = model.spec as unknown as Spec
-      const next = embedSubgraph(whole, origin.name, source, { origin, replace: name })
-      if (JSON.stringify(next.spec) === JSON.stringify(whole)) {
-        notify(`sub.${name} は ${origin.name} と同じ中身です`)
+      if (origin.kind === 'model' && origin.name === ownFile) {
+        notify(`${origin.name} は今開いている定義なので写し直せません`)
         return
       }
-      setHistory((current) => {
-        try {
-          return embedSubgraph(current, origin.name, source, { origin, replace: name }).spec
-        } catch {
-          return current
-        }
-      })
-      notify(`sub.${name} を ${origin.name} の今の中身で写し直しました (元に戻すで戻せます)`)
+      // 読み込みの間に定義が変わっても, 今の定義に対して行う
+      const outcome = refreshSubgraph(latest.current, name, model.spec as unknown as Spec, origin)
+      if (!outcome) notify(`sub.${name} はもう無いので写し直しませんでした`)
+      else if (!outcome.changed) notify(`sub.${name} は ${origin.name} と同じ中身です`)
+      else {
+        setHistory(outcome.spec)
+        notify(`sub.${name} を ${origin.name} の今の中身で写し直しました (元に戻すで戻せます)`)
+      }
     } catch (error) {
       notify(
         `sub.${name} を写し直せません: ${error instanceof Error ? error.message : String(error)}`,

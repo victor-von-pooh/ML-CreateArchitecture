@@ -80,6 +80,14 @@ export interface SubgraphOrigin {
   name: string
 }
 
+/** ui の写した元を除いた部分モデル (中身の比較に使う) */
+function withoutSource(sub: Subgraph | undefined): Subgraph | undefined {
+  if (!sub?.ui || !('source' in sub.ui)) return sub
+  const { source: _source, ...ui } = sub.ui
+  void _source
+  return { ...sub, ui }
+}
+
 /** 部分モデルを写した元 (書いていない, 形の違うものは undefined) */
 export function subgraphOrigin(sub: Subgraph | undefined): SubgraphOrigin | undefined {
   const value = sub?.ui?.source as Partial<SubgraphOrigin> | undefined
@@ -222,10 +230,14 @@ export function embedSubgraph(
   const subgraphs = { ...(spec.subgraphs ?? {}) }
   const { format_version: _version, subgraphs: nested = {}, ...body } = structuredClone(source)
   void _version
+  // 置き換える部分モデルの前の中身は, 写す定義の中の部分モデルとまとめない
+  if (options.replace) delete subgraphs[options.replace]
 
   // 使える名前 (同じ中身のものと同じ名前か, 空いていてクラスの名前も重ならない名前)
   const fits = (candidate: string, value: Subgraph) => {
-    if (candidate in subgraphs) return sameValue(subgraphs[candidate], value)
+    if (candidate === options.replace) return false
+    if (candidate in subgraphs)
+      return sameValue(withoutSource(subgraphs[candidate]), withoutSource(value))
     const classes = new Set(['Model', ...Object.keys(subgraphs).map(className)])
     return !classes.has(className(candidate))
   }
@@ -251,7 +263,93 @@ export function embedSubgraph(
     : renamed
   const used = options.replace ?? pick(subgraphStem(name), own)
   subgraphs[used] = own
+  // 写した部分モデルが (中の部分モデルを通って) 自分を使う場合は写さない
+  if (reachableSubgraphs(subgraphs, directSubgraphs(own)).has(used)) {
+    throw new Error(
+      `${name} の中で ${SUBGRAPH_PREFIX}${used} を使っているので, 同じ名前で写せません (互いに使い合うため)`,
+    )
+  }
   return { spec: { ...spec, subgraphs }, name: used }
+}
+
+/** 位置などの ui (入力, ノード, 出力の位置) を除いた部分モデル (中身の比較に使う) */
+function withoutLayout(sub: Subgraph | undefined): unknown {
+  if (!sub) return sub
+  const strip = <T extends { ui?: unknown }>(items: Record<string, T> | undefined) =>
+    Object.fromEntries(
+      Object.entries(items ?? {}).map(([key, item]) => {
+        const { ui: _ui, ...rest } = item ?? ({} as T)
+        void _ui
+        return [key, rest]
+      }),
+    )
+  const { ui: _ui, ...rest } = sub
+  void _ui
+  return { ...rest, inputs: strip(sub.inputs), nodes: strip(sub.nodes) }
+}
+
+/** 前の部分モデルの位置 (同じ名前の入力, ノード, 出力) を写し直した部分モデルに移す */
+function carryLayout(before: Subgraph | undefined, after: Subgraph): Subgraph {
+  if (!before) return after
+  const keep = <T extends { ui?: Ui }>(
+    items: Record<string, T> | undefined,
+    old: Record<string, T> | undefined,
+  ) =>
+    Object.fromEntries(
+      Object.entries(items ?? {}).map(([key, item]) => [
+        key,
+        old?.[key]?.ui && !item?.ui ? { ...item, ui: old[key]!.ui } : item,
+      ]),
+    ) as Record<string, T>
+  return {
+    ...after,
+    inputs: keep(after.inputs, before.inputs),
+    nodes: keep(after.nodes, before.nodes),
+    ui: { ...after.ui, outputs: { ...before.ui?.outputs, ...after.ui?.outputs } },
+  }
+}
+
+/**
+ * 部分モデル name を, 写した元の定義の今の中身で置き換えた定義
+ *
+ * 名前はそのまま. 前の中身の位置は同じ名前のものに移す. 前の中身だけが
+ * 使っていた部分モデルで, どこからも使われなくなったものは消す. 部分モデルが
+ * 無いか写した元が違う場合 (読み込みの間に消した, 別の定義を開いた) は
+ * null, 中身が同じなら changed が false
+ */
+export function refreshSubgraph(
+  spec: Spec,
+  name: string,
+  source: Spec,
+  origin: SubgraphOrigin,
+): { spec: Spec; changed: boolean } | null {
+  const before = spec.subgraphs?.[name]
+  const current = subgraphOrigin(before)
+  if (!before || current?.kind !== origin.kind || current.name !== origin.name) return null
+  const embedded = embedSubgraph(spec, origin.name, source, { origin, replace: name })
+  const subgraphs = { ...embedded.spec.subgraphs }
+  subgraphs[name] = carryLayout(before, subgraphs[name]!)
+
+  // 前の中身だけが使っていて, 使われなくなった部分モデルを消す
+  const candidates = reachableSubgraphs(spec.subgraphs, directSubgraphs(before))
+  candidates.delete(name)
+  const roots = [
+    ...directSubgraphs(spec),
+    ...Object.entries(subgraphs)
+      .filter(([key]) => !candidates.has(key))
+      .flatMap(([, sub]) => directSubgraphs(sub)),
+  ]
+  const reached = reachableSubgraphs(subgraphs, roots)
+  for (const key of candidates) if (!reached.has(key)) delete subgraphs[key]
+
+  const next = { ...spec, subgraphs }
+  const changed =
+    !sameValue(withoutLayout(before), withoutLayout(subgraphs[name])) ||
+    !sameValue(Object.keys(spec.subgraphs ?? {}).sort(), Object.keys(subgraphs).sort()) ||
+    Object.keys(subgraphs).some(
+      (key) => key !== name && !sameValue(spec.subgraphs?.[key], subgraphs[key]),
+    )
+  return { spec: changed ? next : spec, changed }
 }
 
 /**
