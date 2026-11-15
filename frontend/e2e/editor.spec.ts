@@ -751,9 +751,14 @@ test('保存していない定義は, 読み込み直した後に下書きから
   await page.reload()
   await expect(page.locator('[data-id="relu1"]')).toHaveCount(0)
   await expect(page.getByRole('region', { name: '保存していない定義の下書き' })).toBeVisible()
+  // 下書きには, まだ保存していない保存する名前も残る
+  await expect(page.getByRole('region', { name: '保存していない定義の下書き' })).toContainText(
+    'e2e_draft',
+  )
   await page.getByRole('button', { name: '下書きを開く' }).click()
   await expect(page.locator('[data-id="relu1"]')).toBeVisible()
   await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
+  await expect(page.getByLabel('保存する名前')).toHaveValue('e2e_draft')
 
   // 捨てると次は聞かない
   await page.waitForTimeout(1500)

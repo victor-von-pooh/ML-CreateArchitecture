@@ -13,6 +13,8 @@ const DRAFT_DAYS = 14
 export interface Draft {
   spec: Spec
   fileName: string
+  /** 保存する名前の欄に打った, まだ保存していない名前 (打っていなければ無し) */
+  saveName?: string
   ownFile: string | null
   time: string
   tab: string
@@ -53,6 +55,7 @@ function readDrafts(): Record<string, Draft> {
         typeof spec.inputs === 'object' &&
         typeof item.fileName === 'string' &&
         (item.ownFile === null || typeof item.ownFile === 'string') &&
+        (item.saveName === undefined || typeof item.saveName === 'string') &&
         Number.isFinite(time) &&
         time > limit
       ) {

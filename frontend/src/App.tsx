@@ -114,6 +114,10 @@ function Editor() {
   const [saved, setSaved] = useState(() => JSON.stringify(emptySpec()))
   // 前に開いていた画面の, 保存していない定義の下書き (戻すか捨てるかを聞く)
   const [draft, setDraft] = useState<Draft | null>(readDraft)
+  // 保存する名前の欄に打った, まだ保存していない名前 (下書きに残す. 開く,
+  // 新規, 保存で消す) と, 下書きから戻した回数 (名前の欄を作り直すため)
+  const [typedName, setTypedName] = useState<string | null>(null)
+  const [restored, setRestored] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
   const flow = useReactFlow()
 
@@ -222,11 +226,18 @@ function Editor() {
     // 前の下書きを戻すかを聞いている間は, 前の下書きを上書きしない
     if (draft !== null) return
     const timer = window.setTimeout(
-      () => writeDraft({ spec: whole, fileName, ownFile, time: new Date().toISOString() }),
+      () =>
+        writeDraft({
+          spec: whole,
+          fileName,
+          ...(typedName !== null && typedName !== fileName ? { saveName: typedName } : {}),
+          ownFile,
+          time: new Date().toISOString(),
+        }),
       1000,
     )
     return () => window.clearTimeout(timer)
-  }, [dirty, whole, fileName, ownFile, draft])
+  }, [dirty, whole, fileName, typedName, ownFile, draft])
 
   // 新しく置くものは, キャンバスに見えている範囲の真ん中の近くで, 他の
   // ノードと重ならない所
@@ -613,8 +624,10 @@ function Editor() {
           キャンバスへ移る
         </a>
         <Toolbar
-          // 開いた定義が変わったら, 保存する名前の欄を作り直す
-          key={fileName}
+          // 開いた定義が変わったか下書きを戻したら, 保存する名前の欄を作り直す
+          key={`${fileName}:${restored}`}
+          initialName={typedName ?? undefined}
+          onNameChange={setTypedName}
           savedNotice={savedNotice}
           spec={spec}
           units={unitMap}
@@ -628,6 +641,7 @@ function Editor() {
           onLoad={(name, loaded, source) => {
             clearDraft()
             setDraft(null)
+            setTypedName(null)
             // 前の定義の部分モデルの知らせは消す
             setNotice(null)
             setOwnFile(source === 'model' ? name : null)
@@ -651,6 +665,7 @@ function Editor() {
           }}
           onSaved={(name, savedSpec) => {
             clearDraft()
+            setTypedName(null)
             if (draft?.tab === tabId()) setDraft(null)
             const errorCount = (check.data?.issues ?? []).filter(
               (issue) => issue.severity === 'error',
@@ -686,7 +701,8 @@ function Editor() {
             className="flex flex-wrap items-center gap-2 border-b border-line bg-accent-soft px-3 py-1.5 text-xs"
           >
             <span>
-              保存していない定義 <span className="font-mono">{draft.fileName}</span> (
+              保存していない定義{' '}
+              <span className="font-mono">{draft.saveName || draft.fileName}</span> (
               {new Date(draft.time).toLocaleString()}) の下書きがあります
             </span>
             <button
@@ -713,6 +729,8 @@ function Editor() {
                   () => void flow.fitView({ duration: 200, maxZoom: 1, padding: 0.1 }),
                 )
                 setFileName(draft.fileName)
+                setTypedName(draft.saveName ?? null)
+                setRestored((count) => count + 1)
                 setOwnFile(draft.ownFile)
                 // 保存していない変更として戻す
                 setSaved('')

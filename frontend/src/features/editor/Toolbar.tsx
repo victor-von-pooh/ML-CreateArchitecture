@@ -179,6 +179,8 @@ export function Toolbar({
   onArrange,
   ownFile,
   onDeletedOwn,
+  initialName,
+  onNameChange,
 }: {
   /** 保存した知らせ (保存すると上の操作を作り直すので, 外で持つ) */
   savedNotice: string
@@ -212,11 +214,15 @@ export function Toolbar({
   ownFile: string | null
   /** 今開いている保存した定義を消した (保存していない扱いにする) */
   onDeletedOwn: () => void
+  /** 保存する名前の欄の最初の値 (下書きから戻した名前. 無ければ fileName) */
+  initialName?: string
+  /** 保存する名前の欄を書き換えた (下書きに残すため) */
+  onNameChange?: (name: string) => void
 }) {
   const queryClient = useQueryClient()
   const nameId = useId()
   const { theme, toggle } = useTheme()
-  const [name, setName] = useState(fileName)
+  const [name, setName] = useState(initialName ?? fileName)
   const [dialog, setDialog] = useState<'open' | 'yaml' | 'python' | null>(null)
 
   // 保存した時点の定義を, 保存していない変更の判定に使う
@@ -362,7 +368,10 @@ export function Toolbar({
       <input
         id={nameId}
         value={name}
-        onChange={(event) => setName(event.target.value)}
+        onChange={(event) => {
+          setName(event.target.value)
+          onNameChange?.(event.target.value)
+        }}
         aria-invalid={!validName}
         aria-describedby={validName ? undefined : `${nameId}-error`}
         className="h-8 w-40 rounded-md border border-line bg-bg px-2 font-mono text-xs max-xl:w-28 aria-[invalid=true]:border-critical"
