@@ -14,6 +14,7 @@ import {
   setPortRefs,
   type ParamSpec,
   SUBGRAPH_PREFIX,
+  incomingValues,
   type Spec,
   type Subgraph,
   type UnitSpec,
@@ -768,6 +769,8 @@ export function Inspector({
   if (!node) return null
   const unit = units.get(node.unit)
   const result = check?.nodes?.[selected]
+  const incoming = incomingValues(spec, check, selected, units)
+  const nodeIssues = issuesFor((issue) => issue.node === selected)
   const setValue = (field: 'params' | 'forward_params', key: string, value: unknown) => {
     const values = { ...(node[field] ?? {}) }
     if (value === undefined) delete values[key]
@@ -799,23 +802,37 @@ export function Inspector({
           }
         />
       )}
-      {result && (
-        <div className="rounded-md bg-surface-2 p-2 text-xs">
-          {result.status === 'ok' ? (
-            <>
+      {(result || incoming.length > 0) && (
+        <div className="space-y-1 rounded-md bg-surface-2 p-2 text-xs">
+          {/* 入ってくる形 (形の合わない誤りを, 前のノードを見に行かずに直せるように) */}
+          {incoming.length > 0 && (
+            <div>
+              <div className="text-ink-3">入る形</div>
+              {incoming.map(({ port, ref, value }) => (
+                <div key={`${port}-${ref}`} className="font-mono break-all">
+                  {port} ← {ref}: {formatShape(value)}
+                </div>
+              ))}
+            </div>
+          )}
+          {result?.status === 'ok' ? (
+            <div>
+              <div className="text-ink-3">出る形</div>
               {Object.entries(result.outputs ?? {}).map(([port, shape]) => (
                 <div key={port} className="font-mono">
                   {port}: {formatShape(shape)}
                 </div>
               ))}
               <div className="text-ink-3">パラメータ数 {formatCount(result.params)}</div>
-            </>
+            </div>
           ) : (
-            <div className="text-critical-text">{result.error}</div>
+            // 確認の誤りは下の一覧に出るので, 計算の誤り (一覧に無いもの) だけ
+            result &&
+            nodeIssues.length === 0 && <div className="text-critical-text">{result.error}</div>
           )}
         </div>
       )}
-      <IssueList issues={issuesFor((issue) => issue.node === selected)} />
+      <IssueList issues={nodeIssues} />
       {(unit?.inputs.length ?? 0) > 0 && (
         <fieldset className="space-y-2">
           <legend className="mb-1 text-xs font-semibold">入力のつなぎ先</legend>

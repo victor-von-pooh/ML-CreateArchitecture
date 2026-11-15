@@ -54,47 +54,56 @@ export function UnitNode({ data, selected }: NodeProps<UnitFlowNode>) {
           <span className="flex items-center gap-0.5 text-[11px] text-critical-text">
             <AlertTriangle className="size-3.5" aria-hidden />
             {data.errors > 0 ? data.errors : '!'}
-            <span className="sr-only">件の誤り</span>
+            <span className="sr-only">{data.errors > 0 ? '件の誤り' : '計算の誤り'}</span>
           </span>
         )}
       </div>
-      <div className="relative" style={{ height: rows * ROW + 8 }}>
-        {inputs.map((port, index) => (
-          <div
-            key={port.name}
-            className="absolute left-2 font-mono text-[10px] text-ink-2"
-            style={{ top: 4 + index * ROW }}
-          >
-            <Handle
-              type="target"
-              position={Position.Left}
-              id={`in:${port.name}`}
-              style={{ top: 9, left: -13 }}
-              className={clsx(port.optional && '!bg-surface-2')}
-            />
-            {port.name}
-            {port.variadic ? ' …' : port.optional ? ' ?' : ''}
-          </div>
-        ))}
-        {outputs.map((port, index) => {
-          const shape = data.result?.outputs?.[port.name]
-          return (
+      {/* 入力の口 (左の列) と出力の口と形 (右の列). 長い名前や形でも重ならない
+          ように列に分け, ノードの幅を中身に合わせる */}
+      <div
+        className="grid grid-cols-[auto_auto] justify-between gap-x-4 py-1"
+        style={{ minHeight: rows * ROW + 8 }}
+      >
+        <div>
+          {inputs.map((port) => (
             <div
               key={port.name}
-              className="absolute right-2 text-right font-mono text-[10px]"
-              style={{ top: 4 + index * ROW }}
+              className="relative pl-2 font-mono text-[10px] whitespace-nowrap text-ink-2"
+              style={{ height: ROW }}
             >
-              <span className="text-ink-3">{shape ? formatShape(shape) : ''}</span>{' '}
-              <span className="text-ink-2">{port.name}</span>
               <Handle
-                type="source"
-                position={Position.Right}
-                id={`out:${port.name}`}
-                style={{ top: 9, right: -13 }}
+                type="target"
+                position={Position.Left}
+                id={`in:${port.name}`}
+                style={{ top: 9, left: -5 }}
+                className={clsx(port.optional && '!bg-surface-2')}
               />
+              {port.name}
+              {port.variadic ? ' …' : port.optional ? ' ?' : ''}
             </div>
-          )
-        })}
+          ))}
+        </div>
+        <div>
+          {outputs.map((port) => {
+            const shape = data.result?.outputs?.[port.name]
+            return (
+              <div
+                key={port.name}
+                className="relative pr-2 text-right font-mono text-[10px] whitespace-nowrap"
+                style={{ height: ROW }}
+              >
+                <span className="text-ink-3">{shape ? formatShape(shape) : ''}</span>{' '}
+                <span className="text-ink-2">{port.name}</span>
+                <Handle
+                  type="source"
+                  position={Position.Right}
+                  id={`out:${port.name}`}
+                  style={{ top: 9, right: -5 }}
+                />
+              </div>
+            )
+          })}
+        </div>
       </div>
       {status === 'skipped' && (
         <div className="border-t border-line px-3 py-1 text-[10px] text-ink-3">

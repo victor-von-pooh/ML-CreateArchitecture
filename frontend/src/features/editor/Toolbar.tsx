@@ -20,7 +20,7 @@ import { api, type CheckResult } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
 import { Button, ErrorBox, Spinner } from '../../components/ui'
 import { failedNodes, formatCount } from '../../lib/format'
-import { emptySpec, freshName, type Spec } from '../../lib/graph'
+import { danglingNodes, emptySpec, freshName, type Spec } from '../../lib/graph'
 import { useTheme } from '../../lib/themeContext'
 
 /** 文字の内容を表示し, コピーできる枠 */
@@ -268,8 +268,11 @@ export function Toolbar({
     let index = 1
     while (used.has(`out${index}`)) index += 1
     const output = `out${index}`
+    // どこにもつながっていないノードが 1 つだけなら, それにつなぐ
+    const dangling = danglingNodes(spec)
     onChange({
       ...spec,
+      outputs: dangling.length === 1 ? { ...spec.outputs, [output]: dangling[0]! } : spec.outputs,
       ui: {
         ...spec.ui,
         outputs: { ...(spec.ui?.outputs ?? {}), [output]: center(undefined, rightOf()) },

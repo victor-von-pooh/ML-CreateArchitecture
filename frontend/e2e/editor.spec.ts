@@ -508,3 +508,20 @@ test('元の定義を直した後に, 部分モデルを写し直せる', async 
   await page.getByRole('button', { name: '部分モデル sub.e2e_src を元の定義から写し直す' }).click()
   await expect(page.locator('[data-id="e2e_src1"]')).toContainText('[4, 8]', { timeout: 20_000 })
 })
+
+test('選んでいるものから新しい部品へ線を引き, 出力はつながっていないノードにつなぐ', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await page.locator('[data-id="x"]').click()
+  await page.getByPlaceholder('部品を探す').fill('nn.ReLU')
+  await page.getByPlaceholder('部品を探す').press('Enter')
+  await expect(page.locator('.react-flow__edge')).toHaveCount(1)
+  await page.getByRole('button', { name: '出力', exact: true }).click()
+  await expect(page.locator('.react-flow__edge')).toHaveCount(2)
+  await expect(page.locator('header')).toContainText('誤り 0 件', { timeout: 20_000 })
+
+  // 詳細に入る形と出る形が出る
+  await page.locator('[data-id="relu1"]').click()
+  await expect(page.locator('aside[aria-label="詳細"]')).toContainText('input ← x: [4, 16]')
+})

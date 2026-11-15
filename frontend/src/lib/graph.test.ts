@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { parseShape } from './params'
 import {
   addNode,
+  connectFrom,
+  danglingNodes,
   connect,
   disconnect,
   emptySpec,
@@ -191,5 +193,27 @@ describe('params', () => {
       nodes: { ...spec.nodes, a: { unit: 'nn.Linear', inputs: { input: 'c' } } },
     }
     expect(refOptions(cycle, units, 'a').map((option) => option.value)).toContain('c')
+  })
+})
+
+describe('つなぎ方が決まる場合の線', () => {
+  it('選んでいる入力かノードから, 新しいノードの最初の必須の口に線を引く', () => {
+    const units = new Map([
+      ['nn.ReLU', unit('nn.ReLU', ['input'])],
+      ['op.Add', unit('op.Add', ['xs'], ['out'], true)],
+      ['nn.LSTM', unit('nn.LSTM', ['input'], ['output', 'h_n'])],
+    ])
+    let spec = addNode(emptySpec(), units.get('nn.ReLU')!, { x: 0, y: 0 })
+    spec = connectFrom(spec, units, 'x', 'relu1')
+    expect(spec.nodes.relu1?.inputs).toEqual({ input: 'x' })
+    spec = addNode(spec, units.get('op.Add')!, { x: 0, y: 0 })
+    spec = connectFrom(spec, units, 'relu1', 'add1')
+    expect(spec.nodes.add1?.inputs).toEqual({ xs: ['relu1'] })
+    // 出力の口が複数のつなぎ元からは引かない
+    spec = addNode(spec, units.get('nn.LSTM')!, { x: 0, y: 0 })
+    spec = addNode(spec, units.get('nn.ReLU')!, { x: 0, y: 0 })
+    expect(connectFrom(spec, units, 'lstm1', 'relu2').nodes.relu2?.inputs).toEqual({})
+    // どこにもつながっていないノード
+    expect(danglingNodes(spec).sort()).toEqual(['add1', 'lstm1', 'relu2'])
   })
 })
