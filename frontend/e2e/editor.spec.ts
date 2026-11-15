@@ -38,6 +38,8 @@ test('部品を置いて選択の欄でつなぎ, 保存して開き直す', asy
   await expect(page.locator('header')).toContainText('誤り 0 件')
 
   // 名前を付けて保存すると, 保存していない変更の印が消える
+  // (再実行で同じ名前の定義が既にある場合は, 上書きの確認に答える)
+  page.on('dialog', (dialog) => void dialog.accept())
   await page.getByLabel('保存する名前').fill('e2e_model')
   await page.getByRole('button', { name: /^保存/ }).click()
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible()
@@ -58,7 +60,12 @@ test('線を選んで Delete で外すと, 誤りが出る', async ({ page }) =>
   await expect(page.locator('.react-flow__edge')).toHaveCount(2)
 
   // 入力から全結合への線を外すと, 必須の口が未接続の誤り
-  await page.locator('.react-flow__edge').first().locator('path').first().click({ force: true })
+  // 開いた直後は表示の範囲を合わせる動きで線が動くので, 選べるまで押し直す
+  const edge = page.locator('.react-flow__edge').first()
+  await expect(async () => {
+    await edge.locator('path').first().click({ force: true })
+    await expect(edge).toHaveClass(/selected/, { timeout: 1000 })
+  }).toPass({ timeout: 10_000 })
   await page.keyboard.press('Delete')
   await expect(page.locator('.react-flow__edge')).toHaveCount(1)
   await expect(page.locator('header')).toContainText('誤り 1 件', { timeout: 20_000 })
