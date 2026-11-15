@@ -20,6 +20,8 @@ import {
   subgraphUsers,
   subgraphView,
   makesCycle,
+  usageShapes,
+  withInputShapes,
   subgraphCheckTarget,
   writeSubgraph,
   type NodeDef,
@@ -99,33 +101,6 @@ function Editor() {
   const [selected, setSelected] = useState<string | null>(null)
   const flow = useReactFlow()
 
-  // 定義が落ち着いたら確認と形の推定 (前の結果は次が届くまで表示)
-  // 部分モデルを編集している間は, その部分モデルを 1 つの定義として確かめる
-  // (自分自身を除き, 中で使う部分モデルだけを持たせる)
-  const target = useMemo(
-    () => (editingName ? subgraphCheckTarget(spec, editingName) : spec),
-    [spec, editingName],
-  )
-  const debounced = useDebounced(target, 500)
-  const check = useQuery({
-    queryKey: ['check', debounced],
-    queryFn: () => api.check(debounced),
-    placeholderData: (previous) => previous,
-    staleTime: Infinity,
-  })
-  // 部分モデルを編集している間は, 本体の誤り (口の名前を変えた場合など) も
-  // 確かめて知らせる (形は推定しない)
-  const debouncedWhole = useDebounced(whole, 500)
-  const wholeCheck = useQuery({
-    queryKey: ['check-whole', debouncedWhole],
-    queryFn: () => api.check(debouncedWhole, false),
-    enabled: editingName !== null,
-    staleTime: Infinity,
-  })
-  const wholeErrors = editingName
-    ? (wholeCheck.data?.issues ?? []).filter((issue) => issue.severity === 'error').length
-    : 0
-
   // 登録簿の部品に, 定義ごとの部分モデルの部品 (sub.<名前>) を加えたもの
   const baseUnits = useMemo(
     () => new Map((units.data ?? []).map((unit) => [unit.name, unit])),
@@ -139,6 +114,47 @@ function Editor() {
     },
     [baseUnits],
   )
+  // 定義が落ち着いたら確認と形の推定 (前の結果は次が届くまで表示)
+  // 部分モデルを編集している間は, その部分モデルを 1 つの定義として確かめる
+  // (自分自身を除き, 中で使う部分モデルだけを持たせる)
+  // 部分モデルを編集している間は, 本体も確かめて, 本体の誤り (口の名前を
+  // 変えた場合など) を知らせ, 本体で使う所に入る形を部分モデルの入力の形に
+  // する (本体の部分モデルを開いた場合)
+  const debouncedWhole = useDebounced(whole, 500)
+  // (形を使うのは本体の部分モデルを開いた場合だけなので, 入れ子では確認だけ)
+  const inferWhole = validPath.length === 1
+  const wholeCheck = useQuery({
+    queryKey: ['check-whole', debouncedWhole, inferWhole],
+    queryFn: () => api.check(debouncedWhole, inferWhole),
+    enabled: editingName !== null,
+    staleTime: Infinity,
+  })
+  const usage = useMemo(
+    () =>
+      editingName && validPath.length === 1
+        ? usageShapes(whole, wholeCheck.data, editingName, unitsFor(whole))
+        : null,
+    [editingName, validPath.length, whole, wholeCheck.data, unitsFor],
+  )
+  const target = useMemo(
+    () =>
+      editingName
+        ? withInputShapes(subgraphCheckTarget(spec, editingName), usage?.shapes ?? {})
+        : spec,
+    [spec, editingName, usage],
+  )
+  const debounced = useDebounced(target, 500)
+  const check = useQuery({
+    queryKey: ['check', debounced],
+    queryFn: () => api.check(debounced),
+    placeholderData: (previous) => previous,
+    staleTime: Infinity,
+  })
+
+  const wholeErrors = editingName
+    ? (wholeCheck.data?.issues ?? []).filter((issue) => issue.severity === 'error').length
+    : 0
+
   const unitMap = useMemo(() => unitsFor(spec), [unitsFor, spec])
   // 部分モデルを編集している間は, 置くと循環になるもの (自分自身と, 中で
   // 自分を使う部分モデル) を部品の一覧に出さない
@@ -515,6 +531,14 @@ function Editor() {
                   を編集中 (使っているノード {subgraphUsers(whole, editingName).nodes.length}{' '}
                   個に効く)
                 </span>
+                {usage && Object.keys(usage.shapes).length > 0 && (
+                  <span
+                    className="text-ink-3"
+                    title="形の推定は, 本体でこの部分モデルを使う最初のノードに入る形で行います (保存する入力の形は変えません)"
+                  >
+                    形はノード {usage.node} に入る形で推定
+                  </span>
+                )}
                 {wholeErrors > 0 && (
                   <span className="text-critical-text">本体に誤り {wholeErrors} 件</span>
                 )}
