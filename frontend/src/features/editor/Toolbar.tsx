@@ -20,7 +20,14 @@ import { api, type CheckResult } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
 import { Button, ErrorBox, Spinner } from '../../components/ui'
 import { failedNodes, formatCount } from '../../lib/format'
-import { danglingNodes, emptySpec, freshName, type Spec, type UnitSpec } from '../../lib/graph'
+import {
+  danglingNodes,
+  emptySpec,
+  freshName,
+  subgraphCheckTarget,
+  type Spec,
+  type UnitSpec,
+} from '../../lib/graph'
 import { useTheme } from '../../lib/themeContext'
 
 /** 文字の内容を表示し, コピーできる枠 */
@@ -251,6 +258,16 @@ export function Toolbar({
     mutationFn: () => api.exportPython(whole, 'Model'),
   })
 
+  // YAML は今の定義のもの. 部分モデルを編集している間の確認の結果は, 入力の
+  // 形を本体で使う所の形に置き換えているので, 開いた時だけ書いたままの形で
+  // 確かめ直す (形は推定しない)
+  const subgraphYaml = useQuery({
+    queryKey: ['yaml', spec, editing],
+    queryFn: () => api.check(editing ? subgraphCheckTarget(spec, editing) : spec, false),
+    enabled: dialog === 'yaml' && editing !== null,
+  })
+  const yamlText = editing ? subgraphYaml.data?.yaml : check?.yaml
+
   // 形を推定しなかった理由 (パラメータ数の上限か, 入力の例が大きすぎる場合)
   const notInferred = check?.estimated_only
     ? 'パラメータ数が上限を超えるので, 形は推定していません'
@@ -471,8 +488,8 @@ export function Toolbar({
           onClose={() => setDialog(null)}
         >
           <TextView
-            text={check?.yaml || '定義を読めないので表示できません'}
-            fileName={check?.yaml ? `${editing ? editing : name || 'model'}.yaml` : undefined}
+            text={yamlText || '定義を読めないので表示できません'}
+            fileName={yamlText ? `${editing ? editing : name || 'model'}.yaml` : undefined}
           />
         </Dialog>
       )}
