@@ -56,7 +56,7 @@ function TextView({ text, fileName }: { text: string; fileName?: string }) {
         </Button>
         {fileName && text && (
           <Button variant="secondary" onClick={download}>
-            {fileName} として保存
+            {fileName} をダウンロード
           </Button>
         )}
       </div>
@@ -131,7 +131,7 @@ function OpenDialog({
       )}
       {remove.error && <ErrorBox error={remove.error} />}
       {openError ? <ErrorBox error={openError} /> : null}
-      <h3 className="mb-1 text-xs font-semibold text-ink-2">例から始める</h3>
+      <h3 className="mb-1 text-xs font-semibold text-ink-2">同梱の例から始める</h3>
       {examples.isPending ? (
         <Spinner />
       ) : examples.error ? (

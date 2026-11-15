@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import { AlertTriangle, ArrowDown, ArrowUp, Copy, Info, Plus, Trash2 } from 'lucide-react'
 import { memo, useEffect, useId, useRef, useState } from 'react'
 
@@ -565,8 +566,10 @@ function IssueList({ issues }: { issues: Issue[] }) {
           )}
           <span>
             <span className="sr-only">{issue.severity === 'error' ? '誤り' : '注意'}: </span>
-            {issue.location && <span className="font-mono">{issue.location}: </span>}
-            {issue.message}
+            {friendlyLocation(issue) && (
+              <span className="font-mono">{friendlyLocation(issue)}: </span>
+            )}
+            {friendlyMessage(issue)}
           </span>
         </li>
       ))}
@@ -611,24 +614,25 @@ export function Inspector({
     onSelect(null)
   }
 
-  // 注意だけのノード (誤りのあるノードは除く) と, その文
+  // 確認の誤りか注意のあるノードと, その文 (選ばないと見えないため)
 
   const nodeWarnings = Object.entries(
-    (check?.issues ?? []).reduce<Record<string, string[]>>((found, issue) => {
-      if (issue.node && issue.severity === 'warning' && issue.node in spec.nodes) {
-        found[issue.node] = [...(found[issue.node] ?? []), issue.message]
-      }
-
-      return found
-    }, {}),
+    (check?.issues ?? []).reduce<Record<string, { error: boolean; messages: string[] }>>(
+      (found, issue) => {
+        if (issue.node && issue.node in spec.nodes) {
+          const entry = found[issue.node] ?? { error: false, messages: [] }
+          entry.messages.push(friendlyMessage(issue))
+          entry.error ||= issue.severity === 'error'
+          found[issue.node] = entry
+        }
+        return found
+      },
+      {},
+    ),
   )
-
-    .filter(
-      ([node]) =>
-        !(check?.issues ?? []).some((issue) => issue.node === node && issue.severity === 'error'),
-    )
-
-    .map(([node, messages]) => ({ node, messages }))
+    // 誤りのあるノードを先に
+    .sort(([, a], [, b]) => Number(b.error) - Number(a.error))
+    .map(([node, { error, messages }]) => ({ node, error, messages }))
 
   const failed = failedNodes(check, spec)
 
@@ -644,22 +648,22 @@ export function Inspector({
         <dl className="grid grid-cols-2 gap-1">
           <dt className="text-ink-3">パラメータ数</dt>
           <dd className="font-mono">{formatCount(check?.params)}</dd>
-          <dt className="text-ink-3">学習するもの</dt>
+          <dt className="text-ink-3">学習するパラメータ数</dt>
           <dd className="font-mono">{formatCount(check?.trainable)}</dd>
         </dl>
         {check?.estimated_only && (
           <p className="text-warning-text">パラメータ数が上限を超えるので, 形は推定していません.</p>
         )}
         <IssueList issues={issuesFor((issue) => !issue.node)} />
-        {/* ノードの注意 (出力に届かない, つなぎ忘れなど) は, 選ばないと見えない
-            ので一覧にする (誤りは上の数と形の推定の失敗の一覧に出る) */}
+        {/* ノードの誤りと注意 (引数の不足, 出力に届かない, つなぎ忘れなど) は,
+            選ばないと見えないので一覧にする (押すと選ぶ) */}
         {nodeWarnings.length > 0 && (
-          <section aria-label="注意のあるノード" className="space-y-1">
-            <h3 className="text-xs font-semibold text-warning-text">
-              注意のあるノード ({nodeWarnings.length})
+          <section aria-label="誤りと注意のあるノード" className="space-y-1">
+            <h3 className="text-xs font-semibold text-ink-2">
+              誤りと注意のあるノード ({nodeWarnings.length})
             </h3>
             <ul className="space-y-1">
-              {nodeWarnings.map(({ node, messages }) => (
+              {nodeWarnings.map(({ node, error, messages }) => (
                 <li key={node}>
                   <button
                     type="button"
@@ -668,7 +672,13 @@ export function Inspector({
                   >
                     <span className="font-mono font-semibold">{node}</span>
                     {messages.map((message, index) => (
-                      <span key={index} className="block text-ink-2 [overflow-wrap:anywhere]">
+                      <span
+                        key={index}
+                        className={clsx(
+                          'block [overflow-wrap:anywhere]',
+                          error ? 'text-critical-text' : 'text-ink-2',
+                        )}
+                      >
                         {message}
                       </span>
                     ))}
@@ -830,7 +840,7 @@ export function Inspector({
             kind: 'str',
             default: 'zeros',
             required: false,
-            description: '注意のマスクは ones',
+            description: 'アテンションのマスクは ones',
             minimum: null,
             maximum: null,
             choices: FILLS,
@@ -1075,4 +1085,22 @@ function isOptionalBool(param: ParamSpec): boolean {
     types.includes('bool') &&
     types.every((type) => type === 'bool' || type === 'null')
   )
+}
+
+/**
+ * 誤りの場所を画面向けにする (引数とつなぎ先は名前だけにし, 定義全体の項目の
+ * 場所は文に含まれるので出さない)
+ */
+function friendlyLocation(issue: Issue): string | null {
+  const location = issue.location ?? ''
+  if (!location || ['nodes', 'outputs', 'inputs'].includes(location)) return null
+  return location.replace(/^(params|forward_params|inputs)\./, '')
+}
+
+/** 画面の操作で直す誤りは, 画面の言葉の文にする (定義の項目の名前を出さない) */
+function friendlyMessage(issue: Issue): string {
+  if (issue.code === 'no_nodes') return '部品を 1 つ以上置いてください'
+  if (issue.code === 'no_outputs') return '出力を 1 つ以上加えてください (上の「出力」)'
+  if (issue.code === 'no_inputs') return '入力を 1 つ以上加えてください (上の「入力」)'
+  return issue.message
 }
