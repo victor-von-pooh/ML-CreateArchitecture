@@ -26,7 +26,8 @@ import { useTheme } from '../../lib/themeContext'
 
 /** 文字の内容を表示し, コピーできる枠 */
 function TextView({ text, fileName }: { text: string; fileName?: string }) {
-  const [copied, setCopied] = useState(false)
+  // コピーした結果 (クリップボードを使えない場合は理由)
+  const [copied, setCopied] = useState<'done' | 'failed' | null>(null)
   // ファイルとして保存 (ブラウザのダウンロード)
   const download = () => {
     if (!fileName) return
@@ -43,10 +44,17 @@ function TextView({ text, fileName }: { text: string; fileName?: string }) {
         <Button
           variant="secondary"
           onClick={() => {
-            void navigator.clipboard.writeText(text).then(() => setCopied(true))
+            void navigator.clipboard.writeText(text).then(
+              () => setCopied('done'),
+              () => setCopied('failed'),
+            )
           }}
         >
-          {copied ? 'コピーしました' : 'コピー'}
+          {copied === 'done'
+            ? 'コピーしました'
+            : copied === 'failed'
+              ? 'コピーできません (下の文字を選んでコピーしてください)'
+              : 'コピー'}
         </Button>
         {fileName && text && (
           <Button variant="secondary" onClick={download}>
@@ -332,8 +340,10 @@ export function Toolbar({
             onLoad('model', emptySpec(), 'new')
           }
         }}
+        aria-label="新規"
+        title="新規"
       >
-        新規
+        <span className="max-xl:sr-only">新規</span>
       </Button>
       <Button
         variant="secondary"
@@ -341,8 +351,10 @@ export function Toolbar({
         disabled={save.isPending}
         onClick={() => setDialog('open')}
         data-return="open"
+        aria-label="開く"
+        title="開く"
       >
-        開く
+        <span className="max-xl:sr-only">開く</span>
       </Button>
       <label htmlFor={nameId} className="sr-only">
         保存する名前
@@ -353,7 +365,7 @@ export function Toolbar({
         onChange={(event) => setName(event.target.value)}
         aria-invalid={!validName}
         aria-describedby={validName ? undefined : `${nameId}-error`}
-        className="h-8 w-40 rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
+        className="h-8 w-40 rounded-md border border-line bg-bg px-2 font-mono text-xs max-xl:w-28 aria-[invalid=true]:border-critical"
       />
       {!validName && (
         <span id={`${nameId}-error`} role="alert" className="text-[11px] text-critical-text">
@@ -442,7 +454,9 @@ export function Toolbar({
           </span>
         )}
         <span>
-          {editing ? `パラメータ数 (sub.${editing})` : 'パラメータ数'}{' '}
+          <span className="max-xl:sr-only">
+            {editing ? `パラメータ数 (sub.${editing})` : 'パラメータ数'}{' '}
+          </span>
           <span
             className="font-mono"
             title={check?.params != null ? `${check.params.toLocaleString()} 個` : undefined}
