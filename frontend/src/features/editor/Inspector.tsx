@@ -578,6 +578,25 @@ export function Inspector({
     onSelect(null)
   }
 
+  // 注意だけのノード (誤りのあるノードは除く) と, その文
+
+  const nodeWarnings = Object.entries(
+    (check?.issues ?? []).reduce<Record<string, string[]>>((found, issue) => {
+      if (issue.node && issue.severity === 'warning' && issue.node in spec.nodes) {
+        found[issue.node] = [...(found[issue.node] ?? []), issue.message]
+      }
+
+      return found
+    }, {}),
+  )
+
+    .filter(
+      ([node]) =>
+        !(check?.issues ?? []).some((issue) => issue.node === node && issue.severity === 'error'),
+    )
+
+    .map(([node, messages]) => ({ node, messages }))
+
   const failed = failedNodes(check, spec)
 
   // 何も選んでいない場合は, 全体の情報と定義全体の誤り
@@ -599,6 +618,33 @@ export function Inspector({
           <p className="text-warning-text">パラメータ数が上限を超えるので, 形は推定していません.</p>
         )}
         <IssueList issues={issuesFor((issue) => !issue.node)} />
+        {/* ノードの注意 (出力に届かない, つなぎ忘れなど) は, 選ばないと見えない
+            ので一覧にする (誤りは上の数と形の推定の失敗の一覧に出る) */}
+        {nodeWarnings.length > 0 && (
+          <section aria-label="注意のあるノード" className="space-y-1">
+            <h3 className="text-xs font-semibold text-warning-text">
+              注意のあるノード ({nodeWarnings.length})
+            </h3>
+            <ul className="space-y-1">
+              {nodeWarnings.map(({ node, messages }) => (
+                <li key={node}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(node)}
+                    className="w-full rounded-md px-1 py-0.5 text-left text-xs hover:bg-surface-2"
+                  >
+                    <span className="font-mono font-semibold">{node}</span>
+                    {messages.map((message) => (
+                      <span key={message} className="block text-ink-2 [overflow-wrap:anywhere]">
+                        {message}
+                      </span>
+                    ))}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {failed.length > 0 && (
           <section aria-label="形の推定で失敗したもの" className="space-y-1">
             <h3 className="text-xs font-semibold text-critical-text">

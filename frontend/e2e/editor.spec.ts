@@ -659,3 +659,17 @@ test('部品のノードの出力の口から線を引け, Delete で消すと 1
   await expect(page.locator('[data-id="relu1"]')).toBeVisible()
   await expect(page.locator('.react-flow__edge')).toHaveCount(2)
 })
+
+test('注意のあるノードを全体の情報に出し, 別名で部品を探せる', async ({ page }) => {
+  await page.goto('/')
+  // 出力につながない層は注意 (選ばなくても全体の情報に出る)
+  await page.locator('[data-id="x"]').click()
+  // (別名 residual で op.Add. つなぎ先が 1 つだけの注意も出る)
+  await page.getByPlaceholder('部品を探す').fill('residual')
+  await page.getByPlaceholder('部品を探す').press('Enter')
+  await expect(page.locator('[data-id="add1"]')).toBeVisible()
+  await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } })
+  const warnings = page.getByRole('region', { name: '注意のあるノード' })
+  await expect(warnings).toContainText('add1', { timeout: 20_000 })
+  await expect(warnings).toContainText('つなぎ先が 1 つだけ')
+})
