@@ -46,8 +46,12 @@ export function Canvas({
   units: Map<string, UnitSpec>
   check: CheckResult | undefined
   selected: string | null
-  /** 定義の変更 (merge に同じ印の続けての変更は, 元に戻すで 1 回分) */
-  onChange: (spec: Spec, merge?: string) => void
+  /**
+   * 定義の変更 (merge に同じ印の続けての変更は, 元に戻すで 1 回分). 同じ処理の
+   * 中で続けて呼ばれる場合 (線とノードを一緒に消すなど) のために, 今の定義から
+   * 新しい定義を作る関数も受け取る
+   */
+  onChange: (spec: Spec | ((current: Spec) => Spec), merge?: string) => void
   onSelect: (id: string | null) => void
   /** 部分モデルのノードをダブルクリックして, 中身の編集を始める */
   onOpenSubgraph?: (name: string) => void
@@ -99,35 +103,39 @@ export function Canvas({
       } else if (change.type === 'select' && change.selected) {
         onSelect(change.id)
       } else if (change.type === 'remove') {
-        next = removeItem(next, units, change.id)
         if (selected === change.id) onSelect(null)
       }
     }
     if (Object.keys(measured).length > 0) setSizes((current) => ({ ...current, ...measured }))
     // 同じノードのドラッグの移動は 1 回分にまとめる
-    const removed = changes.some((change) => change.type === 'remove')
-    // 消した後は focus をキャンバスに置く (ページの先頭に戻らないように)
-    if (removed) window.requestAnimationFrame(() => document.getElementById('canvas')?.focus())
-    if (next !== spec) {
+    // 消すのは今の定義から (同じ処理の中で先に線を消した結果を上書きしない)
+    const removedIds = changes.flatMap((change) => (change.type === 'remove' ? [change.id] : []))
+    if (removedIds.length > 0) {
       onChange(
-        next,
-        removed ? deleteMark() : moved.length > 0 ? `move:${moved.join(',')}` : undefined,
+        (current) => removedIds.reduce((value, id) => removeItem(value, units, id), current),
+        deleteMark(),
       )
+      // 消した後は focus をキャンバスに置く (ページの先頭に戻らないように)
+      window.requestAnimationFrame(() => document.getElementById('canvas')?.focus())
     }
+    if (next !== spec) onChange(next, moved.length > 0 ? `move:${moved.join(',')}` : undefined)
   }
 
   // 線の削除を定義に反映
   const onEdgesChange = (changes: EdgeChange[]) => {
-    let next = spec
     for (const change of changes) {
-      if (change.type === 'remove') next = disconnect(next, units, change.id)
-      else if (change.type === 'select') {
+      if (change.type === 'select') {
         setSelectedEdge(change.selected ? change.id : null)
         if (change.selected) onSelect(null)
       }
     }
-    const removed = changes.some((change) => change.type === 'remove')
-    if (next !== spec) onChange(next, removed ? deleteMark() : undefined)
+    const removedIds = changes.flatMap((change) => (change.type === 'remove' ? [change.id] : []))
+    if (removedIds.length > 0) {
+      onChange(
+        (current) => removedIds.reduce((value, id) => disconnect(value, units, id), current),
+        deleteMark(),
+      )
+    }
   }
 
   // 線を引いたら, つなぎ先を定義に追加
