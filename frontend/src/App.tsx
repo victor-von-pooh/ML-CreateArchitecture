@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
 import { api } from './api/client'
@@ -177,6 +178,20 @@ function Editor() {
     [spec, units.data, editingName],
   )
   const [importing, setImporting] = useState(false)
+  // 部品を探す欄に移る要求 (欄を開いた後に移るため, 回数で表す. 部品の一覧の
+  // 読み込みの間に押した場合は, 読み込んだ後に移る)
+  const [searchRequest, setSearchRequest] = useState(0)
+  useEffect(() => {
+    if (searchRequest === 0) return
+    const search = document.querySelector<HTMLInputElement>('aside[aria-label="部品の一覧"] input')
+    search?.focus()
+    search?.select()
+  }, [searchRequest, units.isPending])
+  // 左右の欄を開いているか (狭い画面では最初から畳む)
+  const [panels, setPanels] = useState(() => {
+    const wide = typeof window === 'undefined' || window.innerWidth >= 1200
+    return { left: wide, right: wide }
+  })
   // 保存した知らせ (少しの間だけ上の操作に出す)
   const [savedNotice, setSavedNotice] = useState('')
   // 部品の一覧に出す, 部分モデルの操作の結果の知らせ
@@ -337,8 +352,9 @@ function Editor() {
       !at && from && current !== null && name ? connectFrom(placed, units, current, name) : placed
     setSpec(next)
     setSelected(name)
-    // キーボードで続けて操作できるように, 詳細の最初の欄に移る
+    // キーボードで続けて操作できるように, 詳細の最初の欄に移る (畳んでいれば開く)
     if (!focus) return
+    setPanels((current) => ({ ...current, right: true }))
     window.requestAnimationFrame(() =>
       document
         .querySelector<HTMLElement>(
@@ -425,12 +441,10 @@ function Editor() {
       return true
     }
     if (key === '/') {
-      const search = document.querySelector<HTMLInputElement>(
-        'aside[aria-label="部品の一覧"] input',
-      )
-      search?.focus()
-      search?.select()
-      return search !== null
+      // 畳んでいる場合は開いてから (開いた後の描画で) 移る
+      setPanels((current) => ({ ...current, left: true }))
+      setSearchRequest((count) => count + 1)
+      return true
     }
     return false
   })
@@ -553,8 +567,17 @@ function Editor() {
           onUndo={previous ? undoSpec : undefined}
           onRedo={following ? redoSpec : undefined}
         />
-        <div className="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)_20rem]">
-          <aside aria-label="部品の一覧" className="min-h-0 border-r border-line bg-surface">
+        <div
+          className="grid min-h-0 flex-1"
+          style={{
+            gridTemplateColumns: `${panels.left ? '16rem' : '0'} minmax(0,1fr) ${panels.right ? '20rem' : '0'}`,
+          }}
+        >
+          <aside
+            aria-label="部品の一覧"
+            hidden={!panels.left}
+            className="min-h-0 border-r border-line bg-surface"
+          >
             <Palette
               units={paletteUnits}
               notice={notice}
@@ -584,6 +607,35 @@ function Editor() {
             />
           </aside>
           <main className="relative min-h-0">
+            {/* 左右の欄を畳む (狭い画面でキャンバスを広く使う) */}
+            <button
+              type="button"
+              onClick={() => setPanels((current) => ({ ...current, left: !current.left }))}
+              aria-expanded={panels.left}
+              aria-label={panels.left ? '部品の一覧を畳む' : '部品の一覧を開く'}
+              title={panels.left ? '部品の一覧を畳む' : '部品の一覧を開く'}
+              className="absolute top-2 left-2 z-10 flex size-7 items-center justify-center rounded-md border border-line bg-surface text-ink-2 shadow-sm hover:bg-surface-2"
+            >
+              {panels.left ? (
+                <PanelLeftClose className="size-4" aria-hidden />
+              ) : (
+                <PanelLeftOpen className="size-4" aria-hidden />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPanels((current) => ({ ...current, right: !current.right }))}
+              aria-expanded={panels.right}
+              aria-label={panels.right ? '詳細を畳む' : '詳細を開く'}
+              title={panels.right ? '詳細を畳む' : '詳細を開く'}
+              className="absolute top-2 right-2 z-10 flex size-7 items-center justify-center rounded-md border border-line bg-surface text-ink-2 shadow-sm hover:bg-surface-2"
+            >
+              {panels.right ? (
+                <PanelRightClose className="size-4" aria-hidden />
+              ) : (
+                <PanelRightOpen className="size-4" aria-hidden />
+              )}
+            </button>
             {editingName && (
               <aside
                 aria-label="編集している部分モデル"
@@ -658,6 +710,7 @@ function Editor() {
           </main>
           <aside
             aria-label="詳細"
+            hidden={!panels.right}
             className="min-h-0 overflow-y-auto border-l border-line bg-surface"
           >
             {check.error && (
