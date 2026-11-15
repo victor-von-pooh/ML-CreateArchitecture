@@ -3,6 +3,7 @@ import {
   Controls,
   MiniMap,
   ReactFlow,
+  useReactFlow,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -11,7 +12,7 @@ import {
 import { useMemo, useState } from 'react'
 
 import type { CheckResult } from '../../api/client'
-import { flowEdges, flowNodes, moveItem } from '../../lib/flow'
+import { flowEdges, flowNodes, moveItem, UNIT_DRAG_TYPE } from '../../lib/flow'
 import { useTheme } from '../../lib/themeContext'
 import {
   connect,
@@ -39,6 +40,7 @@ export function Canvas({
   onChange,
   onSelect,
   onOpenSubgraph,
+  onDropUnit,
 }: {
   spec: Spec
   units: Map<string, UnitSpec>
@@ -49,8 +51,11 @@ export function Canvas({
   onSelect: (id: string | null) => void
   /** 部分モデルのノードをダブルクリックして, 中身の編集を始める */
   onOpenSubgraph?: (name: string) => void
+  /** 部品の一覧から落とした部品を, キャンバスの座標の位置に置く */
+  onDropUnit?: (unit: string, position: { x: number; y: number }) => void
 }) {
   // 計測したノードの大きさ (線の位置の計算に使うので, 作り直しても保持)
+  const flow = useReactFlow()
   const [sizes, setSizes] = useState<Record<string, { width: number; height: number }>>({})
   const nodes = useMemo(
     () =>
@@ -123,6 +128,20 @@ export function Canvas({
 
   return (
     <ReactFlow
+      // 部品の一覧からのドラッグを受け, 落とした位置に置く
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes(UNIT_DRAG_TYPE)) {
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'copy'
+        }
+      }}
+      onDrop={(event) => {
+        const unit = event.dataTransfer.getData(UNIT_DRAG_TYPE)
+        if (!unit || !onDropUnit) return
+        event.preventDefault()
+        const point = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+        onDropUnit(unit, { x: Math.round(point.x - 100), y: Math.round(point.y - 30) })
+      }}
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}

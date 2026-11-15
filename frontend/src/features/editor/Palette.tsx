@@ -4,6 +4,7 @@ import { useDeferredValue, useId, useMemo, useState } from 'react'
 
 import type { UnitSpec } from '../../lib/graph'
 import { firstMatch } from '../../lib/search'
+import { UNIT_DRAG_TYPE } from '../../lib/flow'
 
 // 出どころの表示名と並び順
 const SOURCES: Record<string, string> = {
@@ -157,6 +158,12 @@ export function Palette({
                         type="button"
                         disabled={!unit.available}
                         onClick={() => onAdd(unit)}
+                        // キャンバスにドラッグして, 落とした位置に置ける
+                        draggable={unit.available}
+                        onDragStart={(event) => {
+                          event.dataTransfer.setData(UNIT_DRAG_TYPE, unit.name)
+                          event.dataTransfer.effectAllowed = 'copy'
+                        }}
                         title={unit.available ? unit.description : unit.reason}
                         className={clsx(
                           'group flex min-w-0 flex-1 items-start gap-1.5 rounded px-2 py-1 text-left',

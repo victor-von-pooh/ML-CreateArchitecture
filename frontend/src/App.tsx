@@ -318,7 +318,8 @@ function Editor() {
   // 部品はキャンバスの真ん中に置いて選択
   // 部品のノードを選んでいる場合は, その右 (つなぐ先になることが多い) に置く
   // focus: キーボードで置いた場合 (検索欄の Enter) は詳細の最初の欄に移る
-  const add = (unit: UnitSpec, focus = false) => {
+  // at: 部品の一覧からキャンバスに落とした位置 (その場所に置き, 線は引かない)
+  const add = (unit: UnitSpec, focus = false, at?: { x: number; y: number }) => {
     if (editingName && makesCycle(spec.subgraphs, editingName, unit.name)) {
       notify(`${unit.name} は sub.${editingName} の中に置けません (互いに使い合うため)`)
       return
@@ -328,12 +329,12 @@ function Editor() {
       from?.ui?.x !== undefined && from.ui.y !== undefined
         ? { x: from.ui.x + 280, y: from.ui.y }
         : undefined
-    const placed = addNode(spec, unit, center(unitSize(unit), near))
+    const placed = addNode(spec, unit, at ?? center(unitSize(unit), near))
     const name = Object.keys(placed.nodes).find((key) => !(key in spec.nodes)) ?? null
     // 選んでいる入力かノードがあれば, つなぎ方が決まる場合はそこから線を引く
     const units = new Map(unitMap).set(unit.name, unit)
     const next =
-      from && current !== null && name ? connectFrom(placed, units, current, name) : placed
+      !at && from && current !== null && name ? connectFrom(placed, units, current, name) : placed
     setSpec(next)
     setSelected(name)
     // キーボードで続けて操作できるように, 詳細の最初の欄に移る
@@ -642,6 +643,10 @@ function Editor() {
               </aside>
             )}
             <Canvas
+              onDropUnit={(name, position) => {
+                const unit = unitMap.get(name)
+                if (unit?.available) add(unit, false, position)
+              }}
               onOpenSubgraph={(name) => openPath([...validPath, name])}
               spec={spec}
               units={unitMap}

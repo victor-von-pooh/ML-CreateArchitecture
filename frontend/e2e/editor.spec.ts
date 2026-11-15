@@ -601,3 +601,13 @@ test('保存すると知らせが出て, YAML と Python のコードをファ�
   await page.getByRole('button', { name: 'e2e_download.yaml として保存' }).click()
   expect((await yaml).suggestedFilename()).toBe('e2e_download.yaml')
 })
+
+test('部品の一覧からキャンバスにドラッグして置ける', async ({ page }) => {
+  await page.goto('/')
+  await page.getByPlaceholder('部品を探す').fill('nn.ReLU')
+  const source = page.getByRole('button', { name: /^nn\.ReLU/ }).first()
+  await source.dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 500, y: 400 } })
+  await expect(page.locator('[data-id="relu1"]')).toBeVisible()
+  // ドラッグで置いた場合は線を引かない
+  await expect(page.locator('.react-flow__edge')).toHaveCount(0)
+})

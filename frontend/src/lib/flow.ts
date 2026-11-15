@@ -5,6 +5,9 @@ import { formatShape } from './format'
 import { specWires, type Spec, type UnitSpec } from './graph'
 import { layoutPositions } from './layout'
 
+// 部品の一覧からキャンバスにドラッグする部品の名前のデータの種類
+export const UNIT_DRAG_TYPE = 'application/x-ml-unit'
+
 /** 定義から, キャンバスのノードの一覧を作る */
 export function flowNodes(
   spec: Spec,
