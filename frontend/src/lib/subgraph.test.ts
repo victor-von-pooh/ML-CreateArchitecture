@@ -7,6 +7,10 @@ import {
   specWires,
   subgraphUnits,
   subgraphUsers,
+  subgraphView,
+  makesCycle,
+  subgraphCheckTarget,
+  writeSubgraph,
   type Spec,
 } from './graph'
 
@@ -93,5 +97,49 @@ describe('subgraphs', () => {
     }).spec
     expect(subgraphUsers(nested, 'block')).toEqual({ nodes: [], subgraphs: ['outer'] })
     expect(removeSubgraph(spec, 'block')).not.toHaveProperty('subgraphs')
+  })
+
+  it('部分モデルを 1 つの定義として編集し, 書き戻すと他は変わらない', () => {
+    const spec = embedSubgraph(emptySpec(), 'block', block()).spec
+    const view = subgraphView(spec, 'block')
+    expect(view.format_version).toBe(1)
+    expect(Object.keys(view.nodes)).toEqual(['fc'])
+    const edited: Spec = {
+      ...view,
+      nodes: { ...view.nodes, act: { unit: 'nn.ReLU', inputs: 'fc' } },
+    }
+    const written = writeSubgraph(spec, 'block', edited)
+    expect(Object.keys(written.subgraphs?.block?.nodes ?? {})).toEqual(['fc', 'act'])
+    expect(written.subgraphs?.block).not.toHaveProperty('format_version')
+    expect(written.subgraphs?.block).not.toHaveProperty('subgraphs')
+    expect(written.inputs).toEqual(spec.inputs)
+    // 変えずに書き戻すと同じ中身
+    expect(JSON.stringify(writeSubgraph(spec, 'block', view))).toBe(JSON.stringify(spec))
+  })
+
+  it('置くと循環になる部分モデルと, 確かめるときに持たせる部分モデル', () => {
+    const inner = embedSubgraph(emptySpec(), 'block', block()).spec
+    const outer: Spec = {
+      ...inner,
+      nodes: { b: { unit: 'sub.block', inputs: { x: 'x' } } },
+      outputs: { y: 'b:y' },
+    }
+    const spec = embedSubgraph(
+      embedSubgraph(emptySpec(), 'outer', outer).spec,
+      'other',
+      block(),
+    ).spec
+    // block の中に, block 自身と block を使う outer は置けない. other は置ける
+    expect(makesCycle(spec.subgraphs, 'block', 'sub.block')).toBe(true)
+    expect(makesCycle(spec.subgraphs, 'block', 'sub.outer')).toBe(true)
+    expect(makesCycle(spec.subgraphs, 'block', 'sub.other')).toBe(false)
+    expect(makesCycle(spec.subgraphs, 'block', 'nn.Linear')).toBe(false)
+
+    // outer を確かめるときは, 中で使う block だけを持たせる
+    const target = subgraphCheckTarget(subgraphView(spec, 'outer'), 'outer')
+    expect(Object.keys(target.subgraphs ?? {})).toEqual(['block'])
+    expect(subgraphCheckTarget(subgraphView(spec, 'block'), 'block')).not.toHaveProperty(
+      'subgraphs',
+    )
   })
 })

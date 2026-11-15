@@ -549,6 +549,7 @@ export function Inspector({
   onChange,
   onSelect,
   onDuplicate,
+  onEditSubgraph,
 }: {
   spec: Spec
   units: Map<string, UnitSpec>
@@ -558,6 +559,8 @@ export function Inspector({
   onSelect: (id: string | null) => void
   /** 部品のノードの写しを置く */
   onDuplicate: (name: string) => void
+  /** 部分モデルの中身の編集を始める */
+  onEditSubgraph?: (name: string) => void
 }) {
   const taken = (value: string) => value in spec.inputs || value in spec.nodes
   const issuesFor = (predicate: (issue: Issue) => boolean) =>
@@ -787,7 +790,14 @@ export function Inspector({
         {unit?.description && <p className="text-xs text-ink-3">{unit.description}</p>}
       </div>
       {node.unit.startsWith(SUBGRAPH_PREFIX) && (
-        <SubgraphContents sub={spec.subgraphs?.[node.unit.slice(SUBGRAPH_PREFIX.length)]} />
+        <SubgraphContents
+          sub={spec.subgraphs?.[node.unit.slice(SUBGRAPH_PREFIX.length)]}
+          onEdit={
+            onEditSubgraph
+              ? () => onEditSubgraph(node.unit.slice(SUBGRAPH_PREFIX.length))
+              : undefined
+          }
+        />
       )}
       {result && (
         <div className="rounded-md bg-surface-2 p-2 text-xs">
@@ -875,42 +885,53 @@ export function Inspector({
 }
 
 /** 部分モデルの中身 (入力の想定の形, 中のノードの部品と引数, 出力) を読むだけの一覧 */
-function SubgraphContents({ sub }: { sub: Subgraph | undefined }) {
+function SubgraphContents({
+  sub,
+  onEdit,
+}: {
+  sub: Subgraph | undefined
+  /** 部分モデルの中身をキャンバスで編集する */
+  onEdit?: () => void
+}) {
   if (!sub) return null
   const params = (values: Record<string, unknown> | undefined) =>
     Object.entries(values ?? {})
       .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
       .join(', ')
   return (
-    <details className="rounded-md border border-line p-2 text-xs">
-      <summary className="cursor-pointer font-semibold text-ink-2">部分モデルの中身</summary>
-      <dl className="mt-2 space-y-1">
-        <dt className="text-ink-3">入力 (元の定義の形)</dt>
-        {Object.entries(sub.inputs ?? {}).map(([name, input]) => (
-          <dd key={name} className="font-mono">
-            {name}
-            {input?.shape ? `: [${input.shape.join(', ')}]` : ''}
-          </dd>
-        ))}
-        <dt className="text-ink-3">ノード</dt>
-        {Object.entries(sub.nodes ?? {}).map(([name, child]) => (
-          <dd key={name} className="font-mono break-all">
-            {name}: {child.unit}
-            {child.params && Object.keys(child.params).length > 0 && (
-              <span className="text-ink-3"> ({params(child.params)})</span>
-            )}
-          </dd>
-        ))}
-        <dt className="text-ink-3">出力</dt>
-        {Object.entries(sub.outputs ?? {}).map(([name, ref]) => (
-          <dd key={name} className="font-mono">
-            {name} ← {ref}
-          </dd>
-        ))}
-      </dl>
-      <p className="mt-2 text-ink-3">
-        中身は編集できません. 元の定義を直して, もう一度「別の定義を部品にする」で写してください.
-      </p>
-    </details>
+    <div className="space-y-2">
+      {onEdit && (
+        <Button variant="secondary" onClick={onEdit}>
+          部分モデルの中身を編集
+        </Button>
+      )}
+      <details className="rounded-md border border-line p-2 text-xs">
+        <summary className="cursor-pointer font-semibold text-ink-2">部分モデルの中身</summary>
+        <dl className="mt-2 space-y-1">
+          <dt className="text-ink-3">入力 (元の定義の形)</dt>
+          {Object.entries(sub.inputs ?? {}).map(([name, input]) => (
+            <dd key={name} className="font-mono">
+              {name}
+              {input?.shape ? `: [${input.shape.join(', ')}]` : ''}
+            </dd>
+          ))}
+          <dt className="text-ink-3">ノード</dt>
+          {Object.entries(sub.nodes ?? {}).map(([name, child]) => (
+            <dd key={name} className="font-mono break-all">
+              {name}: {child.unit}
+              {child.params && Object.keys(child.params).length > 0 && (
+                <span className="text-ink-3"> ({params(child.params)})</span>
+              )}
+            </dd>
+          ))}
+          <dt className="text-ink-3">出力</dt>
+          {Object.entries(sub.outputs ?? {}).map(([name, ref]) => (
+            <dd key={name} className="font-mono">
+              {name} ← {ref}
+            </dd>
+          ))}
+        </dl>
+      </details>
+    </div>
   )
 }
