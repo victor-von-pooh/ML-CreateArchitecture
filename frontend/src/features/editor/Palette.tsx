@@ -18,7 +18,7 @@ const SOURCES: Record<string, string> = {
   einops: 'einops',
   kornia: 'Kornia',
   monai: 'MONAI',
-  segmentation_models_pytorch: 'segmentation_models_pytorch',
+  segmentation_models_pytorch: 'smp (segmentation_models_pytorch)',
   custom: '自作',
 }
 
@@ -144,8 +144,10 @@ export function Palette({
                 ) : (
                   <ChevronRight className="size-3.5" aria-hidden />
                 )}
-                {SOURCES[source] ?? source}
-                <span className="ml-auto font-normal text-ink-3">{items.length}</span>
+                <span className="min-w-0 truncate" title={SOURCES[source] ?? source}>
+                  {SOURCES[source] ?? source}
+                </span>
+                <span className="ml-auto shrink-0 font-normal text-ink-3">{items.length}</span>
               </button>
               {expanded && (
                 <ul>

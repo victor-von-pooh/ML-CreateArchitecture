@@ -558,10 +558,8 @@ test('部分モデルを 1 つのノードだけのものにし, Esc で本体�
   await page.getByRole('button', { name: 'このノードだけの部分モデルにする' }).click()
   await expect(page.locator('[data-id="block2"]')).toContainText('sub.res_block_block2')
   await page.getByRole('button', { name: '部分モデルの中身を編集' }).click()
-  // 選んでいる間の Esc は選択を外すだけ, 次の Esc で本体に戻る
+  // Esc で本体に戻る (選んでいるものの選択も外れる)
   await page.locator('[data-id="act"]').click()
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('complementary', { name: '編集している部分モデル' })).toHaveCount(1)
   await page.keyboard.press('Escape')
   await expect(page.getByRole('complementary', { name: '編集している部分モデル' })).toHaveCount(0)
   // 1 つのノードだけが使う部分モデルには, 写す操作を出さない
@@ -575,4 +573,31 @@ test('部分モデルを 1 つのノードだけのものにし, Esc で本体�
   await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } })
   await page.keyboard.press('/')
   await expect(page.getByPlaceholder('部品を探す')).toBeFocused()
+})
+
+test('保存すると知らせが出て, YAML と Python のコードをファイルとして保存できる', async ({
+  page,
+}) => {
+  page.on('dialog', (dialog) => void dialog.accept())
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く' }).click()
+  await page.getByRole('button', { name: /^mlp/ }).click()
+  // 開いた定義の名前で上の操作を作り直してから名前を変える
+  await expect(page.getByLabel('保存する名前')).toHaveValue('mlp')
+  await page.getByLabel('保存する名前').fill('e2e_download')
+  await page.getByRole('button', { name: /^保存/ }).click()
+  await expect(
+    page.getByRole('status').filter({ hasText: 'e2e_download に保存しました' }),
+  ).toBeVisible()
+
+  await page.getByRole('button', { name: 'Python', exact: true }).click()
+  const python = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'e2e_download.py として保存' }).click()
+  expect((await python).suggestedFilename()).toBe('e2e_download.py')
+  await page.getByRole('button', { name: '閉じる' }).click()
+
+  await page.getByRole('button', { name: 'YAML', exact: true }).click()
+  const yaml = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'e2e_download.yaml として保存' }).click()
+  expect((await yaml).suggestedFilename()).toBe('e2e_download.yaml')
 })
