@@ -155,6 +155,11 @@ describe('params', () => {
     expect(parseShape([2, 3])).toEqual([2, 3])
     expect(parseShape('4, a')).toBeNull()
     expect(parseShape('')).toBeNull()
+    // Python の組の書き方も読み, 括弧の閉じ忘れは読まない
+    expect(parseShape('(4, 3, 32, 32)')).toEqual([4, 3, 32, 32])
+    expect(parseShape('[4, 3, 32, 32')).toBeNull()
+    expect(parseShape('4, 16]')).toBeNull()
+    expect(parseShape('(4, 16]')).toBeNull()
   })
 
   it('ノードの写しは, つなぎ先を除いて独立に写す', () => {

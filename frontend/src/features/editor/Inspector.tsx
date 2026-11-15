@@ -714,7 +714,11 @@ export function Inspector({
             choices: null,
           }}
           value={input.shape}
-          check={(text) => (parseShape(text) ? null : '0 以上の整数を並べてください (例: [4, 16])')}
+          check={(text) =>
+            parseShape(text)
+              ? null
+              : '0 以上の整数を並べてください (例: [4, 16] か (4, 16). 括弧は閉じる)'
+          }
           onChange={(value) => {
             const shape = parseShape(value)
             if (shape) update({ shape })
