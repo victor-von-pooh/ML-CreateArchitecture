@@ -558,9 +558,17 @@ test('部分モデルを 1 つのノードだけのものにし, Esc で本体�
   await page.getByRole('button', { name: 'このノードだけの部分モデルにする' }).click()
   await expect(page.locator('[data-id="block2"]')).toContainText('sub.res_block_block2')
   await page.getByRole('button', { name: '部分モデルの中身を編集' }).click()
+  // 選んでいる間の Esc は選択を外すだけ, 次の Esc で本体に戻る
   await page.locator('[data-id="act"]').click()
   await page.keyboard.press('Escape')
+  await expect(page.getByRole('complementary', { name: '編集している部分モデル' })).toHaveCount(1)
+  await page.keyboard.press('Escape')
   await expect(page.getByRole('complementary', { name: '編集している部分モデル' })).toHaveCount(0)
+  // 1 つのノードだけが使う部分モデルには, 写す操作を出さない
+  await page.locator('[data-id="block2"]').click()
+  await expect(page.getByRole('button', { name: 'このノードだけの部分モデルにする' })).toHaveCount(
+    0,
+  )
   await expect(page.locator('[data-id="block1"]')).toContainText('sub.res_block')
 
   // / で部品を探す欄に移る

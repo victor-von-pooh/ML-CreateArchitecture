@@ -552,6 +552,7 @@ export function Inspector({
   onDuplicate,
   onEditSubgraph,
   onForkSubgraph,
+  forkable,
 }: {
   spec: Spec
   units: Map<string, UnitSpec>
@@ -565,6 +566,8 @@ export function Inspector({
   onEditSubgraph?: (name: string) => void
   /** ノードが使う部分モデルを写して, そのノードだけの部分モデルにする */
   onForkSubgraph?: (node: string) => void
+  /** 2 つ以上のノードが使う部分モデルの名前 (写す操作を出すもの) */
+  forkable?: Set<string>
 }) {
   const taken = (value: string) => value in spec.inputs || value in spec.nodes
   const issuesFor = (predicate: (issue: Issue) => boolean) =>
@@ -802,7 +805,11 @@ export function Inspector({
       {node.unit.startsWith(SUBGRAPH_PREFIX) && (
         <SubgraphContents
           sub={spec.subgraphs?.[node.unit.slice(SUBGRAPH_PREFIX.length)]}
-          onFork={onForkSubgraph ? () => onForkSubgraph(selected) : undefined}
+          onFork={
+            onForkSubgraph && forkable?.has(node.unit.slice(SUBGRAPH_PREFIX.length))
+              ? () => onForkSubgraph(selected)
+              : undefined
+          }
           onEdit={
             onEditSubgraph
               ? () => onEditSubgraph(node.unit.slice(SUBGRAPH_PREFIX.length))

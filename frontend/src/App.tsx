@@ -345,6 +345,17 @@ function Editor() {
     )
   }
 
+  // 2 つ以上のノード (本体と部分モデルの中) が使う部分モデルの名前
+  // (1 つのノードだけのものにする操作を出すもの)
+  const forkable = new Set(
+    Object.keys(whole.subgraphs ?? {}).filter(
+      (name) =>
+        [whole, ...Object.values(whole.subgraphs ?? {})]
+          .flatMap((graph) => Object.values(graph.nodes ?? {}))
+          .filter((node) => node.unit === `${SUBGRAPH_PREFIX}${name}`).length > 1,
+    ),
+  )
+
   // 元の定義を写した部分モデル (写し直せるもの) の部品の名前
   const refreshable = new Set(
     Object.entries(whole.subgraphs ?? {})
@@ -407,6 +418,11 @@ function Editor() {
   // Esc は編集している部分モデルから 1 つ上に戻り, / は部品を探す欄に移る
   const onNavKey = useEffectEvent((key: string): boolean => {
     if (key === 'Escape' && validPath.length > 0) {
+      // 選んでいるものがあれば, まず選択だけを外す (次の Esc で戻る)
+      if (selected !== null) {
+        setSelected(null)
+        return true
+      }
       openPath(validPath.slice(0, -1))
       return true
     }
@@ -439,7 +455,8 @@ function Editor() {
         )
         return
       }
-      if (target?.closest('dialog[open], textarea, [contenteditable="true"]')) return
+      if (target?.closest('dialog[open], textarea') || target?.isContentEditable) return
+      if (event.defaultPrevented) return
       if (
         target instanceof HTMLInputElement &&
         !['checkbox', 'radio', 'button', 'submit', 'range', 'color'].includes(target.type)
@@ -449,6 +466,8 @@ function Editor() {
       // 修飾キーの無い Esc (部分モデルを 1 つ上に戻る) と / (部品を探す欄へ)
       if (!event.ctrlKey && !event.metaKey && !event.altKey) {
         if (target instanceof HTMLSelectElement) return
+        // 押し続けた場合の繰り返しでは, 階層を続けて戻らない
+        if (event.repeat) return
         if ((event.key === 'Escape' || event.key === '/') && onNavKey(event.key)) {
           event.preventDefault()
         }
@@ -649,6 +668,7 @@ function Editor() {
               onSelect={setSelected}
               onDuplicate={duplicate}
               onEditSubgraph={(name) => openPath([...validPath, name])}
+              forkable={forkable}
               onForkSubgraph={(node) => {
                 const forked = forkSubgraph(whole, node, editingName)
                 if (!forked) return

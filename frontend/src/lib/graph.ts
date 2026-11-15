@@ -555,7 +555,8 @@ export function forkSubgraph(
   if (copy.ui && 'source' in copy.ui) {
     const { source: _source, ...ui } = copy.ui
     void _source
-    copy.ui = ui
+    if (Object.keys(ui).length > 0) copy.ui = ui
+    else delete copy.ui
   }
   const subgraphs = { ...whole.subgraphs, [name]: copy }
   const retarget = <T extends { nodes?: Record<string, NodeDef> }>(target: T): T => ({
