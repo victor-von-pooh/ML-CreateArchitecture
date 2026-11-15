@@ -443,7 +443,7 @@ export function Toolbar({
           </span>
         )}
         <span>
-          パラメータ数{' '}
+          {editing ? `パラメータ数 (sub.${editing})` : 'パラメータ数'}{' '}
           <span
             className="font-mono"
             title={check?.params != null ? `${check.params.toLocaleString()} 個` : undefined}

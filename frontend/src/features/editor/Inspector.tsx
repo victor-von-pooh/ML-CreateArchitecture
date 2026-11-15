@@ -896,7 +896,10 @@ export function Inspector({
           }
         />
       )}
-      {(result || incoming.length > 0) && (
+      {/* 中身が無い場合 (確認の誤りで計算しないノードなど) は欄を出さない */}
+      {(incoming.length > 0 ||
+        result?.status === 'ok' ||
+        (result && !nodeIssues.some((issue) => issue.severity === 'error'))) && (
         <div className="space-y-1 rounded-md bg-surface-2 p-2 text-xs">
           {/* 入ってくる形 (形の合わない誤りを, 前のノードを見に行かずに直せるように) */}
           {incoming.length > 0 && (
@@ -946,7 +949,7 @@ export function Inspector({
         </fieldset>
       )}
       {(unit?.params.length ?? 0) > 0 && (
-        <fieldset className="space-y-2">
+        <fieldset className="space-y-2" data-first-field>
           <legend className="mb-1 text-xs font-semibold">引数</legend>
           {unit!.params.map((param) => (
             <ParamField

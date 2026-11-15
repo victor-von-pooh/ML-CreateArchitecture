@@ -342,11 +342,11 @@ test('大きすぎて形を推定しない場合は, 上の欄で知らせる', 
 test('キーボードだけで部品を置き, 名前を変えて戻し, Ctrl+S で保存する', async ({ page }) => {
   await page.goto('/')
 
-  // 検索欄の Enter で一番上の部品を置き, 詳細の最初の欄に移る
+  // 検索欄の Enter で部品を置き, 引数の最初の欄に移る (名前の欄ではなく)
   await page.getByPlaceholder('部品を探す').fill('nn.Linear')
   await page.getByPlaceholder('部品を探す').press('Enter')
   await expect(page.locator('[data-id="linear1"]')).toBeVisible()
-  await expect(page.getByLabel('名前', { exact: true })).toBeFocused()
+  await expect(page.getByLabel('in_features')).toBeFocused()
 
   // 名前を Enter で変えても名前の欄に残り, 元に戻すと元の名前を選んだまま
   await page.getByLabel('名前', { exact: true }).fill('fc')
@@ -712,8 +712,8 @@ test('キャンバスへ移るリンク, 欄の Esc でノードに戻る, ノ�
   await page.locator('[data-id="x"]').click()
   await page.getByPlaceholder('部品を探す').fill('nn.ReLU')
   await page.getByPlaceholder('部品を探す').press('Enter')
-  // キーボードで置くと詳細の最初の欄に移り, Esc でノードに戻る
-  await expect(page.getByLabel('名前', { exact: true })).toBeFocused()
+  // キーボードで置くと引数の最初の欄に移り, Esc でノードに戻る
+  await expect(page.getByLabel('inplace')).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(page.locator('[data-id="relu1"]')).toBeFocused()
   await expect(page.locator('[data-id="relu1"]')).toHaveAttribute(
@@ -761,4 +761,22 @@ test('保存していない定義は, 読み込み直した後に下書きから
   await page.reload()
   await expect(page.locator('[data-id="x"]')).toBeVisible()
   await expect(page.getByRole('region', { name: '保存していない定義の下書き' })).toHaveCount(0)
+})
+
+test('左右の欄を畳んでもキャンバスが広がる', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('[data-id="x"]')).toBeVisible()
+  const canvas = page.locator('main#canvas')
+  const before = (await canvas.boundingBox())!.width
+  await page.getByRole('button', { name: '部品の一覧を畳む' }).click()
+  await page.getByRole('button', { name: '詳細を畳む' }).click()
+  const after = (await canvas.boundingBox())!.width
+  expect(after).toBeGreaterThan(before + 400)
+  await expect(page.locator('[data-id="x"]')).toBeVisible()
+
+  // 狭い画面で畳んで始めても, キャンバスは画面の幅
+  await page.setViewportSize({ width: 1000, height: 700 })
+  await page.reload()
+  await expect(page.locator('[data-id="x"]')).toBeVisible()
+  expect((await canvas.boundingBox())!.width).toBeGreaterThan(900)
 })
