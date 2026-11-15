@@ -18,6 +18,7 @@ import {
   disconnect,
   parseRef,
   removeItem,
+  SUBGRAPH_PREFIX,
   type Spec,
   type UnitSpec,
 } from '../../lib/graph'
@@ -37,6 +38,7 @@ export function Canvas({
   selected,
   onChange,
   onSelect,
+  onOpenSubgraph,
 }: {
   spec: Spec
   units: Map<string, UnitSpec>
@@ -45,6 +47,8 @@ export function Canvas({
   /** 定義の変更 (merge に同じ印の続けての変更は, 元に戻すで 1 回分) */
   onChange: (spec: Spec, merge?: string) => void
   onSelect: (id: string | null) => void
+  /** 部分モデルのノードをダブルクリックして, 中身の編集を始める */
+  onOpenSubgraph?: (name: string) => void
 }) {
   // 計測したノードの大きさ (線の位置の計算に使うので, 作り直しても保持)
   const [sizes, setSizes] = useState<Record<string, { width: number; height: number }>>({})
@@ -123,6 +127,10 @@ export function Canvas({
       edges={edges}
       nodeTypes={nodeTypes}
       onNodesChange={onNodesChange}
+      onNodeDoubleClick={(_, node) => {
+        const unit = spec.nodes[node.id]?.unit
+        if (unit?.startsWith(SUBGRAPH_PREFIX)) onOpenSubgraph?.(unit.slice(SUBGRAPH_PREFIX.length))
+      }}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       isValidConnection={isValidConnection}
