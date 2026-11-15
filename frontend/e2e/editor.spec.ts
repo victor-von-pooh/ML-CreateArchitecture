@@ -692,11 +692,10 @@ test('値を反映した後の欄の中の Ctrl+Z は, 定義を戻して欄に�
   await expect(page.locator('[data-id="linear1"]')).toContainText('[4, 4]', { timeout: 20_000 })
 
   // out_features の欄にいたまま Ctrl+Z で, 定義も欄も 4 の前 (空) に戻る
+  // (定義が戻ったことは, 必須の引数が無い誤りの数で確かめる)
   await page.keyboard.press('ControlOrMeta+z')
   await expect(page.getByLabel('out_features')).toHaveValue('')
-  await expect(page.locator('[data-id="linear1"]')).not.toContainText('[4, 4]', {
-    timeout: 20_000,
-  })
+  await expect(page.locator('header')).toContainText('誤り 1 件', { timeout: 20_000 })
   // やり直すと戻る
   await page.keyboard.press('ControlOrMeta+Shift+z')
   await expect(page.getByLabel('out_features')).toHaveValue('4')
