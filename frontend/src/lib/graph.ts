@@ -74,6 +74,22 @@ export interface Spec {
   ui?: { outputs?: Record<string, Ui>; [key: string]: unknown }
 }
 
+/** 部分モデルを写した元 (保存した定義か同梱の例と, その名前) */
+export interface SubgraphOrigin {
+  kind: 'model' | 'example'
+  name: string
+}
+
+/** 部分モデルを写した元 (書いていない, 形の違うものは undefined) */
+export function subgraphOrigin(sub: Subgraph | undefined): SubgraphOrigin | undefined {
+  const value = sub?.ui?.source as Partial<SubgraphOrigin> | undefined
+  return value &&
+    (value.kind === 'model' || value.kind === 'example') &&
+    typeof value.name === 'string'
+    ? { kind: value.kind, name: value.name }
+    : undefined
+}
+
 /** 部分モデルの定義 (版と部分モデルを除いた, 普通の定義と同じ形) */
 export type Subgraph = Omit<Spec, 'format_version' | 'subgraphs'>
 
@@ -196,6 +212,12 @@ export function embedSubgraph(
   spec: Spec,
   name: string,
   source: Spec,
+  options: {
+    /** 写した元 (部分モデルの ui.source に書き, 写し直しに使う) */
+    origin?: SubgraphOrigin
+    /** この名前の部分モデルを置き換える (元の定義からの写し直し) */
+    replace?: string
+  } = {},
 ): { spec: Spec; name: string } {
   const subgraphs = { ...(spec.subgraphs ?? {}) }
   const { format_version: _version, subgraphs: nested = {}, ...body } = structuredClone(source)
@@ -223,8 +245,11 @@ export function embedSubgraph(
   for (const [key, value] of Object.entries(nested)) {
     subgraphs[renames.get(key) ?? key] = renameUnits(value, renames)
   }
-  const own = renameUnits(body, renames)
-  const used = pick(subgraphStem(name), own)
+  const renamed = renameUnits(body, renames)
+  const own = options.origin
+    ? { ...renamed, ui: { ...renamed.ui, source: options.origin } }
+    : renamed
+  const used = options.replace ?? pick(subgraphStem(name), own)
   subgraphs[used] = own
   return { spec: { ...spec, subgraphs }, name: used }
 }

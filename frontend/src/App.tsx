@@ -20,6 +20,7 @@ import {
   subgraphUsers,
   subgraphView,
   makesCycle,
+  subgraphOrigin,
   usageShapes,
   withInputShapes,
   subgraphCheckTarget,
@@ -372,6 +373,42 @@ function Editor() {
     )
   }
 
+  // 元の定義を写した部分モデル (写し直せるもの) の部品の名前
+  const refreshable = new Set(
+    Object.entries(whole.subgraphs ?? {})
+      .filter(([, sub]) => subgraphOrigin(sub))
+      .map(([name]) => `${SUBGRAPH_PREFIX}${name}`),
+  )
+  // 部分モデルを, 写した元の定義の今の中身で置き換える (名前はそのまま)
+  const refresh = async (name: string) => {
+    const origin = subgraphOrigin(whole.subgraphs?.[name])
+    if (!origin) return
+    try {
+      const model =
+        origin.kind === 'model'
+          ? await api.getModel(origin.name)
+          : await api.getExample(origin.name)
+      const source = model.spec as unknown as Spec
+      const next = embedSubgraph(whole, origin.name, source, { origin, replace: name })
+      if (JSON.stringify(next.spec) === JSON.stringify(whole)) {
+        notify(`sub.${name} は ${origin.name} と同じ中身です`)
+        return
+      }
+      setHistory((current) => {
+        try {
+          return embedSubgraph(current, origin.name, source, { origin, replace: name }).spec
+        } catch {
+          return current
+        }
+      })
+      notify(`sub.${name} を ${origin.name} の今の中身で写し直しました (元に戻すで戻せます)`)
+    } catch (error) {
+      notify(
+        `sub.${name} を写し直せません: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
   // 部分モデルの編集を始める (path が空なら本体に戻る)
   const openPath = (path: string[]) => {
     setEditPath(path)
@@ -467,6 +504,8 @@ function Editor() {
               notice={notice}
               onAdd={add}
               onImport={() => setImporting(true)}
+              refreshable={refreshable}
+              onRefresh={(unit) => void refresh(unit.name.slice(SUBGRAPH_PREFIX.length))}
               onRemove={(unit) => {
                 // 使っているノードがある部分モデルは消さない
                 const name = unit.name.slice(SUBGRAPH_PREFIX.length)
@@ -582,11 +621,11 @@ function Editor() {
       {importing && (
         <SubgraphDialog
           current={ownFile}
-          onImport={(name, source) => {
+          onImport={(name, source, origin) => {
             // 写すと同じ中身のものは 1 つにまとまるので, 変わらない場合は
             // 履歴に残さずに知らせるだけ
             // (部分モデルを編集している間も, 定義全体に写す)
-            const embedded = embedSubgraph(whole, name, source)
+            const embedded = embedSubgraph(whole, name, source, { origin })
             const unit = `${SUBGRAPH_PREFIX}${embedded.name}`
             if (
               whole.subgraphs?.[embedded.name] &&

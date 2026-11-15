@@ -9,6 +9,7 @@ import {
   subgraphUsers,
   subgraphView,
   makesCycle,
+  subgraphOrigin,
   usageShapes,
   withInputShapes,
   subgraphCheckTarget,
@@ -191,5 +192,20 @@ describe('subgraphs', () => {
     expect(usageShapes(two, order, 'block', units)?.node).toBe('b')
     // 使うノードが無ければ null
     expect(usageShapes(spec, check, 'block', units)).toBeNull()
+  })
+
+  it('写した元を記録し, 同じ名前のまま写し直せる', () => {
+    const origin = { kind: 'model' as const, name: 'block' }
+    const first = embedSubgraph(emptySpec(), 'block', block(), { origin })
+    expect(subgraphOrigin(first.spec.subgraphs?.block)).toEqual(origin)
+    const changed = { ...block(), description: '直した' }
+    const again = embedSubgraph(first.spec, 'block', changed, { origin, replace: 'block' })
+    expect(again.name).toBe('block')
+    expect(Object.keys(again.spec.subgraphs ?? {})).toEqual(['block'])
+    expect(again.spec.subgraphs?.block?.description).toBe('直した')
+    expect(subgraphOrigin(again.spec.subgraphs?.block)).toEqual(origin)
+    expect(
+      subgraphOrigin(embedSubgraph(emptySpec(), 'b', block()).spec.subgraphs?.b),
+    ).toBeUndefined()
   })
 })

@@ -458,3 +458,53 @@ test('部分モデルの中身を編集し, 本体に戻ると使うノードの
     timeout: 20_000,
   })
 })
+
+test('元の定義を直した後に, 部分モデルを写し直せる', async ({ page }) => {
+  page.on('dialog', (dialog) => void dialog.accept())
+  // 写す元の定義 (x → 全結合 16 → 4)
+  await page.goto('/')
+  await page.getByPlaceholder('部品を探す').fill('nn.Linear')
+  await page
+    .getByRole('button', { name: /^nn\.Linear/ })
+    .first()
+    .click()
+  await page.getByLabel('in_features').fill('16')
+  await page.getByLabel('in_features').press('Enter')
+  await page.getByLabel('out_features').fill('4')
+  await page.getByLabel('out_features').press('Enter')
+  await page.getByLabel(/^input/).selectOption('x')
+  await page.getByRole('button', { name: '出力', exact: true }).click()
+  await page.getByLabel(/つなぎ先/).selectOption('linear1')
+  await page.getByLabel('保存する名前').fill('e2e_src')
+  await page.getByRole('button', { name: /^保存 \*/ }).click()
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible()
+
+  // 写して使う定義
+  await page.getByRole('button', { name: '新規' }).click()
+  await page.getByRole('button', { name: '別の定義を部品にする' }).click()
+  await page.getByRole('button', { name: /^e2e_src/ }).click()
+  await page.getByRole('button', { name: /^sub\.e2e_src/ }).click()
+  await page.getByLabel(/^x/).selectOption('x')
+  await page.getByRole('button', { name: '出力', exact: true }).click()
+  await page.getByLabel(/つなぎ先/).selectOption('e2e_src1')
+  await expect(page.locator('[data-id="e2e_src1"]')).toContainText('[4, 4]', { timeout: 20_000 })
+  await page.getByLabel('保存する名前').fill('e2e_user')
+  await page.getByRole('button', { name: /^保存 \*/ }).click()
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible()
+
+  // 元の定義の出力を 8 にして保存
+  await page.getByRole('button', { name: '開く' }).click()
+  await page.getByRole('button', { name: /^e2e_src \d/ }).click()
+  await page.locator('[data-id="linear1"]').click()
+  await page.getByLabel('out_features').fill('8')
+  await page.getByLabel('out_features').press('Enter')
+  await page.getByRole('button', { name: /^保存 \*/ }).click()
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible()
+
+  // 使う定義を開いて写し直すと, 形が変わる
+  await page.getByRole('button', { name: '開く' }).click()
+  await page.getByRole('button', { name: /^e2e_user \d/ }).click()
+  await expect(page.locator('[data-id="e2e_src1"]')).toContainText('[4, 4]', { timeout: 20_000 })
+  await page.getByRole('button', { name: '部分モデル sub.e2e_src を元の定義から写し直す' }).click()
+  await expect(page.locator('[data-id="e2e_src1"]')).toContainText('[4, 8]', { timeout: 20_000 })
+})
