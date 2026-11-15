@@ -24,12 +24,14 @@ router = APIRouter(prefix="/api")
 
 
 class Issue(BaseModel):
-    # 誤りか注意か, 識別子, 説明, ノードの名前, 場所
+    # 誤りか注意か, 識別子, 説明, ノードの名前, 場所, 部分モデルの名前
     severity: str
     code: str
     message: str
     node: Optional[str] = None
     location: Optional[str] = None
+    # 部分モデルの中の誤りの場合の部分モデルの名前
+    subgraph: Optional[str] = None
 
 
 class NodeResult(BaseModel):

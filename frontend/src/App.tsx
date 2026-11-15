@@ -8,7 +8,20 @@ import { Canvas } from './features/editor/Canvas'
 import { Inspector } from './features/editor/Inspector'
 import { Palette } from './features/editor/Palette'
 import { Toolbar } from './features/editor/Toolbar'
-import { addNode, emptySpec, pasteNode, type NodeDef, type Spec, type UnitSpec } from './lib/graph'
+import { SubgraphDialog } from './features/editor/SubgraphDialog'
+import {
+  addNode,
+  embedSubgraph,
+  emptySpec,
+  pasteNode,
+  removeSubgraph,
+  SUBGRAPH_PREFIX,
+  subgraphUnits,
+  subgraphUsers,
+  type NodeDef,
+  type Spec,
+  type UnitSpec,
+} from './lib/graph'
 import { useHistory } from './lib/history'
 import { arrangeSpec, freeSpot, placeMissing, unitSize } from './lib/layout'
 
@@ -55,10 +68,25 @@ function Editor() {
     staleTime: Infinity,
   })
 
-  const unitMap = useMemo(
+  // 登録簿の部品に, 定義ごとの部分モデルの部品 (sub.<名前>) を加えたもの
+  const baseUnits = useMemo(
     () => new Map((units.data ?? []).map((unit) => [unit.name, unit])),
     [units.data],
   )
+  const unitsFor = useCallback(
+    (target: Spec) => {
+      const local = subgraphUnits(target)
+      if (local.length === 0) return baseUnits
+      return new Map([...baseUnits, ...local.map((unit) => [unit.name, unit] as const)])
+    },
+    [baseUnits],
+  )
+  const unitMap = useMemo(() => unitsFor(spec), [unitsFor, spec])
+  const paletteUnits = useMemo(
+    () => [...subgraphUnits(spec), ...(units.data ?? [])],
+    [spec, units.data],
+  )
+  const [importing, setImporting] = useState(false)
   const dirty = useMemo(() => JSON.stringify(spec) !== saved, [spec, saved])
 
   // 新しく置くものは, キャンバスに見えている範囲の真ん中の近くで, 他の
@@ -276,7 +304,7 @@ function Editor() {
             setOwnFile(source === 'model' ? name : null)
             // 位置の無いもの (手で書いた定義など) は, 開いたときに一度だけ
             // 段に分けた位置を書く (後の編集で動かないように)
-            const placed = placeMissing(loaded, unitMap)
+            const placed = placeMissing(loaded, unitsFor(loaded))
             history.reset(placed)
             setSaved(JSON.stringify(placed))
             // 開いた定義の全体が見えるように表示の範囲を合わせる
@@ -301,7 +329,7 @@ function Editor() {
           center={center}
           onSelect={setSelected}
           onArrange={() => {
-            setSpec((current) => arrangeSpec(current, unitMap))
+            setSpec((current) => arrangeSpec(current, unitsFor(current)))
             // 並べ直した全体が見えるように表示の範囲を合わせる
             // (文字が読める倍率より小さくはしない)
             window.requestAnimationFrame(
@@ -313,7 +341,23 @@ function Editor() {
         />
         <div className="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)_20rem]">
           <aside aria-label="部品の一覧" className="min-h-0 border-r border-line bg-surface">
-            <Palette units={units.data} onAdd={add} />
+            <Palette
+              units={paletteUnits}
+              onAdd={add}
+              onImport={() => setImporting(true)}
+              onRemove={(unit) => {
+                // 使っているノードがある部分モデルは消さない
+                const name = unit.name.slice(SUBGRAPH_PREFIX.length)
+                const users = subgraphUsers(spec, name)
+                if (users.length > 0) {
+                  window.alert(
+                    `部分モデル ${name} は ${users.join(', ')} で使っているので消せません. 先にそのノードを消してください.`,
+                  )
+                  return
+                }
+                setSpec(removeSubgraph(spec, name))
+              }}
+            />
           </aside>
           <main className="min-h-0">
             <Canvas
@@ -346,6 +390,13 @@ function Editor() {
           </aside>
         </div>
       </div>
+      {importing && (
+        <SubgraphDialog
+          current={ownFile}
+          onImport={(name, source) => setSpec(embedSubgraph(spec, name, source).spec)}
+          onClose={() => setImporting(false)}
+        />
+      )}
     </>
   )
 }

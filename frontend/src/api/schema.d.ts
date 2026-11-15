@@ -332,6 +332,8 @@ export interface components {
             node?: string | null;
             /** Location */
             location?: string | null;
+            /** Subgraph */
+            subgraph?: string | null;
         };
         /** ModelFile */
         ModelFile: {
