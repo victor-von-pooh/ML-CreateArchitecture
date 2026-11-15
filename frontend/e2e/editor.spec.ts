@@ -726,3 +726,14 @@ test('キャンバスへ移るリンク, 欄の Esc でノードに戻る, ノ�
     'x から relu1 の input への線',
   )
 })
+
+test('真偽値か null の引数は, 未設定と true, false, null から選ぶ', async ({ page }) => {
+  await page.goto('/')
+  await page.getByPlaceholder('部品を探す').fill('nn.Upsample')
+  await page.getByPlaceholder('部品を探す').press('Enter')
+  const field = page.getByLabel('align_corners')
+  await expect(field).toHaveJSProperty('tagName', 'SELECT')
+  await field.selectOption('true')
+  await page.getByRole('button', { name: 'YAML', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('align_corners: true')
+})

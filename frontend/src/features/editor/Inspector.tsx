@@ -128,6 +128,31 @@ function ParamField({
         className="accent-[var(--accent)]"
       />
     )
+  } else if (isOptionalBool(param)) {
+    // 真偽値か null (未設定の意味の既定) の引数は, 3 つから選ぶ
+    field = (
+      <select
+        id={id}
+        value={value === undefined ? '' : String(value)}
+        onChange={(event) =>
+          onChange(
+            event.target.value === ''
+              ? undefined
+              : event.target.value === 'null'
+                ? null
+                : event.target.value === 'true',
+          )
+        }
+        className="h-7 w-full rounded-md border border-line bg-bg px-1 font-mono text-xs"
+      >
+        <option value="">
+          (未設定{param.default !== null ? `. 既定 ${formatValue(param.default)}` : ''})
+        </option>
+        <option value="true">true</option>
+        <option value="false">false</option>
+        <option value="null">null</option>
+      </select>
+    )
   } else if (param.choices) {
     field = (
       <select
@@ -1035,5 +1060,16 @@ function SubgraphContents({
         </dl>
       </details>
     </div>
+  )
+}
+
+/** 真偽値か null だけを受け取る引数か (Optional[bool] の型ヒント) */
+function isOptionalBool(param: ParamSpec): boolean {
+  const types = param.types
+  return (
+    param.kind === 'any' &&
+    Array.isArray(types) &&
+    types.includes('bool') &&
+    types.every((type) => type === 'bool' || type === 'null')
   )
 }
