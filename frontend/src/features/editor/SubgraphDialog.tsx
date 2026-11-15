@@ -29,9 +29,14 @@ export function SubgraphDialog({
     queryFn: api.listExamples,
     staleTime: Infinity,
   })
+  // 定義を読み込み, 誤りがあるかを確かめる (形の推定はしない)
   const load = useMutation({
-    mutationFn: ({ source, name }: { source: 'model' | 'example'; name: string }) =>
-      source === 'model' ? api.getModel(name) : api.getExample(name),
+    mutationFn: async ({ source, name }: { source: 'model' | 'example'; name: string }) => {
+      const model = source === 'model' ? await api.getModel(name) : await api.getExample(name)
+      const checked = await api.check(model.spec as unknown as Spec, false)
+      const errors = checked.issues.filter((issue) => issue.severity === 'error')
+      return { model, errors }
+    },
   })
   // 読み込んだ定義は, ダイアログを開いている間だけ写す (読み込みの途中で
   // 閉じた場合は写さない. 呼び出しごとの onSuccess は閉じた後は呼ばれない)
@@ -41,7 +46,17 @@ export function SubgraphDialog({
     load.mutate(
       { source, name },
       {
-        onSuccess: (model) => {
+        onSuccess: ({ model, errors }) => {
+          // 誤りのある定義は, 写すと使うノードも誤りになるので確かめる
+          if (
+            errors.length > 0 &&
+            !window.confirm(
+              `${model.name} には誤りが ${errors.length} 件あります (${errors[0]!.message}). ` +
+                '写すと, 置いたノードは誤りになります (写した後に中身を直せます). 写しますか?',
+            )
+          ) {
+            return
+          }
           try {
             onImport(model.name, model.spec as unknown as Spec)
             onClose()
