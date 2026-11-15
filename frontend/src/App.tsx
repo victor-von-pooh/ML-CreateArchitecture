@@ -108,6 +108,8 @@ function Editor() {
   const [ownFile, setOwnFile] = useState<string | null>(null)
   // 保存した (か開いた) 時点の定義. 今の定義と比べて, 保存していない変更を判定
   const [saved, setSaved] = useState(() => JSON.stringify(emptySpec()))
+  // 前に開いていた画面の, 保存していない定義の下書き (戻すか捨てるかを聞く)
+  const [draft, setDraft] = useState<Draft | null>(readDraft)
   const [selected, setSelected] = useState<string | null>(null)
   const flow = useReactFlow()
 
@@ -198,6 +200,21 @@ function Editor() {
   const [notice, setNotice] = useState<{ text: string } | null>(null)
   const notify = (text: string) => setNotice({ text })
   const dirty = useMemo(() => JSON.stringify(whole) !== saved, [whole, saved])
+  // 保存していない変更は, 少し待ってからブラウザに下書きとして残す (閉じたり
+  // 読み込み直したりしても失わないように. 保存, 新規, 開く, 捨てるで消す)
+  useEffect(() => {
+    // 変更を元に戻して保存した時点と同じになった場合は, 下書きも消す (前の
+    // 画面の下書きを戻すかを聞いている間は消さない)
+    if (!dirty) {
+      if (draft === null) clearDraft()
+      return
+    }
+    const timer = window.setTimeout(
+      () => writeDraft({ spec: whole, fileName, ownFile, time: new Date().toISOString() }),
+      1000,
+    )
+    return () => window.clearTimeout(timer)
+  }, [dirty, whole, fileName, ownFile, draft])
 
   // 新しく置くものは, キャンバスに見えている範囲の真ん中の近くで, 他の
   // ノードと重ならない所
@@ -584,6 +601,8 @@ function Editor() {
           checking={check.isFetching || debounced !== target}
           onChange={setSpec}
           onLoad={(name, loaded, source) => {
+            clearDraft()
+            setDraft(null)
             setOwnFile(source === 'model' ? name : null)
             // 位置の無いもの (手で書いた定義など) は, 開いたときに一度だけ
             // 段に分けた位置を書く (後の編集で動かないように)
@@ -604,6 +623,7 @@ function Editor() {
             setSaved('')
           }}
           onSaved={(name, savedSpec) => {
+            clearDraft()
             setSavedNotice(`${name} に保存しました`)
             window.setTimeout(() => setSavedNotice(''), 3000)
             setOwnFile(name)
@@ -625,6 +645,44 @@ function Editor() {
           onUndo={previous ? undoSpec : undefined}
           onRedo={following ? redoSpec : undefined}
         />
+        {draft && (
+          <div
+            role="status"
+            className="flex flex-wrap items-center gap-2 border-b border-line bg-accent-soft px-3 py-1.5 text-xs"
+          >
+            <span>
+              保存していない定義 <span className="font-mono">{draft.fileName}</span> (
+              {new Date(draft.time).toLocaleString()}) の下書きがあります
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const placed = placeMissing(draft.spec, unitsFor(draft.spec))
+                history.reset(placed)
+                setFileName(draft.fileName)
+                setOwnFile(draft.ownFile)
+                // 保存していない変更として戻す
+                setSaved('')
+                setEditPath([])
+                setSelected(null)
+                setDraft(null)
+              }}
+              className="rounded border border-line bg-surface px-2 py-0.5 font-medium hover:bg-surface-2"
+            >
+              戻す
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                clearDraft()
+                setDraft(null)
+              }}
+              className="rounded px-2 py-0.5 text-ink-2 hover:bg-surface-2"
+            >
+              捨てる
+            </button>
+          </div>
+        )}
         <div
           className="grid min-h-0 flex-1"
           style={{
@@ -826,4 +884,53 @@ function Editor() {
       )}
     </>
   )
+}
+
+// 保存していない定義の下書きを置くブラウザの保存場所の名前
+const DRAFT_KEY = 'ml-createarchitecture:draft'
+
+/** 保存していない定義の下書き */
+interface Draft {
+  spec: Spec
+  fileName: string
+  ownFile: string | null
+  time: string
+}
+
+/** 下書きを読む (無いか読めない場合は null) */
+function readDraft(): Draft | null {
+  try {
+    const text = window.localStorage.getItem(DRAFT_KEY)
+    if (!text) return null
+    const value = JSON.parse(text) as Partial<Draft>
+    if (!value.spec || typeof value.fileName !== 'string' || typeof value.time !== 'string') {
+      return null
+    }
+    return {
+      spec: value.spec,
+      fileName: value.fileName,
+      ownFile: value.ownFile ?? null,
+      time: value.time,
+    }
+  } catch {
+    return null
+  }
+}
+
+/** 下書きを書く (書けない場合は何もしない) */
+function writeDraft(draft: Draft): void {
+  try {
+    window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+  } catch {
+    // 保存場所が使えない (容量やプライベートの窓) 場合は下書きを残さない
+  }
+}
+
+/** 下書きを消す */
+function clearDraft(): void {
+  try {
+    window.localStorage.removeItem(DRAFT_KEY)
+  } catch {
+    // 保存場所が使えない場合は何もしない
+  }
 }

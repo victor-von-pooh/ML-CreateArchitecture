@@ -736,3 +736,29 @@ test('真偽値か null の引数は, 未設定と true, false, null から選�
   await page.getByRole('button', { name: 'YAML', exact: true }).click()
   await expect(page.getByRole('dialog')).toContainText('align_corners: true')
 })
+
+test('保存していない定義は, 読み込み直した後に下書きから戻せる', async ({ page }) => {
+  page.on('dialog', (dialog) => void dialog.accept())
+  await page.goto('/')
+  await page.locator('[data-id="x"]').click()
+  await page.getByPlaceholder('部品を探す').fill('nn.ReLU')
+  await page.getByPlaceholder('部品を探す').press('Enter')
+  await page.getByLabel('保存する名前').fill('e2e_draft')
+  await page.getByLabel('保存する名前').press('Tab')
+  // 下書きを残す間を待ってから読み込み直す
+  await page.waitForTimeout(1500)
+  await page.reload()
+  await expect(page.locator('[data-id="relu1"]')).toHaveCount(0)
+  await expect(page.getByRole('status').filter({ hasText: '下書きがあります' })).toBeVisible()
+  await page.getByRole('button', { name: '戻す', exact: true }).click()
+  await expect(page.locator('[data-id="relu1"]')).toBeVisible()
+  await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
+
+  // 捨てると次は聞かない
+  await page.waitForTimeout(1500)
+  await page.reload()
+  await page.getByRole('button', { name: '捨てる' }).click()
+  await page.reload()
+  await expect(page.locator('[data-id="x"]')).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: '下書きがあります' })).toHaveCount(0)
+})
