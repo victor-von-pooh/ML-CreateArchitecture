@@ -29,10 +29,10 @@ export function parseShape(value: unknown): number[] | null {
   // [4, 16] と (4, 16) (Python の組) と 4, 16 を読む. 括弧の閉じ忘れは読まない
   const text = String(value ?? '').trim()
   if (!Array.isArray(value)) {
-    const open = text[0]
-    const close = text[text.length - 1]
+    const open = text[0] ?? ''
+    const close = text[text.length - 1] ?? ''
     const pairs: Record<string, string> = { '[': ']', '(': ')' }
-    if ((open in pairs || close === ']' || close === ')') && pairs[open ?? ''] !== close) {
+    if ((open in pairs || close === ']' || close === ')') && pairs[open] !== close) {
       return null
     }
   }
