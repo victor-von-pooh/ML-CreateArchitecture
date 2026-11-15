@@ -103,7 +103,7 @@ export function SubgraphDialog({
           ))}
         </ul>
       )}
-      <h3 className="mb-1 text-xs font-semibold text-ink-2">同梱した例</h3>
+      <h3 className="mb-1 text-xs font-semibold text-ink-2">同梱の例</h3>
       {examples.isPending ? (
         <Spinner />
       ) : examples.error ? (

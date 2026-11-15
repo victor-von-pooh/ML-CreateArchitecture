@@ -691,7 +691,7 @@ function Editor() {
               }}
               className="rounded border border-line bg-surface px-2 py-0.5 font-medium hover:bg-surface-2"
             >
-              戻す
+              下書きを開く
             </button>
             <button
               type="button"
@@ -701,7 +701,7 @@ function Editor() {
               }}
               className="rounded px-2 py-0.5 text-ink-2 hover:bg-surface-2"
             >
-              捨てる
+              下書きを捨てる
             </button>
           </section>
         )}
@@ -736,18 +736,18 @@ function Editor() {
                 const users = subgraphUsers(whole, name)
                 if (users.nodes.length > 0) {
                   notify(
-                    `部分モデル ${name} はノード ${users.nodes.join(', ')} で使っているので消せません. 先にそのノードを消してください`,
+                    `部分モデル sub.${name} はノード ${users.nodes.join(', ')} で使っているので消せません. 先にそのノードを消してください`,
                   )
                   return
                 }
                 if (users.subgraphs.length > 0) {
                   notify(
-                    `部分モデル ${name} は部分モデル ${users.subgraphs.join(', ')} の中で使っているので消せません. 先にそちらを消してください`,
+                    `部分モデル sub.${name} は部分モデル ${users.subgraphs.map((item) => `sub.${item}`).join(', ')} の中で使っているので消せません. 先にそちらを消してください`,
                   )
                   return
                 }
                 setHistory(removeSubgraph(whole, name))
-                notify(`部分モデル ${name} を消しました`)
+                notify(`部分モデル sub.${name} を消しました`)
               }}
             />
           </aside>
@@ -818,10 +818,10 @@ function Editor() {
                 </nav>
                 <span
                   className="text-ink-3"
-                  title="変更はこの定義の中の部分モデルに入り, それを使う全てのノードに効きます"
+                  title="変更はこの定義の中の部分モデルに入り, それを使う全てのノードに反映されます"
                 >
-                  を編集中 (使っているノード {subgraphUsers(whole, editingName).nodes.length}{' '}
-                  個に効く)
+                  を編集中 (変更は使っているノード {subgraphUsers(whole, editingName).nodes.length}{' '}
+                  個すべてに反映)
                 </span>
                 {usage && Object.keys(usage.shapes).length > 0 && (
                   <span

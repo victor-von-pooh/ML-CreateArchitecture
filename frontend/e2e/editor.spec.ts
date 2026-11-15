@@ -602,13 +602,13 @@ test('保存すると知らせが出て, YAML と Python のコードをファ�
 
   await page.getByRole('button', { name: 'Python', exact: true }).click()
   const python = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'e2e_download.py として保存' }).click()
+  await page.getByRole('button', { name: 'e2e_download.py をダウンロード' }).click()
   expect((await python).suggestedFilename()).toBe('e2e_download.py')
   await page.getByRole('button', { name: '閉じる' }).click()
 
   await page.getByRole('button', { name: 'YAML', exact: true }).click()
   const yaml = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'e2e_download.yaml として保存' }).click()
+  await page.getByRole('button', { name: 'e2e_download.yaml をダウンロード' }).click()
   expect((await yaml).suggestedFilename()).toBe('e2e_download.yaml')
 })
 
@@ -675,7 +675,7 @@ test('注意のあるノードを全体の情報に出し, 別名で部品を探
   await page.getByPlaceholder('部品を探す').press('Enter')
   await expect(page.locator('[data-id="add1"]')).toBeVisible()
   await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } })
-  const warnings = page.getByRole('region', { name: '注意のあるノード' })
+  const warnings = page.getByRole('region', { name: '誤りと注意のあるノード' })
   await expect(warnings).toContainText('add1', { timeout: 20_000 })
   await expect(warnings).toContainText('つなぎ先が 1 つだけ')
 })
@@ -750,14 +750,14 @@ test('保存していない定義は, 読み込み直した後に下書きから
   await page.reload()
   await expect(page.locator('[data-id="relu1"]')).toHaveCount(0)
   await expect(page.getByRole('region', { name: '保存していない定義の下書き' })).toBeVisible()
-  await page.getByRole('button', { name: '戻す', exact: true }).click()
+  await page.getByRole('button', { name: '下書きを開く' }).click()
   await expect(page.locator('[data-id="relu1"]')).toBeVisible()
   await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
 
   // 捨てると次は聞かない
   await page.waitForTimeout(1500)
   await page.reload()
-  await page.getByRole('button', { name: '捨てる' }).click()
+  await page.getByRole('button', { name: '下書きを捨てる' }).click()
   await page.reload()
   await expect(page.locator('[data-id="x"]')).toBeVisible()
   await expect(page.getByRole('region', { name: '保存していない定義の下書き' })).toHaveCount(0)
