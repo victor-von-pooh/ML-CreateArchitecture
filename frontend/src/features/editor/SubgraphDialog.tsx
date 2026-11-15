@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { api } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
 import { ErrorBox, Spinner } from '../../components/ui'
-import type { Spec } from '../../lib/graph'
+import type { Spec, SubgraphOrigin } from '../../lib/graph'
 
 /**
  * 保存した定義か同梱した例を選び, 今の定義の部分モデル (部品) として写す
@@ -20,7 +20,7 @@ export function SubgraphDialog({
   /** 今開いている定義の保存した名前 (自分自身は写せないので一覧から除く) */
   current: string | null
   /** 選んだ定義を写す (写せない場合は誤りを投げる) */
-  onImport: (name: string, spec: Spec) => void
+  onImport: (name: string, spec: Spec, origin: SubgraphOrigin) => void
   onClose: () => void
 }) {
   const models = useQuery({ queryKey: ['models'], queryFn: api.listModels })
@@ -58,7 +58,7 @@ export function SubgraphDialog({
             return
           }
           try {
-            onImport(model.name, model.spec as unknown as Spec)
+            onImport(model.name, model.spec as unknown as Spec, { kind: source, name })
             onClose()
           } catch (error) {
             setImportError(error)

@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { ChevronDown, ChevronRight, Layers, Plus, Search, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Layers, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { useDeferredValue, useId, useMemo, useState } from 'react'
 
 import type { UnitSpec } from '../../lib/graph'
@@ -29,6 +29,8 @@ export function Palette({
   onImport,
   onRemove,
   notice,
+  refreshable,
+  onRefresh,
 }: {
   units: UnitSpec[]
   /** 部分モデルの操作の結果の知らせ (変わるたびに検索を消して見せる) */
@@ -39,6 +41,10 @@ export function Palette({
   onImport?: () => void
   /** 部分モデルを定義から消す */
   onRemove?: (unit: UnitSpec) => void
+  /** 写した元の定義から写し直せる部分モデルの部品の名前 */
+  refreshable?: Set<string>
+  /** 部分モデルを写した元の定義の今の中身で写し直す */
+  onRefresh?: (unit: UnitSpec) => void
 }) {
   const searchId = useId()
   const [query, setQuery] = useState('')
@@ -166,6 +172,17 @@ export function Palette({
                           </span>
                         </span>
                       </button>
+                      {unit.source === 'subgraph' && onRefresh && refreshable?.has(unit.name) && (
+                        <button
+                          type="button"
+                          onClick={() => onRefresh(unit)}
+                          aria-label={`部分モデル ${unit.name} を元の定義から写し直す`}
+                          title={`部分モデル ${unit.name} を, 写した元の定義の今の中身で写し直す`}
+                          className="flex size-6 shrink-0 items-center justify-center rounded text-ink-3 hover:bg-surface-2 hover:text-accent-text"
+                        >
+                          <RefreshCw className="size-3" aria-hidden />
+                        </button>
+                      )}
                       {unit.source === 'subgraph' && onRemove && (
                         <button
                           type="button"

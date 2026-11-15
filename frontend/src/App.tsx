@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
-import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
 import { api } from './api/client'
 import { ErrorBox, Spinner } from './components/ui'
@@ -20,6 +20,8 @@ import {
   subgraphUsers,
   subgraphView,
   makesCycle,
+  subgraphOrigin,
+  refreshSubgraph,
   usageShapes,
   withInputShapes,
   subgraphCheckTarget,
@@ -58,6 +60,11 @@ function Editor() {
   // 保存する定義 (whole) と, 画面で編集している定義 (spec. 部分モデルを
   // 編集している間はその部分モデル)
   const whole = history.value
+  // 最新の定義 (読み込みを待つ操作が, 待った後の定義を使うため)
+  const latest = useRef(whole)
+  useEffect(() => {
+    latest.current = whole
+  }, [whole])
   // 編集している部分モデルの並び (入れ子で開いた順. 空なら本体)
   const [editPath, setEditPath] = useState<string[]>([])
   // 元に戻すなどで部分モデルが無くなった場合は, あるところまでに戻す
@@ -372,6 +379,40 @@ function Editor() {
     )
   }
 
+  // 元の定義を写した部分モデル (写し直せるもの) の部品の名前
+  const refreshable = new Set(
+    Object.entries(whole.subgraphs ?? {})
+      .filter(([, sub]) => subgraphOrigin(sub))
+      .map(([name]) => `${SUBGRAPH_PREFIX}${name}`),
+  )
+  // 部分モデルを, 写した元の定義の今の中身で置き換える (名前はそのまま)
+  const refresh = async (name: string) => {
+    const origin = subgraphOrigin(whole.subgraphs?.[name])
+    if (!origin) return
+    try {
+      const model =
+        origin.kind === 'model'
+          ? await api.getModel(origin.name)
+          : await api.getExample(origin.name)
+      if (origin.kind === 'model' && origin.name === ownFile) {
+        notify(`${origin.name} は今開いている定義なので写し直せません`)
+        return
+      }
+      // 読み込みの間に定義が変わっても, 今の定義に対して行う
+      const outcome = refreshSubgraph(latest.current, name, model.spec as unknown as Spec, origin)
+      if (!outcome) notify(`sub.${name} はもう無いので写し直しませんでした`)
+      else if (!outcome.changed) notify(`sub.${name} は ${origin.name} と同じ中身です`)
+      else {
+        setHistory(outcome.spec)
+        notify(`sub.${name} を ${origin.name} の今の中身で写し直しました (元に戻すで戻せます)`)
+      }
+    } catch (error) {
+      notify(
+        `sub.${name} を写し直せません: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
   // 部分モデルの編集を始める (path が空なら本体に戻る)
   const openPath = (path: string[]) => {
     setEditPath(path)
@@ -467,6 +508,8 @@ function Editor() {
               notice={notice}
               onAdd={add}
               onImport={() => setImporting(true)}
+              refreshable={refreshable}
+              onRefresh={(unit) => void refresh(unit.name.slice(SUBGRAPH_PREFIX.length))}
               onRemove={(unit) => {
                 // 使っているノードがある部分モデルは消さない
                 const name = unit.name.slice(SUBGRAPH_PREFIX.length)
@@ -582,11 +625,11 @@ function Editor() {
       {importing && (
         <SubgraphDialog
           current={ownFile}
-          onImport={(name, source) => {
+          onImport={(name, source, origin) => {
             // 写すと同じ中身のものは 1 つにまとまるので, 変わらない場合は
             // 履歴に残さずに知らせるだけ
             // (部分モデルを編集している間も, 定義全体に写す)
-            const embedded = embedSubgraph(whole, name, source)
+            const embedded = embedSubgraph(whole, name, source, { origin })
             const unit = `${SUBGRAPH_PREFIX}${embedded.name}`
             if (
               whole.subgraphs?.[embedded.name] &&

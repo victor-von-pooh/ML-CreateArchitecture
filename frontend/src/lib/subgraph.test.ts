@@ -9,6 +9,8 @@ import {
   subgraphUsers,
   subgraphView,
   makesCycle,
+  subgraphOrigin,
+  refreshSubgraph,
   usageShapes,
   withInputShapes,
   subgraphCheckTarget,
@@ -191,5 +193,86 @@ describe('subgraphs', () => {
     expect(usageShapes(two, order, 'block', units)?.node).toBe('b')
     // 使うノードが無ければ null
     expect(usageShapes(spec, check, 'block', units)).toBeNull()
+  })
+
+  it('写した元を記録し, 同じ名前のまま写し直せる', () => {
+    const origin = { kind: 'model' as const, name: 'block' }
+    const first = embedSubgraph(emptySpec(), 'block', block(), { origin })
+    expect(subgraphOrigin(first.spec.subgraphs?.block)).toEqual(origin)
+    const changed = { ...block(), description: '直した' }
+    const again = embedSubgraph(first.spec, 'block', changed, { origin, replace: 'block' })
+    expect(again.name).toBe('block')
+    expect(Object.keys(again.spec.subgraphs ?? {})).toEqual(['block'])
+    expect(again.spec.subgraphs?.block?.description).toBe('直した')
+    expect(subgraphOrigin(again.spec.subgraphs?.block)).toEqual(origin)
+    expect(
+      subgraphOrigin(embedSubgraph(emptySpec(), 'b', block()).spec.subgraphs?.b),
+    ).toBeUndefined()
+  })
+
+  it('写し直しは自分を使う形にせず, 使われなくなった部分モデルを消し, 位置を残す', () => {
+    const origin = { kind: 'model' as const, name: 'M' }
+    const base = embedSubgraph(emptySpec(), 'M', block(), { origin }).spec
+    const used: Spec = { ...base, nodes: { m: { unit: 'sub.M', inputs: { x: 'x', mask: 'x' } } } }
+
+    // 元の定義が中に同じ名前の部分モデルを持っても, 自分を使う形にしない
+    // (中のものは番号を付けた名前にし, 参照も付け直す)
+    const selfish: Spec = {
+      ...block(),
+      nodes: { a: { unit: 'sub.M', inputs: { x: 'x', mask: 'x' } } },
+      outputs: { y: 'a:y' },
+      subgraphs: { M: base.subgraphs!.M! },
+    }
+    const nested = refreshSubgraph(used, 'M', selfish, origin)!
+    expect(nested.spec.subgraphs?.M?.nodes.a?.unit).toBe('sub.M_2')
+    expect(makesCycle(nested.spec.subgraphs, 'M', 'sub.M')).toBe(true)
+    expect(makesCycle(nested.spec.subgraphs, 'M_2', 'sub.M_2')).toBe(true)
+    expect(nested.spec.subgraphs?.M_2?.nodes.a).toBeUndefined()
+
+    // 中の部分モデルが変わっても, 前のものは残らない
+    const outerOrigin = { kind: 'model' as const, name: 'outer' }
+    const makeOuter = (description: string): Spec => ({
+      ...emptySpec('outer'),
+      inputs: { x: {} },
+      nodes: { i: { unit: 'sub.inner', inputs: { x: 'x', mask: 'x' } } },
+      outputs: { y: 'i:y' },
+      subgraphs: { inner: { ...block(), description } },
+    })
+    let spec = embedSubgraph(emptySpec(), 'outer', makeOuter('1'), { origin: outerOrigin }).spec
+    spec = { ...spec, nodes: { o: { unit: 'sub.outer', inputs: { x: 'x' } } } }
+    for (const description of ['2', '3']) {
+      const result = refreshSubgraph(spec, 'outer', makeOuter(description), outerOrigin)!
+      expect(result.changed).toBe(true)
+      spec = result.spec
+    }
+    expect(Object.keys(spec.subgraphs ?? {}).sort()).toEqual(['inner', 'outer'])
+    expect(spec.subgraphs?.inner?.description).toBe('3')
+
+    // 位置は同じ名前のものに残し, 位置だけの違いは変わっていない扱い
+    const placed: Spec = {
+      ...used,
+      subgraphs: {
+        M: {
+          ...used.subgraphs!.M!,
+          nodes: { fc: { ...used.subgraphs!.M!.nodes.fc!, ui: { x: 5, y: 6 } } },
+        },
+      },
+    }
+    const same = refreshSubgraph(placed, 'M', block(), origin)!
+    expect(same.changed).toBe(false)
+    const changed = refreshSubgraph(placed, 'M', { ...block(), description: '直した' }, origin)!
+    expect(changed.spec.subgraphs?.M?.nodes.fc?.ui).toEqual({ x: 5, y: 6 })
+
+    // 部分モデルが無い, 写した元が違う場合は null
+    expect(refreshSubgraph(used, 'X', block(), origin)).toBeNull()
+    expect(refreshSubgraph(used, 'M', block(), { kind: 'example', name: 'M' })).toBeNull()
+  })
+
+  it('写した元だけが違う同じ中身は 1 つにまとめる', () => {
+    const first = embedSubgraph(emptySpec(), 'blk', block(), {
+      origin: { kind: 'example', name: 'blk' },
+    }).spec
+    const second = embedSubgraph(first, 'blk', block(), { origin: { kind: 'model', name: 'blk' } })
+    expect(second.name).toBe('blk')
   })
 })
