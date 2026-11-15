@@ -350,3 +350,38 @@ test('キーボードだけで部品を置き, 名前を変えて戻し, Ctrl+S 
   await page.getByLabel('保存する名前').press('ControlOrMeta+s')
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible()
 })
+
+test('保存した定義を部分モデルとして写し, 部品として置いてつなぐ', async ({ page }) => {
+  await page.goto('/')
+
+  // 同梱の例を部分モデルとして写すと, 部品の一覧の「部分モデル」に出る
+  await page.getByRole('button', { name: '別の定義を部品にする' }).click()
+  await page.getByRole('button', { name: /^residual_mlp/ }).click()
+  const unit = page.getByRole('button', { name: /^sub\.residual_mlp/ })
+  await expect(unit).toBeVisible()
+
+  // 置いて入力と出力をつなぐと, 部分モデルの出力の形とパラメータ数が出る
+  await unit.click()
+  await page.getByLabel(/^x/).selectOption('x')
+  await page.getByRole('button', { name: '出力', exact: true }).click()
+  await page.getByLabel(/つなぎ先/).selectOption('residual_mlp1')
+  await expect(page.locator('[data-id="residual_mlp1"]')).toContainText('[4, 3]', {
+    timeout: 20_000,
+  })
+  await expect(page.locator('header')).toContainText('誤り 0 件')
+
+  // 使っている部分モデルは消せず, ノードを消すと消せる
+  await page.getByRole('button', { name: '部分モデル sub.residual_mlp を消す' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '消せません' })).toBeVisible()
+  await expect(unit).toBeVisible()
+
+  // 中身は詳細で読める
+  await page.locator('[data-id="residual_mlp1"]').click()
+  await page.getByText('部分モデルの中身').click()
+  await expect(page.locator('aside[aria-label="詳細"]')).toContainText('fc1: nn.Linear')
+  await page.locator('[data-id="residual_mlp1"]').click()
+  await page.keyboard.press('Delete')
+  await page.getByRole('button', { name: '部分モデル sub.residual_mlp を消す' }).click()
+  await expect(unit).toHaveCount(0)
+  await expect(page.getByRole('status').filter({ hasText: '消しました' })).toBeVisible()
+})

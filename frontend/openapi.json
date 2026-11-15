@@ -485,6 +485,17 @@
               }
             ],
             "title": "Location"
+          },
+          "subgraph": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subgraph"
           }
         },
         "type": "object",

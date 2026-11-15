@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react'
+import { ChevronDown, ChevronRight, Layers, Plus, Search, Trash2 } from 'lucide-react'
 import { useDeferredValue, useId, useMemo, useState } from 'react'
 
 import type { UnitSpec } from '../../lib/graph'
@@ -7,6 +7,7 @@ import { firstMatch } from '../../lib/search'
 
 // 出どころの表示名と並び順
 const SOURCES: Record<string, string> = {
+  subgraph: '部分モデル',
   ml_modelcontrol: '演算',
   'torch.nn': 'PyTorch',
   torch_geometric: 'PyTorch Geometric',
@@ -25,14 +26,33 @@ const SOURCES: Record<string, string> = {
 export function Palette({
   units,
   onAdd,
+  onImport,
+  onRemove,
+  notice,
 }: {
   units: UnitSpec[]
+  /** 部分モデルの操作の結果の知らせ (変わるたびに検索を消して見せる) */
+  notice?: { text: string } | null
   /** 部品を置く (focus はキーボードで置いた場合) */
   onAdd: (unit: UnitSpec, focus?: boolean) => void
+  /** 保存した定義を部分モデルとして写す対話を開く */
+  onImport?: () => void
+  /** 部分モデルを定義から消す */
+  onRemove?: (unit: UnitSpec) => void
 }) {
   const searchId = useId()
   const [query, setQuery] = useState('')
-  const [open, setOpen] = useState<Record<string, boolean>>({ ml_modelcontrol: true })
+  const [open, setOpen] = useState<Record<string, boolean>>({
+    subgraph: true,
+    ml_modelcontrol: true,
+  })
+  // 部分モデルを加えたら, 検索で隠れないように検索を消す (知らせが変わった
+  // 描画の中で前の知らせと比べる)
+  const [seen, setSeen] = useState(notice)
+  if (notice !== seen) {
+    setSeen(notice)
+    if (notice) setQuery('')
+  }
 
   // 名前と説明で絞り込み, 出どころごとにまとめる
   // 打鍵の間は前の結果を見せ, 多くの部品の描き直しで入力を止めない
@@ -86,6 +106,22 @@ export function Palette({
           Enter で一番上の部品を置きます
         </p>
       </div>
+      {onImport && (
+        <div className="border-b border-line p-2">
+          <button
+            type="button"
+            onClick={onImport}
+            title="保存した定義か例を, この定義の中で 1 つの部品 (部分モデル) として使えるようにする"
+            className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs text-ink-2 hover:bg-surface-2"
+          >
+            <Layers className="size-3.5 text-ink-3" aria-hidden />
+            別の定義を部品にする
+          </button>
+          <p role="status" className="px-2 pt-1 text-[10px] text-ink-2 empty:hidden">
+            {notice?.text}
+          </p>
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
         {groups.map(([source, items]) => {
           const expanded = open[source] || query.trim() !== ''
@@ -108,14 +144,14 @@ export function Palette({
               {expanded && (
                 <ul>
                   {items.map((unit) => (
-                    <li key={unit.name}>
+                    <li key={unit.name} className="flex items-start">
                       <button
                         type="button"
                         disabled={!unit.available}
                         onClick={() => onAdd(unit)}
                         title={unit.available ? unit.description : unit.reason}
                         className={clsx(
-                          'group flex w-full items-start gap-1.5 rounded px-2 py-1 text-left',
+                          'group flex min-w-0 flex-1 items-start gap-1.5 rounded px-2 py-1 text-left',
                           unit.available ? 'hover:bg-surface-2' : 'cursor-not-allowed opacity-50',
                         )}
                       >
@@ -130,6 +166,17 @@ export function Palette({
                           </span>
                         </span>
                       </button>
+                      {unit.source === 'subgraph' && onRemove && (
+                        <button
+                          type="button"
+                          onClick={() => onRemove(unit)}
+                          aria-label={`部分モデル ${unit.name} を消す`}
+                          title={`部分モデル ${unit.name} を定義から消す`}
+                          className="flex size-6 shrink-0 items-center justify-center rounded text-ink-3 hover:bg-surface-2 hover:text-critical-text"
+                        >
+                          <Trash2 className="size-3" aria-hidden />
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>

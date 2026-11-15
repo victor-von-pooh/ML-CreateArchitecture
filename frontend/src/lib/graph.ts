@@ -69,7 +69,189 @@ export interface Spec {
   inputs: Record<string, InputDef>
   nodes: Record<string, NodeDef>
   outputs: Record<string, string>
+  /** 部分モデル (保存した定義を写したもの. ノードの unit に sub.<名前> と書いて使う) */
+  subgraphs?: Record<string, Subgraph>
   ui?: { outputs?: Record<string, Ui>; [key: string]: unknown }
+}
+
+/** 部分モデルの定義 (版と部分モデルを除いた, 普通の定義と同じ形) */
+export type Subgraph = Omit<Spec, 'format_version' | 'subgraphs'>
+
+/** 部分モデルの部品の名前の頭 */
+export const SUBGRAPH_PREFIX = 'sub.'
+
+/**
+ * 定義の部分モデルを部品にした一覧 (ML-ModelControl の describe_spec_units と
+ * 同じ口. 入力は全て必須の口, 出力は出力の口. 中の誤りは確認の結果で示す)
+ */
+export function subgraphUnits(spec: Spec): UnitSpec[] {
+  return Object.entries(spec.subgraphs ?? {}).map(([name, sub]) => ({
+    name: `${SUBGRAPH_PREFIX}${name}`,
+    category: 'sub',
+    source: 'subgraph',
+    description: sub.description || subgraphSummary(sub),
+    params: [],
+    inputs: Object.entries(sub.inputs ?? {}).map(([port, input]) => ({
+      name: port,
+      description: input?.description ?? '',
+      optional: false,
+      variadic: false,
+    })),
+    outputs: Object.keys(sub.outputs ?? {}).map((port) => ({
+      name: port,
+      description: '',
+      optional: false,
+      variadic: false,
+    })),
+    forward_params: [],
+    extra_params: false,
+    available: true,
+    reason: '',
+  }))
+}
+
+/** 説明の無い部分モデルの説明 (入力, 出力, ノードの数) */
+export function subgraphSummary(sub: Subgraph): string {
+  const inputs = Object.keys(sub.inputs ?? {}).join(', ')
+  const outputs = Object.keys(sub.outputs ?? {}).join(', ')
+  const count = Object.keys(sub.nodes ?? {}).length
+  return `入力 ${inputs} → 出力 ${outputs} (ノード ${count} 個)`
+}
+
+// Python の予約語 (部分モデルの名前に使えない)
+const PY_KEYWORDS = new Set(
+  (
+    'False None True and as assert async await break class continue def del elif else ' +
+    'except finally for from global if import in is lambda nonlocal not or pass raise ' +
+    'return try while with yield'
+  ).split(' '),
+)
+
+/** 書き出すコードの部分モデルのクラスの名前 (ML-ModelControl の class_name_of と同じ) */
+function className(name: string): string {
+  const joined = name
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part[0]!.toUpperCase() + part.slice(1))
+    .join('')
+  return /^[A-Za-z_]/.test(joined) && !PY_KEYWORDS.has(joined) ? joined : `Subgraph${joined}`
+}
+
+/** 部分モデルの名前に使える形にした名前 (保存した定義の名前から) */
+function subgraphStem(name: string): string {
+  const stem = name.replace(/[^A-Za-z0-9_]/g, '_').replace(/^([0-9])/, '_$1') || 'block'
+  return PY_KEYWORDS.has(stem) ? `${stem}_` : stem
+}
+
+/** 順に依らずに 2 つの値が同じか (辞書のキーの順は比べない) */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, index) => sameValue(item, b[index]))
+    )
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const left = Object.keys(a)
+    const right = Object.keys(b)
+    return (
+      left.length === right.length &&
+      left.every(
+        (key) =>
+          key in b &&
+          sameValue((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+      )
+    )
+  }
+  return Object.is(a, b)
+}
+
+/** 部分モデルの中の sub.<名前> を付け直した部分モデル */
+function renameUnits(graph: Subgraph, renames: Map<string, string>): Subgraph {
+  if (renames.size === 0) return graph
+  return {
+    ...graph,
+    nodes: Object.fromEntries(
+      Object.entries(graph.nodes ?? {}).map(([key, node]) => {
+        const target = node.unit.startsWith(SUBGRAPH_PREFIX)
+          ? renames.get(node.unit.slice(SUBGRAPH_PREFIX.length))
+          : undefined
+        return [key, target ? { ...node, unit: `${SUBGRAPH_PREFIX}${target}` } : node]
+      }),
+    ),
+  }
+}
+
+/**
+ * 別の定義を部分モデルとして写した定義と, 付けた名前を返す
+ *
+ * 写す定義の部分モデルも一緒に写す. 同じ名前で中身の同じものは 1 つに
+ * まとめ, 中身の違うものは番号を付けた名前にする (写したものの中の
+ * sub.<名前> も付け直す). 書き出すコードのクラスの名前 (本体の Model と
+ * 他の部分モデル) と重なる名前も番号を付ける
+ */
+export function embedSubgraph(
+  spec: Spec,
+  name: string,
+  source: Spec,
+): { spec: Spec; name: string } {
+  const subgraphs = { ...(spec.subgraphs ?? {}) }
+  const { format_version: _version, subgraphs: nested = {}, ...body } = structuredClone(source)
+  void _version
+
+  // 使える名前 (同じ中身のものと同じ名前か, 空いていてクラスの名前も重ならない名前)
+  const fits = (candidate: string, value: Subgraph) => {
+    if (candidate in subgraphs) return sameValue(subgraphs[candidate], value)
+    const classes = new Set(['Model', ...Object.keys(subgraphs).map(className)])
+    return !classes.has(className(candidate))
+  }
+  const pick = (base: string, value: Subgraph) => {
+    let used = base
+    for (let index = 2; !fits(used, value); index += 1) used = `${base}_${index}`
+    return used
+  }
+
+  // 写す定義の部分モデルの名前を決めてから, 中の参照を付け直して写す
+  const renames = new Map<string, string>()
+  for (const [key, value] of Object.entries(nested)) {
+    const used = pick(key, value)
+    if (used !== key) renames.set(key, used)
+    subgraphs[used] = value
+  }
+  for (const [key, value] of Object.entries(nested)) {
+    subgraphs[renames.get(key) ?? key] = renameUnits(value, renames)
+  }
+  const own = renameUnits(body, renames)
+  const used = pick(subgraphStem(name), own)
+  subgraphs[used] = own
+  return { spec: { ...spec, subgraphs }, name: used }
+}
+
+/** どのノードからも使われない部分モデルを消した定義を返す */
+export function removeSubgraph(spec: Spec, name: string): Spec {
+  const subgraphs = Object.fromEntries(
+    Object.entries(spec.subgraphs ?? {}).filter(([key]) => key !== name),
+  )
+  const { subgraphs: _old, ...rest } = spec
+  void _old
+  return Object.keys(subgraphs).length === 0 ? rest : { ...rest, subgraphs }
+}
+
+/** 部分モデルを使っているもの (本体のノードと, それを使う他の部分モデルの名前) */
+export function subgraphUsers(spec: Spec, name: string): { nodes: string[]; subgraphs: string[] } {
+  const unit = `${SUBGRAPH_PREFIX}${name}`
+  const nodes = Object.entries(spec.nodes)
+    .filter(([, node]) => node.unit === unit)
+    .map(([key]) => key)
+  const subgraphs = Object.entries(spec.subgraphs ?? {})
+    .filter(
+      ([key, sub]) =>
+        key !== name && Object.values(sub.nodes ?? {}).some((node) => node.unit === unit),
+    )
+    .map(([key]) => key)
+  return { nodes, subgraphs }
 }
 
 /** キャンバスの線 (どのノードのどの口から, どのノードのどの口へ) */
@@ -226,8 +408,10 @@ export function freshName(spec: Spec, base: string): string {
       .replace(/^([0-9])/, '_$1')
       .toLowerCase() || 'node'
   const used = new Set([...Object.keys(spec.inputs), ...Object.keys(spec.nodes)])
+  // 数字で終わる名前 (myblock_2 など) は, 番号と区別できるように _ を挟む
+  const head = /[0-9]$/.test(stem) ? `${stem}_` : stem
   for (let index = 1; ; index += 1) {
-    const name = `${stem}${index}`
+    const name = `${head}${index}`
     if (!used.has(name)) return name
   }
 }
