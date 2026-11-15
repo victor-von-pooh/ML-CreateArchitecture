@@ -387,13 +387,14 @@ function Editor() {
     // キーボードで続けて操作できるように, 詳細の最初の欄に移る (畳んでいれば開く)
     if (!focus) return
     setPanels((current) => ({ ...current, right: true }))
-    window.requestAnimationFrame(() =>
-      document
-        .querySelector<HTMLElement>(
-          'aside[aria-label="詳細"] select, aside[aria-label="詳細"] input',
-        )
-        ?.focus(),
-    )
+    // 名前の欄ではなく, 引数の最初の欄 (無ければ入力のつなぎ先) に移る
+    window.requestAnimationFrame(() => {
+      const panel = 'aside[aria-label="詳細"]'
+      ;(
+        document.querySelector<HTMLElement>(`${panel} [data-first-field] :is(input, select)`) ??
+        document.querySelector<HTMLElement>(`${panel} fieldset :is(select, input)`)
+      )?.focus()
+    })
   }
 
   // 2 つ以上のノード (本体と部分モデルの中) が使う部分モデルの名前
@@ -707,7 +708,14 @@ function Editor() {
         <div
           className="grid min-h-0 flex-1"
           style={{
-            gridTemplateColumns: `${panels.left ? '16rem' : '0'} minmax(0,1fr) ${panels.right ? '20rem' : '0'}`,
+            // 畳んだ欄 (hidden) は格子に並ばないので, その列も作らない
+            gridTemplateColumns: [
+              panels.left ? '16rem' : null,
+              'minmax(0,1fr)',
+              panels.right ? '20rem' : null,
+            ]
+              .filter(Boolean)
+              .join(' '),
           }}
         >
           <aside
