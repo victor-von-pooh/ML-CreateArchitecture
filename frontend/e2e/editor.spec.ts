@@ -385,3 +385,29 @@ test('保存した定義を部分モデルとして写し, 部品として置い
   await expect(unit).toHaveCount(0)
   await expect(page.getByRole('status').filter({ hasText: '消しました' })).toBeVisible()
 })
+
+test('誤りのある定義を部分モデルにする前に確かめる', async ({ page }) => {
+  // 必須の引数とつなぎ先の無い層だけの定義を保存
+  await page.goto('/')
+  await page.getByPlaceholder('部品を探す').fill('nn.Linear')
+  await page
+    .getByRole('button', { name: /^nn\.Linear/ })
+    .first()
+    .click()
+  await page.getByLabel('保存する名前').fill('e2e_broken')
+  await page.getByRole('button', { name: /^保存 \*/ }).click()
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '新規' }).click()
+
+  // 写すかを確かめ, 断ると写さない
+  let asked = ''
+  page.once('dialog', (dialog) => {
+    asked = dialog.message()
+    void dialog.dismiss()
+  })
+  await page.getByRole('button', { name: '別の定義を部品にする' }).click()
+  await page.getByRole('button', { name: /^e2e_broken/ }).click()
+  await expect.poll(() => asked).toContain('誤りが')
+  await page.getByRole('button', { name: '閉じる' }).click()
+  await expect(page.getByRole('button', { name: /^sub\.e2e_broken/ })).toHaveCount(0)
+})

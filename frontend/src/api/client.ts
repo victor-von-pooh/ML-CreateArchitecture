@@ -52,8 +52,12 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listUnits: () => request<UnitSpec[]>('/api/units'),
-  check: (spec: Spec) =>
-    request<CheckResult>('/api/check', { method: 'POST', body: JSON.stringify({ spec }) }),
+  /** 確認と形の推定 (infer が false なら確認だけ) */
+  check: (spec: Spec, infer = true) =>
+    request<CheckResult>('/api/check', {
+      method: 'POST',
+      body: JSON.stringify({ spec, infer }),
+    }),
   exportPython: (spec: Spec, className: string) =>
     request<ExportResult>('/api/export', {
       method: 'POST',
