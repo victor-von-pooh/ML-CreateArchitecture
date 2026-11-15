@@ -215,10 +215,12 @@ describe('つなぎ方が決まる場合の線', () => {
     spec = addNode(spec, units.get('op.Add')!, { x: 0, y: 0 })
     spec = connectFrom(spec, units, 'relu1', 'add1')
     expect(spec.nodes.add1?.inputs).toEqual({ xs: ['relu1'] })
-    // 出力の口が複数のつなぎ元からは引かない
+    // 出力の口が複数のつなぎ元からは, 最初の口 (主な出力) から引く
     spec = addNode(spec, units.get('nn.LSTM')!, { x: 0, y: 0 })
     spec = addNode(spec, units.get('nn.ReLU')!, { x: 0, y: 0 })
-    expect(connectFrom(spec, units, 'lstm1', 'relu2').nodes.relu2?.inputs).toEqual({})
+    expect(connectFrom(spec, units, 'lstm1', 'relu2').nodes.relu2?.inputs).toEqual({
+      input: 'lstm1:output',
+    })
     // 他の口は同じ名前のモデルの入力につなぐ (GNN の edge_index)
     const gcn = unit('pyg.GCNConv', ['x', 'edge_index'])
     units.set('pyg.GCNConv', gcn)

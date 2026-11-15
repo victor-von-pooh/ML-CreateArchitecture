@@ -206,9 +206,11 @@ export function connect(spec: Spec, units: Map<string, UnitSpec>, wire: Omit<Wir
 /**
  * 選んでいるもの (入力かノード) から, 新しく置いたノードへの線を引いた定義
  *
- * つなぎ方が 1 通りに決まる場合だけ引く (つなぎ元の出力の口が 1 つで,
- * つなぎ先に必須の口か可変の数の口がある場合. 必須の口が複数ならその最初).
- * 決まらない場合はそのまま. 他の必須の口は, 同じ名前のモデルの入力があればつなぐ
+ * つなぎ元の出力の口は最初のもの (出力が複数の部品も, 最初の口が主な出力.
+ * nn.MultiheadAttention の output, nn.LSTM の output など. 参照は
+ * 「ノード:口」になるので違えば選び直せる). つなぎ先は必須の口か可変の数の口
+ * (必須の口が複数ならその最初). 無ければそのまま. 他の必須の口は, 同じ名前の
+ * モデルの入力があればつなぐ
  */
 export function connectFrom(
   spec: Spec,
@@ -223,7 +225,7 @@ export function connectFrom(
   if (source in spec.inputs) sourcePort = 'out'
   else {
     const outputs = units.get(spec.nodes[source]?.unit ?? '')?.outputs ?? []
-    if (outputs.length !== 1) return spec
+    if (outputs.length === 0) return spec
     sourcePort = outputs[0]!.name
   }
   const port =
