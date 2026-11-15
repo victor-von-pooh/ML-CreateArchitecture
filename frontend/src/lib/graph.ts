@@ -12,6 +12,8 @@ export interface ParamSpec {
   choices: unknown[] | null
   /** 値の候補 (候補以外も書ける. モデルの名前など) */
   suggestions?: unknown[] | null
+  /** 種類が任意の引数の, 受け取れる値の種類 (int, bool, null など) */
+  types?: string[] | null
 }
 
 /** 部品の口の定義 (ML-ModelControl の PortSpec) */
