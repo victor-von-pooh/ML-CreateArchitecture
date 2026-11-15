@@ -26,10 +26,20 @@ export function formatValue(value: unknown): string {
 
 /** 形の入力 ([4, 16] か 4, 16) を整数のリストにする (読めない場合は null) */
 export function parseShape(value: unknown): number[] | null {
+  // [4, 16] と (4, 16) (Python の組) と 4, 16 を読む. 括弧の閉じ忘れは読まない
+  const text = String(value ?? '').trim()
+  if (!Array.isArray(value)) {
+    const open = text[0]
+    const close = text[text.length - 1]
+    const pairs: Record<string, string> = { '[': ']', '(': ')' }
+    if ((open in pairs || close === ']' || close === ')') && pairs[open ?? ''] !== close) {
+      return null
+    }
+  }
   const items = Array.isArray(value)
     ? value
-    : String(value ?? '')
-        .replace(/[[\]]/g, '')
+    : text
+        .replace(/^[[(]|[\])]$/g, '')
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean)
