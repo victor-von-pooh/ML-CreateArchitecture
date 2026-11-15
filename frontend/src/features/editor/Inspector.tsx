@@ -642,8 +642,8 @@ export function Inspector({
                     className="w-full rounded-md px-1 py-0.5 text-left text-xs hover:bg-surface-2"
                   >
                     <span className="font-mono font-semibold">{node}</span>
-                    {messages.map((message) => (
-                      <span key={message} className="block text-ink-2 [overflow-wrap:anywhere]">
+                    {messages.map((message, index) => (
+                      <span key={index} className="block text-ink-2 [overflow-wrap:anywhere]">
                         {message}
                       </span>
                     ))}

@@ -732,7 +732,7 @@ export function connect(spec: Spec, units: Map<string, UnitSpec>, wire: Omit<Wir
  *
  * つなぎ方が 1 通りに決まる場合だけ引く (つなぎ元の出力の口が 1 つで,
  * つなぎ先に必須の口か可変の数の口がある場合. 必須の口が複数ならその最初).
- * 決まらない場合はそのまま. 他の口は, 同じ名前のモデルの入力があればつなぐ
+ * 決まらない場合はそのまま. 他の必須の口は, 同じ名前のモデルの入力があればつなぐ
  */
 export function connectFrom(
   spec: Spec,
@@ -755,9 +755,17 @@ export function connectFrom(
     unit.inputs.find((item) => item.variadic)
   if (!port) return spec
   let next = connect(spec, units, { source, sourcePort, target, targetPort: port.name })
-  // 他の口は, 同じ名前のモデルの入力があればつなぐ (GNN の edge_index など)
+  // 他の必須の口は, 同じ名前のモデルの入力があればつなぐ (GNN の edge_index など)
   for (const other of unit.inputs) {
-    if (other.name === port.name || other.variadic || !(other.name in spec.inputs)) continue
+    if (
+      other.name === port.name ||
+      other.variadic ||
+      other.optional ||
+      other.name === source ||
+      !(other.name in spec.inputs)
+    ) {
+      continue
+    }
     next = connect(next, units, {
       source: other.name,
       sourcePort: 'out',

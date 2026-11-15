@@ -27,7 +27,7 @@ const ALIASES: Record<string, string[]> = {
   'pyg.SumAggregation': ['global_add_pool', 'global add pool', 'global sum pool', 'readout'],
   'nn.Linear': ['dense', 'fully connected', 'fc'],
   'nn.MultiheadAttention': ['attention', 'self attention', 'mha'],
-  'op.Add': ['residual', 'skip connection', 'sum'],
+  'op.Add': ['residual', 'skip connection'],
   'op.Concat': ['cat', 'concatenate'],
   'op.Mean': ['mean pooling', 'average'],
   'nn.Flatten': ['reshape to vector'],

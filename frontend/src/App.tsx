@@ -232,7 +232,7 @@ function Editor() {
           near.y >= bounds.y &&
           near.x + size.width <= bounds.x + bounds.width &&
           near.y + size.height <= bounds.y + bounds.height))
-    // 望む位置 (選んでいるものの右) が見えている範囲の外なら, その位置に置いて
+    // 望む位置 (選んでいるものの右や複製の元の近く) が見えている範囲の外なら, その位置に置いて
     // 表示をそこへ動かす (真ん中に飛ばさず, つながりの順に並ぶように)
     if (near && !visible) {
       const spot = freeSpot(rects, near, size)
@@ -495,10 +495,16 @@ function Editor() {
       // 詳細の欄の中の Esc は, 欄を離れて選んでいるノード (無ければキャンバス) に戻る
       if (
         event.key === 'Escape' &&
+        !event.isComposing &&
+        event.keyCode !== 229 &&
         target?.closest('aside[aria-label="詳細"]') &&
         (target instanceof HTMLInputElement || target instanceof HTMLSelectElement)
       ) {
         event.preventDefault()
+        // 打ちかけの文字は捨てて (Esc は取り消し) から欄を離れる
+        if (target instanceof HTMLInputElement && target.type !== 'checkbox') {
+          target.value = target.dataset.committed ?? target.defaultValue
+        }
         target.blur()
         focusSelected()
         return
@@ -560,7 +566,7 @@ function Editor() {
         {/* キーボードで, 上の操作と部品の一覧を飛ばしてキャンバスへ移る */}
         <a
           href="#canvas"
-          className="sr-only z-50 rounded-md bg-surface px-3 py-2 text-sm focus:not-sr-only focus:absolute focus:top-2 focus:left-2"
+          className="sr-only z-50 rounded-md border border-accent bg-surface text-sm focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:px-3 focus:py-2"
         >
           キャンバスへ移る
         </a>
