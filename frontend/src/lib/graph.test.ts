@@ -218,6 +218,13 @@ describe('つなぎ方が決まる場合の線', () => {
     spec = addNode(spec, units.get('nn.LSTM')!, { x: 0, y: 0 })
     spec = addNode(spec, units.get('nn.ReLU')!, { x: 0, y: 0 })
     expect(connectFrom(spec, units, 'lstm1', 'relu2').nodes.relu2?.inputs).toEqual({})
+    // 他の口は同じ名前のモデルの入力につなぐ (GNN の edge_index)
+    const gcn = unit('pyg.GCNConv', ['x', 'edge_index'])
+    units.set('pyg.GCNConv', gcn)
+    let graph: Spec = { ...emptySpec(), inputs: { x: {}, edge_index: { dtype: 'int64' } } }
+    graph = addNode(graph, gcn, { x: 0, y: 0 })
+    graph = connectFrom(graph, units, 'x', 'gcnconv1')
+    expect(graph.nodes.gcnconv1?.inputs).toEqual({ x: 'x', edge_index: 'edge_index' })
     // どこにもつながっていないノード
     expect(danglingNodes(spec).sort()).toEqual(['add1', 'lstm1', 'relu2'])
   })

@@ -447,6 +447,14 @@ function Editor() {
     })
   }
 
+  // 選んでいるノード (無ければキャンバス) に focus を移す
+  const focusSelected = useEffectEvent(() => {
+    const node =
+      current !== null
+        ? document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(current)}"]`)
+        : null
+    ;(node ?? document.getElementById('canvas'))?.focus()
+  })
   // Esc は編集している部分モデルから 1 つ上に戻り, / は部品を探す欄に移る
   const onNavKey = useEffectEvent((key: string): boolean => {
     if (key === 'Escape' && validPath.length > 0) {
@@ -474,13 +482,27 @@ function Editor() {
       if (modifier && event.key.toLowerCase() === 's' && !event.shiftKey) {
         event.preventDefault()
         if (target?.closest('dialog[open]')) return
-        if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-        window.requestAnimationFrame(() =>
-          document.querySelector<HTMLButtonElement>('[data-save]:not(:disabled)')?.click(),
-        )
+        // 保存の後は, 前にいた所に戻る (focus を失わない)
+        const before = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        before?.blur()
+        window.requestAnimationFrame(() => {
+          document.querySelector<HTMLButtonElement>('[data-save]:not(:disabled)')?.click()
+          if (before?.isConnected) before.focus()
+        })
         return
       }
       if (target?.closest('dialog[open], textarea') || target?.isContentEditable) return
+      // 詳細の欄の中の Esc は, 欄を離れて選んでいるノード (無ければキャンバス) に戻る
+      if (
+        event.key === 'Escape' &&
+        target?.closest('aside[aria-label="詳細"]') &&
+        (target instanceof HTMLInputElement || target instanceof HTMLSelectElement)
+      ) {
+        event.preventDefault()
+        target.blur()
+        focusSelected()
+        return
+      }
       // 他で扱ったキーは扱わない (Esc はキャンバスが選択を外すのにも使うので除く)
       if (event.defaultPrevented && event.key !== 'Escape') return
       // 文字を打つ欄ではブラウザの標準 (文字の取り消し). ただし打ちかけの文字
@@ -535,6 +557,13 @@ function Editor() {
   return (
     <>
       <div className="flex h-screen flex-col bg-bg text-ink">
+        {/* キーボードで, 上の操作と部品の一覧を飛ばしてキャンバスへ移る */}
+        <a
+          href="#canvas"
+          className="sr-only z-50 rounded-md bg-surface px-3 py-2 text-sm focus:not-sr-only focus:absolute focus:top-2 focus:left-2"
+        >
+          キャンバスへ移る
+        </a>
         <Toolbar
           // 開いた定義が変わったら, 保存する名前の欄を作り直す
           key={fileName}
@@ -629,7 +658,7 @@ function Editor() {
               }}
             />
           </aside>
-          <main className="relative min-h-0">
+          <main id="canvas" tabIndex={-1} className="relative min-h-0 outline-none">
             {/* 左右の欄を畳む (狭い画面でキャンバスを広く使う) */}
             <button
               type="button"

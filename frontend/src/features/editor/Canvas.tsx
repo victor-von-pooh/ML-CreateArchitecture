@@ -106,6 +106,8 @@ export function Canvas({
     if (Object.keys(measured).length > 0) setSizes((current) => ({ ...current, ...measured }))
     // 同じノードのドラッグの移動は 1 回分にまとめる
     const removed = changes.some((change) => change.type === 'remove')
+    // 消した後は focus をキャンバスに置く (ページの先頭に戻らないように)
+    if (removed) window.requestAnimationFrame(() => document.getElementById('canvas')?.focus())
     if (next !== spec) {
       onChange(
         next,

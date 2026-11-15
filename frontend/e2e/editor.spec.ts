@@ -701,3 +701,28 @@ test('値を反映した後の欄の中の Ctrl+Z は, 定義を戻して欄に�
   await page.keyboard.press('ControlOrMeta+Shift+z')
   await expect(page.getByLabel('out_features')).toHaveValue('4')
 })
+
+test('キャンバスへ移るリンク, 欄の Esc でノードに戻る, ノードと線の読み上げの名前', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-id="x"]')).toBeVisible()
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('link', { name: 'キャンバスへ移る' })).toBeFocused()
+
+  await page.locator('[data-id="x"]').click()
+  await page.getByPlaceholder('部品を探す').fill('nn.ReLU')
+  await page.getByPlaceholder('部品を探す').press('Enter')
+  // キーボードで置くと詳細の最初の欄に移り, Esc でノードに戻る
+  await expect(page.getByLabel('名前', { exact: true })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-id="relu1"]')).toBeFocused()
+  await expect(page.locator('[data-id="relu1"]')).toHaveAttribute(
+    'aria-label',
+    /ノード relu1 \(nn\.ReLU\)/,
+  )
+  await expect(page.locator('.react-flow__edge').first()).toHaveAttribute(
+    'aria-label',
+    'x から relu1 の input への線',
+  )
+})
