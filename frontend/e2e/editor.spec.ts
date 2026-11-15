@@ -760,13 +760,34 @@ test('保存していない定義は, 読み込み直した後に下書きから
   await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
   await expect(page.getByLabel('保存する名前')).toHaveValue('e2e_draft')
 
-  // 捨てると次は聞かない
+  // 戻した後の下書きにも名前が残り, 捨てると次は聞かない
   await page.waitForTimeout(1500)
   await page.reload()
+  await expect(page.getByRole('region', { name: '保存していない定義の下書き' })).toContainText(
+    'e2e_draft',
+  )
   await page.getByRole('button', { name: '下書きを捨てる' }).click()
   await page.reload()
   await expect(page.locator('[data-id="x"]')).toBeVisible()
   await expect(page.getByRole('region', { name: '保存していない定義の下書き' })).toHaveCount(0)
+})
+
+test('新規にすると, 打った保存する名前は下書きにも欄にも残らない', async ({ page }) => {
+  page.on('dialog', (dialog) => void dialog.accept())
+  await page.goto('/')
+  await page.getByLabel('保存する名前').fill('e2e_typed')
+  await page.getByRole('button', { name: '新規' }).click()
+  await expect(page.getByLabel('保存する名前')).toHaveValue('model')
+  // 新規の後に編集して下書きを残し, 読み込み直す
+  await page.locator('[data-id="x"]').click()
+  await page.getByPlaceholder('部品を探す').fill('nn.ReLU')
+  await page.getByPlaceholder('部品を探す').press('Enter')
+  await page.waitForTimeout(1500)
+  await page.reload()
+  const banner = page.getByRole('region', { name: '保存していない定義の下書き' })
+  await expect(banner).toContainText('model')
+  await expect(banner).not.toContainText('e2e_typed')
+  await page.getByRole('button', { name: '下書きを捨てる' }).click()
 })
 
 test('左右の欄を畳んでもキャンバスが広がる', async ({ page }) => {

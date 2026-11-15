@@ -115,9 +115,12 @@ function Editor() {
   // 前に開いていた画面の, 保存していない定義の下書き (戻すか捨てるかを聞く)
   const [draft, setDraft] = useState<Draft | null>(readDraft)
   // 保存する名前の欄に打った, まだ保存していない名前 (下書きに残す. 開く,
-  // 新規, 保存で消す) と, 下書きから戻した回数 (名前の欄を作り直すため)
+  // 新規, 保存で消す) と, 名前の欄を作り直した回数 (開く, 新規, 下書きを
+  // 戻すたびに作り直す)
   const [typedName, setTypedName] = useState<string | null>(null)
-  const [restored, setRestored] = useState(0)
+  const [nameEpoch, setNameEpoch] = useState(0)
+  // 保存している間 (下書きを戻す操作を止めるため)
+  const [saving, setSaving] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
   const flow = useReactFlow()
 
@@ -230,7 +233,7 @@ function Editor() {
         writeDraft({
           spec: whole,
           fileName,
-          ...(typedName !== null && typedName !== fileName ? { saveName: typedName } : {}),
+          ...(typedName && typedName !== fileName ? { saveName: typedName } : {}),
           ownFile,
           time: new Date().toISOString(),
         }),
@@ -625,9 +628,10 @@ function Editor() {
         </a>
         <Toolbar
           // 開いた定義が変わったか下書きを戻したら, 保存する名前の欄を作り直す
-          key={`${fileName}:${restored}`}
+          key={`${fileName}:${nameEpoch}`}
           initialName={typedName ?? undefined}
           onNameChange={setTypedName}
+          onSavingChange={setSaving}
           savedNotice={savedNotice}
           spec={spec}
           units={unitMap}
@@ -642,6 +646,7 @@ function Editor() {
             clearDraft()
             setDraft(null)
             setTypedName(null)
+            setNameEpoch((count) => count + 1)
             // 前の定義の部分モデルの知らせは消す
             setNotice(null)
             setOwnFile(source === 'model' ? name : null)
@@ -665,7 +670,8 @@ function Editor() {
           }}
           onSaved={(name, savedSpec) => {
             clearDraft()
-            setTypedName(null)
+            // 保存の間に打ち直した名前は残す
+            setTypedName((typed) => (typed === name ? null : typed))
             if (draft?.tab === tabId()) setDraft(null)
             const errorCount = (check.data?.issues ?? []).filter(
               (issue) => issue.severity === 'error',
@@ -702,11 +708,12 @@ function Editor() {
           >
             <span>
               保存していない定義{' '}
-              <span className="font-mono">{draft.saveName || draft.fileName}</span> (
+              <span className="font-mono">{draft.saveName ?? draft.fileName}</span> (
               {new Date(draft.time).toLocaleString()}) の下書きがあります
             </span>
             <button
               type="button"
+              disabled={saving}
               onClick={() => {
                 if (
                   dirty &&
@@ -730,7 +737,7 @@ function Editor() {
                 )
                 setFileName(draft.fileName)
                 setTypedName(draft.saveName ?? null)
-                setRestored((count) => count + 1)
+                setNameEpoch((count) => count + 1)
                 setOwnFile(draft.ownFile)
                 // 保存していない変更として戻す
                 setSaved('')
@@ -744,6 +751,7 @@ function Editor() {
             </button>
             <button
               type="button"
+              disabled={saving}
               onClick={() => {
                 clearDraft(draft.tab)
                 setDraft(null)

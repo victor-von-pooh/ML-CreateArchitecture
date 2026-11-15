@@ -14,7 +14,7 @@ import {
   Trash2,
   Undo2,
 } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 import { api, type CheckResult } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
@@ -181,6 +181,7 @@ export function Toolbar({
   onDeletedOwn,
   initialName,
   onNameChange,
+  onSavingChange,
 }: {
   /** 保存した知らせ (保存すると上の操作を作り直すので, 外で持つ) */
   savedNotice: string
@@ -218,6 +219,8 @@ export function Toolbar({
   initialName?: string
   /** 保存する名前の欄を書き換えた (下書きに残すため) */
   onNameChange?: (name: string) => void
+  /** 保存しているか (保存の間は下書きを戻す操作を止めるため) */
+  onSavingChange?: (saving: boolean) => void
 }) {
   const queryClient = useQueryClient()
   const nameId = useId()
@@ -254,6 +257,12 @@ export function Toolbar({
     }
     save.mutate(target)
   }
+  // 保存している間を外に知らせる (作り直す前に止まった場合も戻す)
+  const pending = save.isPending || asking
+  useEffect(() => {
+    onSavingChange?.(pending)
+    return () => onSavingChange?.(false)
+  }, [pending, onSavingChange])
   const open = useMutation({
     mutationFn: ({ source, target }: { source: 'model' | 'example'; target: string }) =>
       source === 'model' ? api.getModel(target) : api.getExample(target),
