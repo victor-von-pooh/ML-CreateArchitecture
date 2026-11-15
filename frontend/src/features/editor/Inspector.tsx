@@ -551,6 +551,8 @@ export function Inspector({
   onSelect,
   onDuplicate,
   onEditSubgraph,
+  onForkSubgraph,
+  forkable,
 }: {
   spec: Spec
   units: Map<string, UnitSpec>
@@ -562,6 +564,10 @@ export function Inspector({
   onDuplicate: (name: string) => void
   /** 部分モデルの中身の編集を始める */
   onEditSubgraph?: (name: string) => void
+  /** ノードが使う部分モデルを写して, そのノードだけの部分モデルにする */
+  onForkSubgraph?: (node: string) => void
+  /** 2 つ以上のノードが使う部分モデルの名前 (写す操作を出すもの) */
+  forkable?: Set<string>
 }) {
   const taken = (value: string) => value in spec.inputs || value in spec.nodes
   const issuesFor = (predicate: (issue: Issue) => boolean) =>
@@ -799,6 +805,11 @@ export function Inspector({
       {node.unit.startsWith(SUBGRAPH_PREFIX) && (
         <SubgraphContents
           sub={spec.subgraphs?.[node.unit.slice(SUBGRAPH_PREFIX.length)]}
+          onFork={
+            onForkSubgraph && forkable?.has(node.unit.slice(SUBGRAPH_PREFIX.length))
+              ? () => onForkSubgraph(selected)
+              : undefined
+          }
           onEdit={
             onEditSubgraph
               ? () => onEditSubgraph(node.unit.slice(SUBGRAPH_PREFIX.length))
@@ -911,10 +922,13 @@ export function Inspector({
 function SubgraphContents({
   sub,
   onEdit,
+  onFork,
 }: {
   sub: Subgraph | undefined
   /** 部分モデルの中身をキャンバスで編集する */
   onEdit?: () => void
+  /** このノードだけが使う部分モデルにする (写して別の部分モデルに) */
+  onFork?: () => void
 }) {
   if (!sub) return null
   const params = (values: Record<string, unknown> | undefined) =>
@@ -923,11 +937,22 @@ function SubgraphContents({
       .join(', ')
   return (
     <div className="space-y-2">
-      {onEdit && (
-        <Button variant="secondary" onClick={onEdit}>
-          部分モデルの中身を編集
-        </Button>
-      )}
+      <div className="flex flex-wrap gap-2">
+        {onEdit && (
+          <Button variant="secondary" onClick={onEdit}>
+            部分モデルの中身を編集
+          </Button>
+        )}
+        {onFork && (
+          <Button
+            variant="ghost"
+            onClick={onFork}
+            title="同じ部分モデルを使う他のノードはそのままで, このノードだけ中身を変えられるように写す"
+          >
+            このノードだけの部分モデルにする
+          </Button>
+        )}
+      </div>
       <details className="rounded-md border border-line p-2 text-xs">
         <summary className="cursor-pointer font-semibold text-ink-2">部分モデルの中身</summary>
         <dl className="mt-2 space-y-1">
