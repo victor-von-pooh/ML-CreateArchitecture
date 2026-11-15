@@ -177,6 +177,8 @@ function Editor() {
     [spec, units.data, editingName],
   )
   const [importing, setImporting] = useState(false)
+  // 保存した知らせ (少しの間だけ上の操作に出す)
+  const [savedNotice, setSavedNotice] = useState('')
   // 部品の一覧に出す, 部分モデルの操作の結果の知らせ
   const [notice, setNotice] = useState<{ text: string } | null>(null)
   const notify = (text: string) => setNotice({ text })
@@ -418,11 +420,6 @@ function Editor() {
   // Esc は編集している部分モデルから 1 つ上に戻り, / は部品を探す欄に移る
   const onNavKey = useEffectEvent((key: string): boolean => {
     if (key === 'Escape' && validPath.length > 0) {
-      // 選んでいるものがあれば, まず選択だけを外す (次の Esc で戻る)
-      if (selected !== null) {
-        setSelected(null)
-        return true
-      }
       openPath(validPath.slice(0, -1))
       return true
     }
@@ -456,7 +453,8 @@ function Editor() {
         return
       }
       if (target?.closest('dialog[open], textarea') || target?.isContentEditable) return
-      if (event.defaultPrevented) return
+      // 他で扱ったキーは扱わない (Esc はキャンバスが選択を外すのにも使うので除く)
+      if (event.defaultPrevented && event.key !== 'Escape') return
       if (
         target instanceof HTMLInputElement &&
         !['checkbox', 'radio', 'button', 'submit', 'range', 'color'].includes(target.type)
@@ -502,6 +500,7 @@ function Editor() {
         <Toolbar
           // 開いた定義が変わったら, 保存する名前の欄を作り直す
           key={fileName}
+          savedNotice={savedNotice}
           spec={spec}
           units={unitMap}
           whole={whole}
@@ -532,6 +531,8 @@ function Editor() {
             setSaved('')
           }}
           onSaved={(name, savedSpec) => {
+            setSavedNotice(`${name} に保存しました`)
+            window.setTimeout(() => setSavedNotice(''), 3000)
             setOwnFile(name)
             // 保存した定義の名前を今の定義にも反映 (保存の間の編集は残す)
             history.replace((current) => ({ ...current, name: savedSpec.name }))

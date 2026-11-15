@@ -24,18 +24,35 @@ import { danglingNodes, emptySpec, freshName, type Spec, type UnitSpec } from '.
 import { useTheme } from '../../lib/themeContext'
 
 /** 文字の内容を表示し, コピーできる枠 */
-function TextView({ text }: { text: string }) {
+function TextView({ text, fileName }: { text: string; fileName?: string }) {
   const [copied, setCopied] = useState(false)
+  // ファイルとして保存 (ブラウザのダウンロード)
+  const download = () => {
+    if (!fileName) return
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    link.click()
+    URL.revokeObjectURL(url)
+  }
   return (
     <div className="space-y-2">
-      <Button
-        variant="secondary"
-        onClick={() => {
-          void navigator.clipboard.writeText(text).then(() => setCopied(true))
-        }}
-      >
-        {copied ? 'コピーしました' : 'コピー'}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          onClick={() => {
+            void navigator.clipboard.writeText(text).then(() => setCopied(true))
+          }}
+        >
+          {copied ? 'コピーしました' : 'コピー'}
+        </Button>
+        {fileName && text && (
+          <Button variant="secondary" onClick={download}>
+            {fileName} として保存
+          </Button>
+        )}
+      </div>
       <pre className="overflow-auto rounded-md bg-surface-2 p-3 font-mono text-xs">{text}</pre>
     </div>
   )
@@ -134,6 +151,7 @@ function OpenDialog({
 
 /** 画面の上の操作 (新規, 開く, 保存, 入力と出力の追加, YAML とコードの表示) */
 export function Toolbar({
+  savedNotice,
   spec,
   units,
   whole,
@@ -153,6 +171,8 @@ export function Toolbar({
   ownFile,
   onDeletedOwn,
 }: {
+  /** 保存した知らせ (保存すると上の操作を作り直すので, 外で持つ) */
+  savedNotice: string
   /** 画面で編集している定義 (部分モデルを編集している間はその部分モデル) */
   spec: Spec
   /** 部品の一覧 (出力のつなぎ先の口の数を見るため) */
@@ -337,6 +357,9 @@ export function Toolbar({
       >
         保存{dirty ? ' *' : ''}
       </Button>
+      <span role="status" className="text-xs text-ink-3 empty:hidden">
+        {savedNotice}
+      </span>
       <span className="mx-1 h-6 w-px bg-line" aria-hidden />
       <Button
         variant="ghost"
@@ -447,7 +470,10 @@ export function Toolbar({
           title={editing ? `YAML (部分モデル sub.${editing} の中身)` : 'YAML (保存する形)'}
           onClose={() => setDialog(null)}
         >
-          <TextView text={check?.yaml || '定義を読めないので表示できません'} />
+          <TextView
+            text={check?.yaml || '定義を読めないので表示できません'}
+            fileName={check?.yaml ? `${editing ? editing : name || 'model'}.yaml` : undefined}
+          />
         </Dialog>
       )}
       {dialog === 'python' && (
@@ -465,7 +491,10 @@ export function Toolbar({
                   (何も選んでいないときの詳細の一覧で理由を確かめてください).
                 </p>
               )}
-              <TextView text={exported.data?.code ?? ''} />
+              <TextView
+                text={exported.data?.code ?? ''}
+                fileName={`${(name || 'model').replace(/-/g, '_')}.py`}
+              />
             </>
           )}
         </Dialog>
