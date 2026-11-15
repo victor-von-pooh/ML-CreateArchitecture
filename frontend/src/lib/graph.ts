@@ -290,6 +290,71 @@ export function subgraphCheckTarget(view: Spec, editing: string): Spec {
   return Object.keys(subgraphs).length > 0 ? { ...rest, subgraphs } : rest
 }
 
+// 入力の例に使える型 (ML-ModelControl と同じ)
+const DTYPES = new Set(['float32', 'float64', 'float16', 'bfloat16', 'int64', 'int32', 'bool'])
+
+/** 形の推定の結果のうち, ここで使う部分 (ノードごとの出力の口の形) */
+export interface InferredShapes {
+  nodes: Record<string, { status: string; outputs?: Record<string, unknown> }>
+}
+
+/**
+ * 本体で部分モデル name を使う最初のノードに入ってくる値の形 (口ごと)
+ *
+ * 部分モデルの中を, 実際に使う所の形で推定するために使う. 使うノードが無い,
+ * 前のノードの形が分からない口は含めない
+ */
+export function usageShapes(
+  whole: Spec,
+  check: InferredShapes | undefined,
+  name: string,
+  units: Map<string, UnitSpec>,
+): { node: string; shapes: Record<string, { shape: number[]; dtype?: string }> } | null {
+  const unitName = `${SUBGRAPH_PREFIX}${name}`
+  const entry = Object.entries(whole.nodes).find(([, node]) => node.unit === unitName)
+  if (!entry || !check) return null
+  const [node, def] = entry
+  const shapes: Record<string, { shape: number[]; dtype?: string }> = {}
+  for (const [port, refs] of Object.entries(nodeInputs(def, units.get(unitName)))) {
+    const ref = refs[0]
+    if (ref === undefined) continue
+    const { name: source, port: sourcePort } = parseRef(ref)
+    const input = whole.inputs[source]
+    if (input?.shape) {
+      shapes[port] = { shape: input.shape, dtype: input.dtype }
+      continue
+    }
+    const result = check.nodes[source]
+    if (result?.status !== 'ok' || !result.outputs) continue
+    const value = (sourcePort ? result.outputs[sourcePort] : Object.values(result.outputs)[0]) as
+      { kind?: string; shape?: number[]; dtype?: string } | undefined
+    if (value?.kind === 'tensor' && Array.isArray(value.shape)) {
+      shapes[port] = { shape: value.shape, dtype: value.dtype }
+    }
+  }
+  return { node, shapes }
+}
+
+/** 部分モデルを確かめる定義の入力の形を, 使う所の形に置き換えたもの */
+export function withInputShapes(
+  target: Spec,
+  shapes: Record<string, { shape: number[]; dtype?: string }>,
+): Spec {
+  if (Object.keys(shapes).length === 0) return target
+  return {
+    ...target,
+    inputs: Object.fromEntries(
+      Object.entries(target.inputs).map(([port, input]) => {
+        const used = shapes[port]
+        if (!used) return [port, input]
+        // 入力の例に使える型だけを使い, それ以外は書いた型のまま
+        const dtype = used.dtype && DTYPES.has(used.dtype) ? used.dtype : input?.dtype
+        return [port, { ...input, shape: used.shape, ...(dtype ? { dtype } : {}) }]
+      }),
+    ),
+  }
+}
+
 /** 名前の部分モデルを除いた subgraphs (空なら undefined) */
 export function withoutSubgraph(subgraphs: Spec['subgraphs'], name: string): Spec['subgraphs'] {
   const rest = Object.fromEntries(Object.entries(subgraphs ?? {}).filter(([key]) => key !== name))

@@ -435,7 +435,11 @@ test('部分モデルの中身を編集し, 本体に戻ると使うノードの
   await page.locator('[data-id="head"]').click()
   await page.getByLabel('out_features').fill('5')
   await page.getByLabel('out_features').press('Enter')
-  await expect(page.locator('[data-id="head"]')).toContainText('[8, 5]', { timeout: 20_000 })
+  // 中の形は, 本体で使う所に入る形 (例の [8, 16] ではなく本体の [4, 16]) で推定
+  await expect(page.locator('[data-id="head"]')).toContainText('[4, 5]', { timeout: 20_000 })
+  await expect(page.getByRole('complementary', { name: '編集している部分モデル' })).toContainText(
+    'ノード residual_mlp1 に入る形',
+  )
 
   // 本体に戻ると, 部分モデルを使うノードの形が変わり, 元に戻すで戻る
   await page.getByRole('button', { name: '本体', exact: true }).click()
