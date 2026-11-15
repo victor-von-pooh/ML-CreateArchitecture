@@ -18,6 +18,9 @@ import {
   SUBGRAPH_PREFIX,
   subgraphUnits,
   subgraphUsers,
+  subgraphView,
+  withoutSubgraph,
+  writeSubgraph,
   type NodeDef,
   type Spec,
   type UnitSpec,
@@ -49,8 +52,39 @@ function Editor() {
   const units = useQuery({ queryKey: ['units'], queryFn: api.listUnits, staleTime: Infinity })
   // 定義は元に戻す・やり直すができる値で持つ
   const history = useHistory<Spec>(() => emptySpec())
-  const spec = history.value
-  const setSpec = history.set
+  // 保存する定義 (whole) と, 画面で編集している定義 (spec. 部分モデルを
+  // 編集している間はその部分モデル)
+  const whole = history.value
+  const [editing, setEditing] = useState<string | null>(null)
+  // 元に戻すなどで部分モデルが無くなった場合は本体
+  const editingName = editing !== null && whole.subgraphs?.[editing] ? editing : null
+  const spec = useMemo(
+    () => (editingName ? subgraphView(whole, editingName) : whole),
+    [whole, editingName],
+  )
+  const setHistory = history.set
+  // 部分モデルを編集している間の変更は, 定義の中の部分モデルに書き戻す
+  const setSpec = useCallback(
+    (next: Spec | ((current: Spec) => Spec), merge?: string) => {
+      if (!editingName) {
+        setHistory(next, merge)
+        return
+      }
+      setHistory((current) => {
+        if (!current.subgraphs?.[editingName]) return current
+        const view = subgraphView(current, editingName)
+        const value = typeof next === 'function' ? next(view) : next
+        return writeSubgraph(current, editingName, value)
+      }, merge)
+    },
+    [editingName, setHistory],
+  )
+  // 履歴の定義を, 画面で編集している形にしたもの
+  const viewOf = useCallback(
+    (target: Spec) =>
+      editingName && target.subgraphs?.[editingName] ? subgraphView(target, editingName) : target,
+    [editingName],
+  )
   const [fileName, setFileName] = useState('model')
   // 今の定義を開いた (か保存した) 保存した定義の名前 (上書きの確認に使う)
   const [ownFile, setOwnFile] = useState<string | null>(null)
@@ -60,10 +94,24 @@ function Editor() {
   const flow = useReactFlow()
 
   // 定義が落ち着いたら確認と形の推定 (前の結果は次が届くまで表示)
-  const debounced = useDebounced(spec, 500)
+  // 部分モデルを編集している間は, その部分モデルを 1 つの定義として確かめる
+  // (自分自身は部分モデルから除き, 他の部分モデルが使われない注意は出さない)
+  const target = useMemo(
+    () =>
+      editingName ? { ...spec, subgraphs: withoutSubgraph(spec.subgraphs, editingName) } : spec,
+    [spec, editingName],
+  )
+  const debounced = useDebounced(target, 500)
   const check = useQuery({
     queryKey: ['check', debounced],
     queryFn: () => api.check(debounced),
+    select: (result) =>
+      editingName
+        ? {
+            ...result,
+            issues: result.issues.filter((issue) => issue.code !== 'unused_subgraph'),
+          }
+        : result,
     placeholderData: (previous) => previous,
     staleTime: Infinity,
   })
@@ -82,15 +130,19 @@ function Editor() {
     [baseUnits],
   )
   const unitMap = useMemo(() => unitsFor(spec), [unitsFor, spec])
+  // 部分モデルを編集している間は, 自分自身を部品の一覧に出さない (循環)
   const paletteUnits = useMemo(
-    () => [...subgraphUnits(spec), ...(units.data ?? [])],
-    [spec, units.data],
+    () => [
+      ...subgraphUnits(spec).filter((unit) => unit.name !== `${SUBGRAPH_PREFIX}${editingName}`),
+      ...(units.data ?? []),
+    ],
+    [spec, units.data, editingName],
   )
   const [importing, setImporting] = useState(false)
   // 部品の一覧に出す, 部分モデルの操作の結果の知らせ
   const [notice, setNotice] = useState<{ text: string } | null>(null)
   const notify = (text: string) => setNotice({ text })
-  const dirty = useMemo(() => JSON.stringify(spec) !== saved, [spec, saved])
+  const dirty = useMemo(() => JSON.stringify(whole) !== saved, [whole, saved])
 
   // 新しく置くものは, キャンバスに見えている範囲の真ん中の近くで, 他の
   // ノードと重ならない所
@@ -154,7 +206,8 @@ function Editor() {
   const { undo, redo, previous, next: following } = history
   // 名前の変更を戻す (やり直す) 場合は, 選択も元の (新しい) 名前に移す
   const reselect = useCallback(
-    (target: Spec) => {
+    (previousSpec: Spec) => {
+      const target = viewOf(previousSpec)
       if (selected === null || has(target, selected)) return
       // ノード, 入力, 出力 (output: を付けた id) の名前を比べる
       const ids = (item: Spec) => [
@@ -174,7 +227,7 @@ function Editor() {
         setSelected(null)
       }
     },
-    [selected, spec],
+    [selected, spec, viewOf],
   )
   const undoSpec = useCallback(() => {
     if (!previous) return
@@ -298,6 +351,8 @@ function Editor() {
           // 開いた定義が変わったら, 保存する名前の欄を作り直す
           key={fileName}
           spec={spec}
+          whole={whole}
+          editing={editingName}
           fileName={fileName}
           dirty={dirty}
           check={check.data}
@@ -309,6 +364,7 @@ function Editor() {
             // 段に分けた位置を書く (後の編集で動かないように)
             const placed = placeMissing(loaded, unitsFor(loaded))
             history.reset(placed)
+            setEditing(null)
             setSaved(JSON.stringify(placed))
             // 開いた定義の全体が見えるように表示の範囲を合わせる
             window.requestAnimationFrame(
@@ -370,7 +426,28 @@ function Editor() {
               }}
             />
           </aside>
-          <main className="min-h-0">
+          <main className="relative min-h-0">
+            {editingName && (
+              <div
+                role="status"
+                className="absolute top-2 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-accent bg-surface px-3 py-1.5 text-xs shadow-sm"
+              >
+                <span>
+                  部分モデル <span className="font-mono">sub.{editingName}</span> を編集中
+                  (変更はこの定義の中の部分モデルに入り, 使っている全てのノードに効く)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(null)
+                    setSelected(null)
+                  }}
+                  className="rounded border border-line px-2 py-0.5 font-medium hover:bg-surface-2"
+                >
+                  本体に戻る
+                </button>
+              </div>
+            )}
             <Canvas
               spec={spec}
               units={unitMap}
@@ -397,6 +474,22 @@ function Editor() {
               onChange={setSpec}
               onSelect={setSelected}
               onDuplicate={duplicate}
+              onEditSubgraph={(name) => {
+                setEditing(name)
+                setSelected(null)
+                // 位置の無いもの (写した例など) は, 編集を始めるときに位置を書く
+                // (履歴に残さない)
+                history.replace((current) => {
+                  const view = subgraphView(current, name)
+                  const placed = placeMissing(view, unitsFor(view))
+                  return JSON.stringify(placed) === JSON.stringify(view)
+                    ? current
+                    : writeSubgraph(current, name, placed)
+                })
+                window.requestAnimationFrame(
+                  () => void flow.fitView({ duration: 200, maxZoom: 1, padding: 0.1 }),
+                )
+              }}
             />
           </aside>
         </div>

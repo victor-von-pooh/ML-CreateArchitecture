@@ -229,6 +229,36 @@ export function embedSubgraph(
   return { spec: { ...spec, subgraphs }, name: used }
 }
 
+/**
+ * 部分モデルを 1 つの定義として編集するための定義 (版と, 中で使う部分モデルを
+ * 引くための subgraphs を付けたもの)
+ */
+export function subgraphView(document: Spec, name: string): Spec {
+  const sub = document.subgraphs?.[name]
+  return {
+    format_version: document.format_version,
+    ...sub,
+    inputs: sub?.inputs ?? {},
+    nodes: sub?.nodes ?? {},
+    outputs: sub?.outputs ?? {},
+    subgraphs: document.subgraphs,
+  }
+}
+
+/** 名前の部分モデルを除いた subgraphs (空なら undefined) */
+export function withoutSubgraph(subgraphs: Spec['subgraphs'], name: string): Spec['subgraphs'] {
+  const rest = Object.fromEntries(Object.entries(subgraphs ?? {}).filter(([key]) => key !== name))
+  return Object.keys(rest).length > 0 ? rest : undefined
+}
+
+/** 編集した部分モデルの定義を, 元の定義の subgraphs に書き戻した定義 */
+export function writeSubgraph(document: Spec, name: string, view: Spec): Spec {
+  const { format_version: _version, subgraphs: _subgraphs, ...body } = view
+  void _version
+  void _subgraphs
+  return { ...document, subgraphs: { ...(document.subgraphs ?? {}), [name]: body } }
+}
+
 /** どのノードからも使われない部分モデルを消した定義を返す */
 export function removeSubgraph(spec: Spec, name: string): Spec {
   const subgraphs = Object.fromEntries(

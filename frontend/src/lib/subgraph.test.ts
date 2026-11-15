@@ -7,6 +7,8 @@ import {
   specWires,
   subgraphUnits,
   subgraphUsers,
+  subgraphView,
+  writeSubgraph,
   type Spec,
 } from './graph'
 
@@ -93,5 +95,23 @@ describe('subgraphs', () => {
     }).spec
     expect(subgraphUsers(nested, 'block')).toEqual({ nodes: [], subgraphs: ['outer'] })
     expect(removeSubgraph(spec, 'block')).not.toHaveProperty('subgraphs')
+  })
+
+  it('部分モデルを 1 つの定義として編集し, 書き戻すと他は変わらない', () => {
+    const spec = embedSubgraph(emptySpec(), 'block', block()).spec
+    const view = subgraphView(spec, 'block')
+    expect(view.format_version).toBe(1)
+    expect(Object.keys(view.nodes)).toEqual(['fc'])
+    const edited: Spec = {
+      ...view,
+      nodes: { ...view.nodes, act: { unit: 'nn.ReLU', inputs: 'fc' } },
+    }
+    const written = writeSubgraph(spec, 'block', edited)
+    expect(Object.keys(written.subgraphs?.block?.nodes ?? {})).toEqual(['fc', 'act'])
+    expect(written.subgraphs?.block).not.toHaveProperty('format_version')
+    expect(written.subgraphs?.block).not.toHaveProperty('subgraphs')
+    expect(written.inputs).toEqual(spec.inputs)
+    // 変えずに書き戻すと同じ中身
+    expect(JSON.stringify(writeSubgraph(spec, 'block', view))).toBe(JSON.stringify(spec))
   })
 })

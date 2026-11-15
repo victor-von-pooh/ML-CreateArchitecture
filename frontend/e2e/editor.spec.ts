@@ -385,3 +385,35 @@ test('保存した定義を部分モデルとして写し, 部品として置い
   await expect(unit).toHaveCount(0)
   await expect(page.getByRole('status').filter({ hasText: '消しました' })).toBeVisible()
 })
+
+test('部分モデルの中身を編集し, 本体に戻ると使うノードの形が変わる', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '別の定義を部品にする' }).click()
+  await page.getByRole('button', { name: /^residual_mlp/ }).click()
+  await page.getByRole('button', { name: /^sub\.residual_mlp/ }).click()
+  await page.getByLabel(/^x/).selectOption('x')
+  await page.getByRole('button', { name: '出力', exact: true }).click()
+  await page.getByLabel(/つなぎ先/).selectOption('residual_mlp1')
+  await expect(page.locator('[data-id="residual_mlp1"]')).toContainText('[4, 3]', {
+    timeout: 20_000,
+  })
+
+  // 中身を編集して, 最後の層の出力を 5 にする
+  await page.locator('[data-id="residual_mlp1"]').click()
+  await page.getByRole('button', { name: '部分モデルの中身を編集' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '編集中' })).toBeVisible()
+  await page.locator('[data-id="head"]').click()
+  await page.getByLabel('out_features').fill('5')
+  await page.getByLabel('out_features').press('Enter')
+  await expect(page.locator('[data-id="head"]')).toContainText('[8, 5]', { timeout: 20_000 })
+
+  // 本体に戻ると, 部分モデルを使うノードの形が変わり, 元に戻すで戻る
+  await page.getByRole('button', { name: '本体に戻る' }).click()
+  await expect(page.locator('[data-id="residual_mlp1"]')).toContainText('[4, 5]', {
+    timeout: 20_000,
+  })
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(page.locator('[data-id="residual_mlp1"]')).toContainText('[4, 3]', {
+    timeout: 20_000,
+  })
+})

@@ -135,6 +135,8 @@ function OpenDialog({
 /** 画面の上の操作 (新規, 開く, 保存, 入力と出力の追加, YAML とコードの表示) */
 export function Toolbar({
   spec,
+  whole,
+  editing,
   fileName,
   dirty,
   check,
@@ -150,7 +152,12 @@ export function Toolbar({
   ownFile,
   onDeletedOwn,
 }: {
+  /** 画面で編集している定義 (部分モデルを編集している間はその部分モデル) */
   spec: Spec
+  /** 保存と書き出しをする定義全体 */
+  whole: Spec
+  /** 編集している部分モデルの名前 (本体なら null) */
+  editing: string | null
   fileName: string
   dirty: boolean
   check: CheckResult | undefined
@@ -193,7 +200,7 @@ export function Toolbar({
   // 確かめている間は保存のボタンを止め, 押した時点の名前で保存する
   const [asking, setAsking] = useState(false)
   const requestSave = async () => {
-    const target = { ...spec, name }
+    const target = { ...whole, name }
     if (name !== ownFile) {
       setAsking(true)
       const models = await queryClient
@@ -218,7 +225,7 @@ export function Toolbar({
     },
   })
   const exported = useMutation({
-    mutationFn: () => api.exportPython(spec, 'Model'),
+    mutationFn: () => api.exportPython(whole, 'Model'),
   })
 
   // 形を推定しなかった理由 (パラメータ数の上限か, 入力の例が大きすぎる場合)
@@ -427,7 +434,10 @@ export function Toolbar({
         />
       )}
       {dialog === 'yaml' && (
-        <Dialog title="YAML (保存する形)" onClose={() => setDialog(null)}>
+        <Dialog
+          title={editing ? `YAML (部分モデル sub.${editing} の中身)` : 'YAML (保存する形)'}
+          onClose={() => setDialog(null)}
+        >
           <TextView text={check?.yaml || '定義を読めないので表示できません'} />
         </Dialog>
       )}
