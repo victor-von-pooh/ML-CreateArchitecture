@@ -497,6 +497,36 @@ export function withInputShapes(target: Spec, shapes: Record<string, UsageShape>
   }
 }
 
+/**
+ * ノードの入力の口ごとに入ってくる値の形の結果 (入力はその形, ノードは推定
+ * した出力の口の値). 形の分からないつなぎ先は含めない
+ */
+export function incomingValues(
+  spec: Spec,
+  check: InferredShapes | undefined,
+  name: string,
+  units: Map<string, UnitSpec>,
+): { port: string; ref: string; value: unknown }[] {
+  const node = spec.nodes[name]
+  if (!node) return []
+  const found: { port: string; ref: string; value: unknown }[] = []
+  for (const [port, refs] of Object.entries(nodeInputs(node, units.get(node.unit)))) {
+    for (const ref of refs) {
+      const { name: source, port: sourcePort } = parseRef(ref)
+      const input = spec.inputs[source]
+      if (input) {
+        if (input.shape) found.push({ port, ref, value: { kind: 'tensor', shape: input.shape } })
+        continue
+      }
+      const result = check?.nodes[source]
+      if (result?.status !== 'ok' || !result.outputs) continue
+      const value = sourcePort ? result.outputs[sourcePort] : Object.values(result.outputs)[0]
+      if (value !== undefined) found.push({ port, ref, value })
+    }
+  }
+  return found
+}
+
 /** 名前の部分モデルを除いた subgraphs (空なら undefined) */
 export function withoutSubgraph(subgraphs: Spec['subgraphs'], name: string): Spec['subgraphs'] {
   const rest = Object.fromEntries(Object.entries(subgraphs ?? {}).filter(([key]) => key !== name))
@@ -649,6 +679,49 @@ export function connect(spec: Spec, units: Map<string, UnitSpec>, wire: Omit<Wir
     inputs[name] = variadic ? values : values[0]!
   }
   return { ...spec, nodes: { ...spec.nodes, [wire.target]: { ...node, inputs } } }
+}
+
+/**
+ * 選んでいるもの (入力かノード) から, 新しく置いたノードへの線を引いた定義
+ *
+ * つなぎ方が 1 通りに決まる場合だけ引く (つなぎ元の出力の口が 1 つで,
+ * つなぎ先に必須の口か可変の数の口がある場合. 必須の口が複数ならその最初).
+ * 決まらない場合はそのまま
+ */
+export function connectFrom(
+  spec: Spec,
+  units: Map<string, UnitSpec>,
+  source: string,
+  target: string,
+): Spec {
+  const node = spec.nodes[target]
+  const unit = node ? units.get(node.unit) : undefined
+  if (!unit) return spec
+  let sourcePort: string
+  if (source in spec.inputs) sourcePort = 'out'
+  else {
+    const outputs = units.get(spec.nodes[source]?.unit ?? '')?.outputs ?? []
+    if (outputs.length !== 1) return spec
+    sourcePort = outputs[0]!.name
+  }
+  const port =
+    unit.inputs.find((item) => !item.optional && !item.variadic) ??
+    unit.inputs.find((item) => item.variadic)
+  if (!port) return spec
+  return connect(spec, units, { source, sourcePort, target, targetPort: port.name })
+}
+
+/** どこにもつながっていないノード (他のノードの入力にも出力にも使われていないもの) */
+export function danglingNodes(spec: Spec): string[] {
+  const used = new Set<string>()
+  const mark = (value: unknown) => {
+    if (typeof value === 'string') used.add(parseRef(value).name)
+    else if (Array.isArray(value)) value.forEach(mark)
+    else if (value && typeof value === 'object') Object.values(value).forEach(mark)
+  }
+  Object.values(spec.nodes).forEach((node) => mark(node.inputs))
+  Object.values(spec.outputs).forEach(mark)
+  return Object.keys(spec.nodes).filter((name) => !used.has(name))
 }
 
 /** 線を外した定義を返す */

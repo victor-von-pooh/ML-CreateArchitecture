@@ -20,7 +20,7 @@ import { api, type CheckResult } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
 import { Button, ErrorBox, Spinner } from '../../components/ui'
 import { failedNodes, formatCount } from '../../lib/format'
-import { emptySpec, freshName, type Spec } from '../../lib/graph'
+import { danglingNodes, emptySpec, freshName, type Spec, type UnitSpec } from '../../lib/graph'
 import { useTheme } from '../../lib/themeContext'
 
 /** 文字の内容を表示し, コピーできる枠 */
@@ -135,6 +135,7 @@ function OpenDialog({
 /** 画面の上の操作 (新規, 開く, 保存, 入力と出力の追加, YAML とコードの表示) */
 export function Toolbar({
   spec,
+  units,
   whole,
   editing,
   fileName,
@@ -154,6 +155,8 @@ export function Toolbar({
 }: {
   /** 画面で編集している定義 (部分モデルを編集している間はその部分モデル) */
   spec: Spec
+  /** 部品の一覧 (出力のつなぎ先の口の数を見るため) */
+  units: Map<string, UnitSpec>
   /** 保存と書き出しをする定義全体 */
   whole: Spec
   /** 編集している部分モデルの名前 (本体なら null) */
@@ -268,8 +271,14 @@ export function Toolbar({
     let index = 1
     while (used.has(`out${index}`)) index += 1
     const output = `out${index}`
+    // どこにもつながっていないノードが 1 つだけで, 出力の口が 1 つなら
+    // それにつなぐ (出力の口が複数の部品は口を選ぶ必要がある)
+    const dangling = danglingNodes(spec).filter(
+      (name) => (units.get(spec.nodes[name]?.unit ?? '')?.outputs.length ?? 0) === 1,
+    )
     onChange({
       ...spec,
+      outputs: dangling.length === 1 ? { ...spec.outputs, [output]: dangling[0]! } : spec.outputs,
       ui: {
         ...spec.ui,
         outputs: { ...(spec.ui?.outputs ?? {}), [output]: center(undefined, rightOf()) },

@@ -20,6 +20,7 @@ import {
   subgraphUsers,
   subgraphView,
   makesCycle,
+  connectFrom,
   subgraphOrigin,
   refreshSubgraph,
   usageShapes,
@@ -364,8 +365,12 @@ function Editor() {
       from?.ui?.x !== undefined && from.ui.y !== undefined
         ? { x: from.ui.x + 280, y: from.ui.y }
         : undefined
-    const next = addNode(spec, unit, center(unitSize(unit), near))
-    const name = Object.keys(next.nodes).find((key) => !(key in spec.nodes)) ?? null
+    const placed = addNode(spec, unit, center(unitSize(unit), near))
+    const name = Object.keys(placed.nodes).find((key) => !(key in spec.nodes)) ?? null
+    // 選んでいる入力かノードがあれば, つなぎ方が決まる場合はそこから線を引く
+    const units = new Map(unitMap).set(unit.name, unit)
+    const next =
+      from && current !== null && name ? connectFrom(placed, units, current, name) : placed
     setSpec(next)
     setSelected(name)
     // キーボードで続けて操作できるように, 詳細の最初の欄に移る
@@ -454,6 +459,7 @@ function Editor() {
           // 開いた定義が変わったら, 保存する名前の欄を作り直す
           key={fileName}
           spec={spec}
+          units={unitMap}
           whole={whole}
           editing={editingName}
           fileName={fileName}
