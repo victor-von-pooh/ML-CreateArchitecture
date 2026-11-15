@@ -21,6 +21,7 @@ import {
   subgraphUsers,
   subgraphView,
   makesCycle,
+  placeholderUnits,
   forkSubgraph,
   connectFrom,
   subgraphOrigin,
@@ -118,11 +119,17 @@ function Editor() {
     () => new Map((units.data ?? []).map((unit) => [unit.name, unit])),
     [units.data],
   )
+  // (使えない部品と登録されていない部品は, 定義から口を推し量って線を描く)
   const unitsFor = useCallback(
     (target: Spec) => {
       const local = subgraphUnits(target)
-      if (local.length === 0) return baseUnits
-      return new Map([...baseUnits, ...local.map((unit) => [unit.name, unit] as const)])
+      const withLocal =
+        local.length === 0
+          ? baseUnits
+          : new Map([...baseUnits, ...local.map((unit) => [unit.name, unit] as const)])
+      const placeholders = placeholderUnits(target, withLocal)
+      if (placeholders.length === 0) return withLocal
+      return new Map([...withLocal, ...placeholders.map((unit) => [unit.name, unit] as const)])
     },
     [baseUnits],
   )
@@ -513,6 +520,18 @@ function Editor() {
       }
       if (target?.closest('dialog[open], textarea') || target?.isContentEditable) return
       // 詳細の欄の中の Esc は, 欄を離れて選んでいるノード (無ければキャンバス) に戻る
+      // 名前の欄には / を書けないので, / は部品を探す欄に移る (置いた後に続けて探せる)
+      if (
+        event.key === '/' &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        target instanceof HTMLInputElement &&
+        target.dataset.nameField !== undefined
+      ) {
+        event.preventDefault()
+        onNavKey('/')
+        return
+      }
       if (
         event.key === 'Escape' &&
         !event.isComposing &&
@@ -628,7 +647,14 @@ function Editor() {
           onSaved={(name, savedSpec) => {
             clearDraft()
             if (draft?.tab === tabId()) setDraft(null)
-            setSavedNotice(`${name} に保存しました`)
+            const errorCount = (check.data?.issues ?? []).filter(
+              (issue) => issue.severity === 'error',
+            ).length
+            setSavedNotice(
+              errorCount > 0
+                ? `${name} に保存しました (誤り ${errorCount} 件のまま)`
+                : `${name} に保存しました`,
+            )
             window.setTimeout(() => setSavedNotice(''), 3000)
             setOwnFile(name)
             // 保存した定義の名前を今の定義にも反映 (保存の間の編集は残す)

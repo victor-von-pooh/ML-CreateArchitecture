@@ -648,6 +648,7 @@ test('部品のノードの出力の口から線を引け, Delete で消すと 1
   await page.getByPlaceholder('部品を探す').fill('nn.ReLU')
   await page.getByPlaceholder('部品を探す').press('Enter')
   await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } })
+  await page.getByPlaceholder('部品を探す').fill('nn.ReLU')
   await page.getByPlaceholder('部品を探す').press('Enter')
   await expect(page.locator('.react-flow__edge')).toHaveCount(1)
 
@@ -779,4 +780,20 @@ test('左右の欄を畳んでもキャンバスが広がる', async ({ page }) 
   await page.reload()
   await expect(page.locator('[data-id="x"]')).toBeVisible()
   expect((await canvas.boundingBox())!.width).toBeGreaterThan(900)
+})
+
+test('入っていないライブラリの部品を含む例でも線を描き, Enter で置いた後は検索を消す', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く' }).click()
+  await page.getByRole('button', { name: /^gcn_graph_classifier/ }).click()
+  await expect(page.locator('[data-id="conv1"]')).toBeVisible()
+  // conv1 へは x と edge_index の 2 本 (部品が使えなくても線は見える)
+  await expect(page.locator('.react-flow__edge[data-testid*="conv1"]')).not.toHaveCount(0)
+  expect(await page.locator('.react-flow__edge').count()).toBeGreaterThan(4)
+
+  await page.getByPlaceholder('部品を探す').fill('nn.ReLU')
+  await page.getByPlaceholder('部品を探す').press('Enter')
+  await expect(page.getByPlaceholder('部品を探す')).toHaveValue('')
 })

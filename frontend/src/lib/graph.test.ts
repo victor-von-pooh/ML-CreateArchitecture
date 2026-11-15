@@ -5,6 +5,7 @@ import {
   addNode,
   connectFrom,
   danglingNodes,
+  placeholderUnits,
   connect,
   disconnect,
   emptySpec,
@@ -227,5 +228,26 @@ describe('つなぎ方が決まる場合の線', () => {
     expect(graph.nodes.gcnconv1?.inputs).toEqual({ x: 'x', edge_index: 'edge_index' })
     // どこにもつながっていないノード
     expect(danglingNodes(spec).sort()).toEqual(['add1', 'lstm1', 'relu2'])
+  })
+})
+
+describe('使えない部品の仮の口', () => {
+  it('定義のつなぎ先から入力と出力の口を推し量る', () => {
+    const spec: Spec = {
+      ...emptySpec(),
+      inputs: { x: {}, edge_index: {} },
+      nodes: {
+        conv: { unit: 'pyg.GCNConv', inputs: { x: 'x', edge_index: 'edge_index' } },
+        bert: { unit: 'hf.AutoModel', inputs: 'x' },
+        head: { unit: 'nn.Linear', inputs: 'bert:pooler_output' },
+      },
+      outputs: { y: 'conv' },
+    }
+    const units = new Map([['nn.Linear', unit('nn.Linear', ['input'])]])
+    const found = new Map(placeholderUnits(spec, units).map((item) => [item.name, item]))
+    expect(found.get('pyg.GCNConv')?.inputs.map((port) => port.name)).toEqual(['x', 'edge_index'])
+    expect(found.get('pyg.GCNConv')?.outputs.map((port) => port.name)).toEqual(['out'])
+    expect(found.get('hf.AutoModel')?.outputs.map((port) => port.name)).toEqual(['pooler_output'])
+    expect(found.has('nn.Linear')).toBe(false)
   })
 })

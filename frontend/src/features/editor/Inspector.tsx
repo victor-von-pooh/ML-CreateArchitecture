@@ -645,6 +645,11 @@ export function Inspector({
           口から口へドラッグするか, ノードの「入力のつなぎ先」から選んでつなぎます.
           線とノードは選んで Delete で消せます.
         </p>
+        <p className="text-ink-3">
+          口 (ノードの左右の点) は, 左が入る口, 右が出る口. 名前の後の{' '}
+          <span className="font-mono">?</span> は省略できる口, <span className="font-mono">…</span>{' '}
+          は複数つなげる口. 引数の <span className="text-critical-text">*</span> は必須.
+        </p>
         <dl className="grid grid-cols-2 gap-1">
           <dt className="text-ink-3">パラメータ数</dt>
           <dd className="font-mono">{formatCount(check?.params)}</dd>
