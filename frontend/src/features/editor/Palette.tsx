@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Layers, Plus, RefreshCw, Search, Trash2 } fr
 import { useDeferredValue, useId, useMemo, useState } from 'react'
 
 import type { UnitSpec } from '../../lib/graph'
-import { firstMatch } from '../../lib/search'
+import { firstMatch, matchesQuery } from '../../lib/search'
 import { UNIT_DRAG_TYPE } from '../../lib/flow'
 
 // 出どころの表示名と並び順
@@ -66,12 +66,7 @@ export function Palette({
   const deferred = useDeferredValue(query)
   const groups = useMemo(() => {
     const text = deferred.trim().toLowerCase()
-    const matched = units.filter(
-      (unit) =>
-        !text ||
-        unit.name.toLowerCase().includes(text) ||
-        unit.description.toLowerCase().includes(text),
-    )
+    const matched = units.filter((unit) => matchesQuery(unit, text))
     const order = Object.keys(SOURCES)
     const bySource = new Map<string, UnitSpec[]>()
     for (const unit of matched) {
@@ -110,7 +105,7 @@ export function Palette({
           className="h-8 w-full rounded-md border border-line bg-bg pr-2 pl-7 text-xs"
         />
         <p id={`${searchId}-hint`} className="sr-only">
-          Enter で一番上の部品を置きます
+          Enter で一番合う部品 (名前が一致するもの) を置きます
         </p>
       </div>
       {onImport && (
@@ -164,7 +159,7 @@ export function Palette({
                           event.dataTransfer.setData(UNIT_DRAG_TYPE, unit.name)
                           event.dataTransfer.effectAllowed = 'copy'
                         }}
-                        title={unit.available ? unit.description : unit.reason}
+                        title={unit.available ? unit.description : appReason(unit.reason)}
                         className={clsx(
                           'group flex min-w-0 flex-1 items-start gap-1.5 rounded px-2 py-1 text-left',
                           unit.available ? 'hover:bg-surface-2' : 'cursor-not-allowed opacity-50',
@@ -177,7 +172,9 @@ export function Palette({
                         <span className="min-w-0">
                           <span className="block truncate font-mono text-xs">{unit.name}</span>
                           <span className="block truncate text-[10px] text-ink-3">
-                            {unit.available ? unit.description || unit.category : unit.reason}
+                            {unit.available
+                              ? unit.description || unit.category
+                              : appReason(unit.reason)}
                           </span>
                         </span>
                       </button>
@@ -216,4 +213,9 @@ export function Palette({
       </div>
     </div>
   )
+}
+
+/** 使えない理由の入れ方を, このアプリの入れ方 (make setup EXTRAS=...) にする */
+function appReason(reason: string): string {
+  return reason.replace(/pip install "ml-modelcontrol\[(\w+)\]"/g, 'make setup EXTRAS=$1')
 }

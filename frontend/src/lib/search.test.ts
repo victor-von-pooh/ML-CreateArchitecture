@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { UnitSpec } from './graph'
-import { firstMatch } from './search'
+import { firstMatch, matchesQuery } from './search'
 
 /** テスト用の部品 (名前と説明と使えるか) */
 function unit(name: string, description = '', available = true): UnitSpec {
@@ -33,5 +33,20 @@ describe('firstMatch', () => {
     expect(firstMatch(units, 'bilin')?.name).toBe('nn.Bilinear')
     expect(firstMatch(units, '足す')?.name).toBe('op.Add')
     expect(firstMatch(units, '  ')).toBeUndefined()
+  })
+})
+
+describe('よく使う呼び方', () => {
+  it('他のライブラリの関数の名前でも部品が見つかる', () => {
+    const units = [
+      unit('pyg.GCNConv'),
+      unit('monai.DenseNet'),
+      unit('pyg.MeanAggregation'),
+      unit('nn.Linear'),
+    ]
+    expect(firstMatch(units, 'global_mean_pool')?.name).toBe('pyg.MeanAggregation')
+    expect(firstMatch(units, 'dense')?.name).toBe('nn.Linear')
+    expect(matchesQuery(unit('pyg.MeanAggregation'), 'readout')).toBe(true)
+    expect(matchesQuery(unit('pyg.GCNConv'), 'readout')).toBe(false)
   })
 })
