@@ -26,6 +26,13 @@ dependencies = [
 # all で全て)
 geometric = ["ml-modelcontrol[geometric]"]
 huggingface = ["ml-modelcontrol[huggingface]"]
+torchvision = ["ml-modelcontrol[torchvision]"]
+timm = ["ml-modelcontrol[timm]"]
+torchaudio = ["ml-modelcontrol[torchaudio]"]
+einops = ["ml-modelcontrol[einops]"]
+kornia = ["ml-modelcontrol[kornia]"]
+monai = ["ml-modelcontrol[monai]"]
+smp = ["ml-modelcontrol[smp]"]
 all = ["ml-modelcontrol[all]"]
 
 [project.scripts]

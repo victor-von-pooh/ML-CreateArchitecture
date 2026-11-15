@@ -26,8 +26,10 @@ make serve   # 画面をビルドして http://127.0.0.1:8766 で起動 (端末�
 
 ```bash
 make setup EXTRAS=all                       # 全て
-make setup EXTRAS="geometric huggingface"   # 一部だけ
+make setup EXTRAS="torchvision timm"        # 一部だけ
 ```
+
+`EXTRAS` に書ける名前は `geometric` (PyTorch Geometric), `huggingface`, `torchvision`, `timm`, `torchaudio`, `einops`, `kornia`, `monai`, `smp` (segmentation_models_pytorch), `all`.
 
 torchvision と timm のモデル (`tv.Model`, `timm.Model`) は, 右の詳細の名前の欄に打つと候補が出る.
 

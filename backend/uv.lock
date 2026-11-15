@@ -1360,11 +1360,32 @@ dependencies = [
 all = [
     { name = "ml-modelcontrol", extra = ["all"] },
 ]
+einops = [
+    { name = "ml-modelcontrol", extra = ["einops"] },
+]
 geometric = [
     { name = "ml-modelcontrol", extra = ["geometric"] },
 ]
 huggingface = [
     { name = "ml-modelcontrol", extra = ["huggingface"] },
+]
+kornia = [
+    { name = "ml-modelcontrol", extra = ["kornia"] },
+]
+monai = [
+    { name = "ml-modelcontrol", extra = ["monai"] },
+]
+smp = [
+    { name = "ml-modelcontrol", extra = ["smp"] },
+]
+timm = [
+    { name = "ml-modelcontrol", extra = ["timm"] },
+]
+torchaudio = [
+    { name = "ml-modelcontrol", extra = ["torchaudio"] },
+]
+torchvision = [
+    { name = "ml-modelcontrol", extra = ["torchvision"] },
 ]
 
 [package.dev-dependencies]
@@ -1381,8 +1402,15 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "ml-modelcontrol", editable = "../ML-ModelControl" },
     { name = "ml-modelcontrol", extras = ["all"], marker = "extra == 'all'", editable = "../ML-ModelControl" },
+    { name = "ml-modelcontrol", extras = ["einops"], marker = "extra == 'einops'", editable = "../ML-ModelControl" },
     { name = "ml-modelcontrol", extras = ["geometric"], marker = "extra == 'geometric'", editable = "../ML-ModelControl" },
     { name = "ml-modelcontrol", extras = ["huggingface"], marker = "extra == 'huggingface'", editable = "../ML-ModelControl" },
+    { name = "ml-modelcontrol", extras = ["kornia"], marker = "extra == 'kornia'", editable = "../ML-ModelControl" },
+    { name = "ml-modelcontrol", extras = ["monai"], marker = "extra == 'monai'", editable = "../ML-ModelControl" },
+    { name = "ml-modelcontrol", extras = ["smp"], marker = "extra == 'smp'", editable = "../ML-ModelControl" },
+    { name = "ml-modelcontrol", extras = ["timm"], marker = "extra == 'timm'", editable = "../ML-ModelControl" },
+    { name = "ml-modelcontrol", extras = ["torchaudio"], marker = "extra == 'torchaudio'", editable = "../ML-ModelControl" },
+    { name = "ml-modelcontrol", extras = ["torchvision"], marker = "extra == 'torchvision'", editable = "../ML-ModelControl" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -1390,7 +1418,7 @@ requires-dist = [
     { name = "torch", marker = "sys_platform == 'linux'", specifier = ">=2.2", index = "https://download.pytorch.org/whl/cpu" },
     { name = "uvicorn", specifier = ">=0.32" },
 ]
-provides-extras = ["geometric", "huggingface", "all"]
+provides-extras = ["geometric", "huggingface", "torchvision", "timm", "torchaudio", "einops", "kornia", "monai", "smp", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1427,12 +1455,34 @@ all = [
     { name = "transformers", version = "5.20.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "transformers", version = "5.23.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
+einops = [
+    { name = "einops" },
+]
 geometric = [
     { name = "torch-geometric" },
 ]
 huggingface = [
     { name = "transformers", version = "5.20.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "transformers", version = "5.23.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+kornia = [
+    { name = "kornia", version = "0.8.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "kornia", version = "0.9.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+monai = [
+    { name = "monai" },
+]
+smp = [
+    { name = "segmentation-models-pytorch" },
+]
+timm = [
+    { name = "timm" },
+]
+torchaudio = [
+    { name = "torchaudio" },
+]
+torchvision = [
+    { name = "torchvision" },
 ]
 
 [package.metadata]
