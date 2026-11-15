@@ -544,3 +544,27 @@ test('口の多いノードも幅を超えず, 例を開いたときにノード
     }
   }
 })
+
+test('部分モデルを 1 つのノードだけのものにし, Esc で本体に戻り, / で部品を探す', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く' }).click()
+  await page.getByRole('button', { name: /^stacked_blocks/ }).click()
+  await expect(page.locator('[data-id="block2"]')).toContainText('[8, 64]', { timeout: 20_000 })
+
+  // block2 だけの部分モデルにして中身を変えても, 他のブロックは変わらない
+  await page.locator('[data-id="block2"]').click()
+  await page.getByRole('button', { name: 'このノードだけの部分モデルにする' }).click()
+  await expect(page.locator('[data-id="block2"]')).toContainText('sub.res_block_block2')
+  await page.getByRole('button', { name: '部分モデルの中身を編集' }).click()
+  await page.locator('[data-id="act"]').click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('complementary', { name: '編集している部分モデル' })).toHaveCount(0)
+  await expect(page.locator('[data-id="block1"]')).toContainText('sub.res_block')
+
+  // / で部品を探す欄に移る
+  await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } })
+  await page.keyboard.press('/')
+  await expect(page.getByPlaceholder('部品を探す')).toBeFocused()
+})

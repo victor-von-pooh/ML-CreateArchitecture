@@ -527,6 +527,51 @@ export function incomingValues(
   return found
 }
 
+/**
+ * ノード node が使う部分モデルを写して新しい部分モデルにし, そのノードだけが
+ * 使うようにした定義と, 新しい部分モデルの名前
+ *
+ * 同じ部分モデルを使う他のノードは変わらない. 写したものは元の定義からの
+ * 写し直しの対象にしない (別のものとして直していくため). inside は, ノードが
+ * 部分モデルの中にある場合のその部分モデルの名前
+ */
+export function forkSubgraph(
+  whole: Spec,
+  node: string,
+  inside: string | null = null,
+): { spec: Spec; name: string } | null {
+  const graph = inside ? whole.subgraphs?.[inside] : whole
+  const unit = graph?.nodes?.[node]?.unit
+  if (!unit?.startsWith(SUBGRAPH_PREFIX)) return null
+  const source = unit.slice(SUBGRAPH_PREFIX.length)
+  const original = whole.subgraphs?.[source]
+  if (!original) return null
+  const taken = new Set(['Model', ...Object.keys(whole.subgraphs ?? {}).map(className)])
+  let name = `${source}_${node}`
+  for (let index = 2; name in (whole.subgraphs ?? {}) || taken.has(className(name)); index += 1) {
+    name = `${source}_${node}_${index}`
+  }
+  const copy = structuredClone(original)
+  if (copy.ui && 'source' in copy.ui) {
+    const { source: _source, ...ui } = copy.ui
+    void _source
+    copy.ui = ui
+  }
+  const subgraphs = { ...whole.subgraphs, [name]: copy }
+  const retarget = <T extends { nodes?: Record<string, NodeDef> }>(target: T): T => ({
+    ...target,
+    nodes: {
+      ...target.nodes,
+      [node]: { ...target.nodes![node]!, unit: `${SUBGRAPH_PREFIX}${name}` },
+    },
+  })
+  if (inside) {
+    subgraphs[inside] = retarget(subgraphs[inside]!)
+    return { spec: { ...whole, subgraphs }, name }
+  }
+  return { spec: { ...retarget(whole), subgraphs }, name }
+}
+
 /** 名前の部分モデルを除いた subgraphs (空なら undefined) */
 export function withoutSubgraph(subgraphs: Spec['subgraphs'], name: string): Spec['subgraphs'] {
   const rest = Object.fromEntries(Object.entries(subgraphs ?? {}).filter(([key]) => key !== name))

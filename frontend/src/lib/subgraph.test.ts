@@ -9,6 +9,7 @@ import {
   subgraphUsers,
   subgraphView,
   makesCycle,
+  forkSubgraph,
   subgraphOrigin,
   refreshSubgraph,
   usageShapes,
@@ -274,5 +275,35 @@ describe('subgraphs', () => {
     }).spec
     const second = embedSubgraph(first, 'blk', block(), { origin: { kind: 'model', name: 'blk' } })
     expect(second.name).toBe('blk')
+  })
+
+  it('1 つのノードだけが使う部分モデルに写す (本体と部分モデルの中)', () => {
+    const origin = { kind: 'model' as const, name: 'block' }
+    const base = embedSubgraph(emptySpec(), 'block', block(), { origin }).spec
+    const spec: Spec = {
+      ...base,
+      nodes: {
+        a: { unit: 'sub.block', inputs: { x: 'x', mask: 'x' } },
+        b: { unit: 'sub.block', inputs: { x: 'x', mask: 'x' } },
+      },
+    }
+    const forked = forkSubgraph(spec, 'b')!
+    expect(forked.name).toBe('block_b')
+    expect(forked.spec.nodes.a?.unit).toBe('sub.block')
+    expect(forked.spec.nodes.b?.unit).toBe('sub.block_b')
+    // 写したものは写し直しの対象にしない
+    expect(subgraphOrigin(forked.spec.subgraphs?.block_b)).toBeUndefined()
+    expect(subgraphOrigin(forked.spec.subgraphs?.block)).toEqual(origin)
+    // 部分モデルの中のノード
+    const outer = {
+      ...forked.spec,
+      subgraphs: {
+        ...forked.spec.subgraphs,
+        outer: { inputs: { x: {} }, nodes: { i: { unit: 'sub.block' } }, outputs: { y: 'i:y' } },
+      },
+    }
+    const inner = forkSubgraph(outer, 'i', 'outer')!
+    expect(inner.spec.subgraphs?.outer?.nodes.i?.unit).toBe(`sub.${inner.name}`)
+    expect(forkSubgraph(spec, 'x')).toBeNull()
   })
 })

@@ -20,6 +20,7 @@ import {
   subgraphUsers,
   subgraphView,
   makesCycle,
+  forkSubgraph,
   connectFrom,
   subgraphOrigin,
   refreshSubgraph,
@@ -312,46 +313,6 @@ function Editor() {
     return true
   })
 
-  // Ctrl (Mac は Cmd) + Z で元に戻し, Shift も押すか Ctrl + Y でやり直す
-  // 文字を打つ欄ではブラウザの標準の操作 (文字の取り消し) を使い, 開いた
-  // ダイアログの中では定義を戻さない
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null
-      // Ctrl+S (Mac は Cmd+S) は文字の欄の中でも保存 (ブラウザのページの保存の
-      // 代わり). 欄の打ちかけの値は, 欄を離れて反映してから保存. ダイアログの
-      // 中では何もしない
-      const modifier = (event.ctrlKey || event.metaKey) && !event.altKey
-      if (modifier && event.key.toLowerCase() === 's' && !event.shiftKey) {
-        event.preventDefault()
-        if (target?.closest('dialog[open]')) return
-        if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-        window.requestAnimationFrame(() =>
-          document.querySelector<HTMLButtonElement>('[data-save]:not(:disabled)')?.click(),
-        )
-        return
-      }
-      if (target?.closest('dialog[open], textarea, [contenteditable="true"]')) return
-      if (
-        target instanceof HTMLInputElement &&
-        !['checkbox', 'radio', 'button', 'submit', 'range', 'color'].includes(target.type)
-      ) {
-        return
-      }
-      if (!(event.ctrlKey || event.metaKey) || event.altKey) return
-      const key = event.key.toLowerCase()
-      if (key === 'z' && !event.shiftKey) undoSpec()
-      else if ((key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey)) redoSpec()
-      else if (event.shiftKey || !['c', 'v', 'd'].includes(key)) return
-      // 押し続けた場合の繰り返しでは, 写しを増やさない
-      else if (event.repeat) return
-      else if (!onClipboardKey(key)) return
-      event.preventDefault()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [undoSpec, redoSpec])
-
   // 部品はキャンバスの真ん中に置いて選択
   // 部品のノードを選んでいる場合は, その右 (つなぐ先になることが多い) に置く
   // focus: キーボードで置いた場合 (検索欄の Enter) は詳細の最初の欄に移る
@@ -442,6 +403,70 @@ function Editor() {
         ?.focus()
     })
   }
+
+  // Esc は編集している部分モデルから 1 つ上に戻り, / は部品を探す欄に移る
+  const onNavKey = useEffectEvent((key: string): boolean => {
+    if (key === 'Escape' && validPath.length > 0) {
+      openPath(validPath.slice(0, -1))
+      return true
+    }
+    if (key === '/') {
+      const search = document.querySelector<HTMLInputElement>(
+        'aside[aria-label="部品の一覧"] input',
+      )
+      search?.focus()
+      search?.select()
+      return search !== null
+    }
+    return false
+  })
+  // Ctrl (Mac は Cmd) + Z で元に戻し, Shift も押すか Ctrl + Y でやり直す
+  // 文字を打つ欄ではブラウザの標準の操作 (文字の取り消し) を使い, 開いた
+  // ダイアログの中では定義を戻さない
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      // Ctrl+S (Mac は Cmd+S) は文字の欄の中でも保存 (ブラウザのページの保存の
+      // 代わり). 欄の打ちかけの値は, 欄を離れて反映してから保存. ダイアログの
+      // 中では何もしない
+      const modifier = (event.ctrlKey || event.metaKey) && !event.altKey
+      if (modifier && event.key.toLowerCase() === 's' && !event.shiftKey) {
+        event.preventDefault()
+        if (target?.closest('dialog[open]')) return
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+        window.requestAnimationFrame(() =>
+          document.querySelector<HTMLButtonElement>('[data-save]:not(:disabled)')?.click(),
+        )
+        return
+      }
+      if (target?.closest('dialog[open], textarea, [contenteditable="true"]')) return
+      if (
+        target instanceof HTMLInputElement &&
+        !['checkbox', 'radio', 'button', 'submit', 'range', 'color'].includes(target.type)
+      ) {
+        return
+      }
+      // 修飾キーの無い Esc (部分モデルを 1 つ上に戻る) と / (部品を探す欄へ)
+      if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+        if (target instanceof HTMLSelectElement) return
+        if ((event.key === 'Escape' || event.key === '/') && onNavKey(event.key)) {
+          event.preventDefault()
+        }
+        return
+      }
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+      const key = event.key.toLowerCase()
+      if (key === 'z' && !event.shiftKey) undoSpec()
+      else if ((key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey)) redoSpec()
+      else if (event.shiftKey || !['c', 'v', 'd'].includes(key)) return
+      // 押し続けた場合の繰り返しでは, 写しを増やさない
+      else if (event.repeat) return
+      else if (!onClipboardKey(key)) return
+      event.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [undoSpec, redoSpec])
 
   if (units.isPending) return <Spinner label="部品の一覧を読み込み中" />
   if (units.error) {
@@ -624,6 +649,14 @@ function Editor() {
               onSelect={setSelected}
               onDuplicate={duplicate}
               onEditSubgraph={(name) => openPath([...validPath, name])}
+              onForkSubgraph={(node) => {
+                const forked = forkSubgraph(whole, node, editingName)
+                if (!forked) return
+                setHistory(forked.spec)
+                notify(
+                  `ノード ${node} は sub.${forked.name} (写したもの) を使うようにしました. 中身を変えても他のノードは変わりません`,
+                )
+              }}
             />
           </aside>
         </div>
