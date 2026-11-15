@@ -4,7 +4,7 @@
 
 部品 (`nn.Linear` のような層, 足し算や連結のような演算, PyTorch Geometric の層, Hugging Face, torchvision, timm などのモデル) を一覧から選んで置き, 線でつなぎ, 引数をフォームで決める. 形とパラメータ数を確かめながら, モデルの定義 (YAML) を作って保存する.
 
-設計の方針は [docs/DESIGN.md](docs/DESIGN.md) を参照.
+画面の順に試しながら覚える手順書は [docs/GUIDE.md](docs/GUIDE.md), 設計の方針は [docs/DESIGN.md](docs/DESIGN.md) を参照.
 
 ## 必要なもの
 
