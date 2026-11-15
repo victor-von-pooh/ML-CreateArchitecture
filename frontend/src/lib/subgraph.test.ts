@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
+import { emptySpec, specWires, type Spec } from './graph'
 import {
   embedSubgraph,
-  emptySpec,
   removeSubgraph,
-  specWires,
   subgraphUnits,
   subgraphUsers,
   subgraphView,
@@ -16,8 +15,7 @@ import {
   withInputShapes,
   subgraphCheckTarget,
   writeSubgraph,
-  type Spec,
-} from './graph'
+} from './subgraph'
 
 /** 部分モデルとして写す, 入力 2 つと出力 2 つの定義 */
 function block(): Spec {

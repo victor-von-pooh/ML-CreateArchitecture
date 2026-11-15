@@ -5,7 +5,6 @@ import {
   addNode,
   connectFrom,
   danglingNodes,
-  placeholderUnits,
   connect,
   disconnect,
   emptySpec,
@@ -19,6 +18,7 @@ import {
   type Spec,
   type UnitSpec,
 } from './graph'
+import { placeholderUnits } from './subgraph'
 
 /** テスト用の部品の定義 */
 function unit(name: string, inputs: string[], outputs = ['out'], variadic = false): UnitSpec {
