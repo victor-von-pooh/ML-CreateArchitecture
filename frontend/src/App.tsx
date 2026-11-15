@@ -628,6 +628,8 @@ function Editor() {
           onLoad={(name, loaded, source) => {
             clearDraft()
             setDraft(null)
+            // 前の定義の部分モデルの知らせは消す
+            setNotice(null)
             setOwnFile(source === 'model' ? name : null)
             // 位置の無いもの (手で書いた定義など) は, 開いたときに一度だけ
             // 段に分けた位置を書く (後の編集で動かないように)
