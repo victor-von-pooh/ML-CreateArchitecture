@@ -15,11 +15,11 @@ import {
   setPortRefs,
   type ParamSpec,
   SUBGRAPH_PREFIX,
-  incomingValues,
   type Spec,
   type Subgraph,
   type UnitSpec,
 } from '../../lib/graph'
+import { incomingValues } from '../../lib/subgraph'
 
 // 入力の例に使える型と値の作り方 (ML-ModelControl と同じ)
 const DTYPES = ['float32', 'float64', 'float16', 'bfloat16', 'int64', 'int32', 'bool']

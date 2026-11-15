@@ -20,14 +20,8 @@ import { api, type CheckResult } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
 import { Button, ErrorBox, Spinner } from '../../components/ui'
 import { failedNodes, formatCount } from '../../lib/format'
-import {
-  danglingNodes,
-  emptySpec,
-  freshName,
-  subgraphCheckTarget,
-  type Spec,
-  type UnitSpec,
-} from '../../lib/graph'
+import { danglingNodes, emptySpec, freshName, type Spec, type UnitSpec } from '../../lib/graph'
+import { subgraphCheckTarget } from '../../lib/subgraph'
 import { useTheme } from '../../lib/themeContext'
 
 /** 文字の内容を表示し, コピーできる枠 */
