@@ -808,8 +808,8 @@ export function Inspector({
           {incoming.length > 0 && (
             <div>
               <div className="text-ink-3">入る形</div>
-              {incoming.map(({ port, ref, value }) => (
-                <div key={`${port}-${ref}`} className="font-mono break-all">
+              {incoming.map(({ port, ref, value }, index) => (
+                <div key={`${port}-${ref}-${index}`} className="font-mono break-all">
                   {port} ← {ref}: {formatShape(value)}
                 </div>
               ))}
@@ -826,9 +826,11 @@ export function Inspector({
               <div className="text-ink-3">パラメータ数 {formatCount(result.params)}</div>
             </div>
           ) : (
-            // 確認の誤りは下の一覧に出るので, 計算の誤り (一覧に無いもの) だけ
+            // 確認の誤りは下の一覧に出るので, 確認の誤りが無い場合だけ計算の誤り
             result &&
-            nodeIssues.length === 0 && <div className="text-critical-text">{result.error}</div>
+            !nodeIssues.some((issue) => issue.severity === 'error') && (
+              <div className="text-critical-text">{result.error}</div>
+            )
           )}
         </div>
       )}

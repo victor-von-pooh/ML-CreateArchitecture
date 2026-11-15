@@ -28,6 +28,10 @@ export type OutputFlowNode = Node<OutputNodeData, 'modelOutput'>
 // 口の行の高さ (ハンドルの位置をそろえる)
 const ROW = 22
 
+// ノードの幅の上限 (整列の段の間隔に収める. 長い口の名前と形は省略し,
+// マウスを重ねると全体を出す)
+const NODE_MAX = 236
+
 /** ノードの枠 (選択と誤りで色を変える) */
 function frame(selected: boolean, errors: number): string {
   return clsx(
@@ -44,7 +48,7 @@ export function UnitNode({ data, selected }: NodeProps<UnitFlowNode>) {
   const rows = Math.max(inputs.length, outputs.length, 1)
   const status = data.result?.status
   return (
-    <div className={frame(selected, data.errors)} style={{ minWidth: 190 }}>
+    <div className={frame(selected, data.errors)} style={{ minWidth: 190, maxWidth: NODE_MAX }}>
       <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-1.5">
         <div className="min-w-0">
           <div className="truncate font-mono text-xs font-semibold">{data.name}</div>
@@ -61,15 +65,16 @@ export function UnitNode({ data, selected }: NodeProps<UnitFlowNode>) {
       {/* 入力の口 (左の列) と出力の口と形 (右の列). 長い名前や形でも重ならない
           ように列に分け, ノードの幅を中身に合わせる */}
       <div
-        className="grid grid-cols-[auto_auto] justify-between gap-x-4 py-1"
+        className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-x-3 py-1"
         style={{ minHeight: rows * ROW + 8 }}
       >
-        <div>
+        <div className="min-w-0">
           {inputs.map((port) => (
             <div
               key={port.name}
-              className="relative pl-2 font-mono text-[10px] whitespace-nowrap text-ink-2"
-              style={{ height: ROW }}
+              title={port.name}
+              className="relative truncate pl-2 font-mono text-[10px] whitespace-nowrap text-ink-2"
+              style={{ height: ROW, lineHeight: `${ROW}px` }}
             >
               <Handle
                 type="target"
@@ -83,14 +88,16 @@ export function UnitNode({ data, selected }: NodeProps<UnitFlowNode>) {
             </div>
           ))}
         </div>
-        <div>
+        <div className="min-w-0">
           {outputs.map((port) => {
             const shape = data.result?.outputs?.[port.name]
+            const label = `${shape ? formatShape(shape) : ''} ${port.name}`.trim()
             return (
               <div
                 key={port.name}
-                className="relative pr-2 text-right font-mono text-[10px] whitespace-nowrap"
-                style={{ height: ROW }}
+                title={label}
+                className="relative truncate pr-2 text-right font-mono text-[10px] whitespace-nowrap"
+                style={{ height: ROW, lineHeight: `${ROW}px` }}
               >
                 <span className="text-ink-3">{shape ? formatShape(shape) : ''}</span>{' '}
                 <span className="text-ink-2">{port.name}</span>

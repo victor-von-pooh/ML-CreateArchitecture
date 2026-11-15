@@ -125,12 +125,12 @@ test('元に戻す・やり直すで, 部品の追加と引数の変更を戻せ
   await page.waitForTimeout(600)
   await page.getByLabel('in_features').fill('8')
   await page.getByLabel('in_features').press('Enter')
-  await page.locator('.react-flow__pane').click()
+  await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } })
   await page.waitForTimeout(600)
   await page.keyboard.press('ControlOrMeta+z')
   await page.locator('[data-id="linear1"]').click()
   await expect(page.getByLabel('in_features')).toHaveValue('')
-  await page.locator('.react-flow__pane').click()
+  await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } })
   await undo.click()
   await expect(page.locator('[data-id="linear1"]')).toHaveCount(0)
 
@@ -143,7 +143,7 @@ test('元に戻す・やり直すで, 部品の追加と引数の変更を戻せ
   await page.getByLabel('in_features').focus()
   await page.getByLabel('in_features').blur()
   await expect(redo).toBeEnabled()
-  await page.locator('.react-flow__pane').click()
+  await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } })
   await page.keyboard.press('ControlOrMeta+Shift+z')
   await page.locator('[data-id="linear1"]').click()
   await expect(page.getByLabel('in_features')).toHaveValue('8')
@@ -194,7 +194,7 @@ test('ノードを引数ごと複製し, 写して貼れる', async ({ page }) =
   // Ctrl+C で写し, 何も選ばずに Ctrl+V で貼る. Ctrl+D でも複製
   await page.locator('[data-id="linear1"]').click()
   await page.keyboard.press('ControlOrMeta+c')
-  await page.locator('.react-flow__pane').click()
+  await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } })
   await page.keyboard.press('ControlOrMeta+v')
   await expect(page.locator('[data-id="linear3"]')).toBeVisible()
   await page.keyboard.press('ControlOrMeta+d')
@@ -222,7 +222,7 @@ test('出力を選んだ後も欄が残らず, 形の推定の失敗を誤りに
   await page.getByLabel('in_features').fill('99')
   await page.getByLabel('in_features').press('Enter')
   await expect(page.locator('header')).toContainText('誤り 1 件', { timeout: 20_000 })
-  await page.locator('.react-flow__pane').click()
+  await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } })
   await expect(page.getByRole('region', { name: '形の推定で失敗したもの' })).toContainText('head')
 
   // 保存した定義 (前のテストで保存した e2e_model) と同じ名前で保存する
@@ -347,7 +347,7 @@ test('キーボードだけで部品を置き, 名前を変えて戻し, Ctrl+S 
   await page.getByLabel('名前', { exact: true }).press('Enter')
   await expect(page.getByLabel('名前', { exact: true })).toBeFocused()
   await expect(page.getByLabel('名前', { exact: true })).toHaveValue('fc')
-  await page.locator('.react-flow__pane').click()
+  await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } })
   await page.locator('[data-id="fc"]').click()
   await page.keyboard.press('ControlOrMeta+z')
   await expect(page.getByLabel('名前', { exact: true })).toHaveValue('linear1')
@@ -524,4 +524,23 @@ test('選んでいるものから新しい部品へ線を引き, 出力はつな
   // 詳細に入る形と出る形が出る
   await page.locator('[data-id="relu1"]').click()
   await expect(page.locator('aside[aria-label="詳細"]')).toContainText('input ← x: [4, 16]')
+})
+
+test('口の多いノードも幅を超えず, 例を開いたときにノードが重ならない', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く' }).click()
+  await page.getByRole('button', { name: /^transformer_encoder/ }).click()
+  await expect(page.locator('[data-id="layer1"]')).toContainText('[', { timeout: 20_000 })
+  const boxes = await page.locator('.react-flow__node').evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const rect = node.getBoundingClientRect()
+      return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom }
+    }),
+  )
+  for (const [index, a] of boxes.entries()) {
+    for (const b of boxes.slice(index + 1)) {
+      const overlap = a.x < b.right && b.x < a.right && a.y < b.bottom && b.y < a.bottom
+      expect(overlap).toBe(false)
+    }
+  }
 })

@@ -459,6 +459,7 @@ function Editor() {
           // 開いた定義が変わったら, 保存する名前の欄を作り直す
           key={fileName}
           spec={spec}
+          units={unitMap}
           whole={whole}
           editing={editingName}
           fileName={fileName}
