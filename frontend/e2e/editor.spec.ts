@@ -134,7 +134,7 @@ test('元に戻す・やり直すで, 部品の追加と引数の変更を戻せ
   await undo.click()
   await expect(page.locator('[data-id="linear1"]')).toHaveCount(0)
 
-  // やり直すと部品が戻り, 文字の欄の中の Ctrl+Z は定義を戻さない
+  // やり直すと部品が戻る
   await redo.click()
   await expect(page.locator('[data-id="linear1"]')).toBeVisible()
 
@@ -147,9 +147,15 @@ test('元に戻す・やり直すで, 部品の追加と引数の変更を戻せ
   await page.keyboard.press('ControlOrMeta+Shift+z')
   await page.locator('[data-id="linear1"]').click()
   await expect(page.getByLabel('in_features')).toHaveValue('8')
+  // 打ちかけの文字が無い欄の中の Ctrl+Z は定義を戻し, 欄にも出す
+  await page.getByLabel('in_features').press('ControlOrMeta+z')
+  await expect(page.getByLabel('in_features')).toHaveValue('')
+  await expect(page.locator('[data-id="linear1"]')).toBeVisible()
+  await expect(redo).toBeEnabled()
+  // 打ちかけの文字がある間の Ctrl+Z は, ブラウザの文字の取り消し (定義は戻さない)
+  await page.getByLabel('in_features').pressSequentially('3')
   await page.getByLabel('in_features').press('ControlOrMeta+z')
   await expect(page.locator('[data-id="linear1"]')).toBeVisible()
-  await expect(redo).toBeDisabled()
 })
 
 test('整列で, つながりの順に左から右へ並べ直し, 元に戻せる', async ({ page }) => {
@@ -672,4 +678,26 @@ test('注意のあるノードを全体の情報に出し, 別名で部品を探
   const warnings = page.getByRole('region', { name: '注意のあるノード' })
   await expect(warnings).toContainText('add1', { timeout: 20_000 })
   await expect(warnings).toContainText('つなぎ先が 1 つだけ')
+})
+
+test('値を反映した後の欄の中の Ctrl+Z は, 定義を戻して欄にも出す', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('[data-id="x"]').click()
+  await page.getByPlaceholder('部品を探す').fill('nn.Linear')
+  await page.getByPlaceholder('部品を探す').press('Enter')
+  await page.getByLabel('in_features').fill('16')
+  await page.getByLabel('in_features').press('Tab')
+  await page.getByLabel('out_features').fill('4')
+  await page.getByLabel('out_features').press('Enter')
+  await expect(page.locator('[data-id="linear1"]')).toContainText('[4, 4]', { timeout: 20_000 })
+
+  // out_features の欄にいたまま Ctrl+Z で, 定義も欄も 4 の前 (空) に戻る
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(page.getByLabel('out_features')).toHaveValue('')
+  await expect(page.locator('[data-id="linear1"]')).not.toContainText('[4, 4]', {
+    timeout: 20_000,
+  })
+  // やり直すと戻る
+  await page.keyboard.press('ControlOrMeta+Shift+z')
+  await expect(page.getByLabel('out_features')).toHaveValue('4')
 })

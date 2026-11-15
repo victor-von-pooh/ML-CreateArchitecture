@@ -483,8 +483,18 @@ function Editor() {
       if (target?.closest('dialog[open], textarea') || target?.isContentEditable) return
       // 他で扱ったキーは扱わない (Esc はキャンバスが選択を外すのにも使うので除く)
       if (event.defaultPrevented && event.key !== 'Escape') return
+      // 文字を打つ欄ではブラウザの標準 (文字の取り消し). ただし打ちかけの文字
+      // が無い欄 (値を反映した後) の Ctrl+Z とやり直しは定義を戻す (欄の文字
+      // だけが戻って定義と食い違わないように)
+      const pristine =
+        target instanceof HTMLInputElement &&
+        target.dataset.committed !== undefined &&
+        target.value === target.dataset.committed &&
+        (event.ctrlKey || event.metaKey) &&
+        ['z', 'y'].includes(event.key.toLowerCase())
       if (
         target instanceof HTMLInputElement &&
+        !pristine &&
         !['checkbox', 'radio', 'button', 'submit', 'range', 'color'].includes(target.type)
       ) {
         return

@@ -91,9 +91,15 @@ function ParamField({
     setFailure(null)
   }
   const error = failure?.message ?? null
+  // (欄にいても, 打ちかけの文字が無ければ合わせる. 欄の中の Ctrl+Z で定義を
+  // 戻した場合も欄に出すため)
+  const committed = useRef(text)
   useEffect(() => {
     const input = inputRef.current
-    if (input && document.activeElement !== input) input.value = text
+    if (input && (document.activeElement !== input || input.value === committed.current)) {
+      input.value = text
+    }
+    committed.current = text
   }, [text])
   const hint = [
     param.description,
@@ -154,6 +160,8 @@ function ParamField({
           id={id}
           list={listId}
           defaultValue={text}
+          // 打ちかけの文字が無い間の Ctrl+Z は定義を戻す (画面の操作と同じ)
+          data-committed={text}
           placeholder={param.default !== null ? formatValue(param.default) : ''}
           onChange={(event) => {
             // 候補の一覧から選んだ場合だけすぐに反映 (打っている途中で候補と
