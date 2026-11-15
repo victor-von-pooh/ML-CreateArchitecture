@@ -326,7 +326,8 @@ export function Toolbar({
 
   return (
     <header className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-3 py-2">
-      <h1 className="mr-2 text-sm font-semibold">ML-CreateArchitecture</h1>
+      {/* 狭い画面では名前を隠し, 上の操作を 1 行に収める (読み上げには残す) */}
+      <h1 className="mr-2 text-sm font-semibold max-xl:sr-only">ML-CreateArchitecture</h1>
       {/* 保存の結果が別の定義に反映されないよう, 保存の間は新規と開くを止める */}
       <Button
         variant="secondary"
@@ -374,7 +375,11 @@ export function Toolbar({
       >
         保存{dirty ? ' *' : ''}
       </Button>
-      <span role="status" className="text-xs text-ink-3 empty:hidden">
+      {/* 保存の知らせは, 上の操作をずらさないように画面の右下に出す */}
+      <span
+        role="status"
+        className="fixed right-4 bottom-4 z-50 rounded-md border border-line bg-surface px-3 py-2 text-xs shadow-md empty:hidden"
+      >
         {savedNotice}
       </span>
       <span className="mx-1 h-6 w-px bg-line" aria-hidden />

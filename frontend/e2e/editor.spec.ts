@@ -797,3 +797,10 @@ test('入っていないライブラリの部品を含む例でも線を描き, 
   await page.getByPlaceholder('部品を探す').press('Enter')
   await expect(page.getByPlaceholder('部品を探す')).toHaveValue('')
 })
+
+test('1100 px の幅でも上の操作は 1 行に収まる', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 750 })
+  await page.goto('/')
+  await expect(page.locator('[data-id="x"]')).toBeVisible()
+  expect((await page.locator('header').boundingBox())!.height).toBeLessThan(60)
+})
