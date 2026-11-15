@@ -121,11 +121,12 @@ function Editor() {
   // 変えた場合など) を知らせ, 本体で使う所に入る形を部分モデルの入力の形に
   // する (本体の部分モデルを開いた場合)
   const debouncedWhole = useDebounced(whole, 500)
+  // (形を使うのは本体の部分モデルを開いた場合だけなので, 入れ子では確認だけ)
+  const inferWhole = validPath.length === 1
   const wholeCheck = useQuery({
-    queryKey: ['check-whole', debouncedWhole],
-    queryFn: () => api.check(debouncedWhole),
+    queryKey: ['check-whole', debouncedWhole, inferWhole],
+    queryFn: () => api.check(debouncedWhole, inferWhole),
     enabled: editingName !== null,
-    placeholderData: (previous) => previous,
     staleTime: Infinity,
   })
   const usage = useMemo(

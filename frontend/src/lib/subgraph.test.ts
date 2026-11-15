@@ -156,19 +156,39 @@ describe('subgraphs', () => {
       },
     }
     const units = new Map(subgraphUnits(used).map((item) => [item.name, item]))
+    // 形の推定の結果は計算の順に全てのノードを持つ
     const check = {
       nodes: {
-        fc: { status: 'ok', outputs: { out: { kind: 'tensor', shape: [2, 6], dtype: 'float32' } } },
+        fc: {
+          status: 'ok',
+          outputs: { out: { kind: 'tensor', shape: [2, 6], dtype: 'float32' } },
+        },
+        b: { status: 'ok' },
       },
     }
     const usage = usageShapes(used, check, 'block', units)
     expect(usage).toEqual({
       node: 'b',
-      shapes: { x: { shape: [2, 6], dtype: 'float32' }, mask: { shape: [2, 8], dtype: undefined } },
+      shapes: {
+        x: { shape: [2, 6], dtype: 'float32', fill: 'zeros' },
+        mask: { shape: [2, 8], dtype: 'float32', fill: 'zeros' },
+      },
     })
     const target = withInputShapes(subgraphView(used, 'block'), usage!.shapes)
     expect(target.inputs.x?.shape).toEqual([2, 6])
     expect(target.inputs.mask?.shape).toEqual([2, 8])
+    expect(target.inputs.x?.fill).toBe('zeros')
+    // 口の形が分からないノードは使わず, 次に使うノードを見る
+    const two: Spec = {
+      ...used,
+      nodes: {
+        ...used.nodes,
+        a: { unit: 'sub.block', inputs: { x: 'broken', mask: 'x' } },
+        b: used.nodes.b!,
+      },
+    }
+    const order = { nodes: { a: { status: 'error' }, ...check.nodes, b: { status: 'ok' } } }
+    expect(usageShapes(two, order, 'block', units)?.node).toBe('b')
     // 使うノードが無ければ null
     expect(usageShapes(spec, check, 'block', units)).toBeNull()
   })

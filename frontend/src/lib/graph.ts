@@ -298,48 +298,67 @@ export interface InferredShapes {
   nodes: Record<string, { status: string; outputs?: Record<string, unknown> }>
 }
 
+/** 部分モデルの入力の口に入る値の例の作り方 (形, 型, 値の作り方) */
+export interface UsageShape {
+  shape: number[]
+  dtype: string
+  fill: string
+}
+
 /**
- * 本体で部分モデル name を使う最初のノードに入ってくる値の形 (口ごと)
+ * 本体で部分モデル name を使うノードに入ってくる値の形 (口ごと)
  *
- * 部分モデルの中を, 実際に使う所の形で推定するために使う. 使うノードが無い,
- * 前のノードの形が分からない口は含めない
+ * 部分モデルの中を, 実際に使う所の形で推定するために使う. 使うノードを計算の
+ * 順 (形の推定の結果の順) に見て, 全ての入力の口の形が分かる最初のノードを
+ * 使う. そのようなノードが無ければ null. 入力から来る値は入力の型と値の
+ * 作り方, ノードから来る値は出力の型と 0 (値は分からないので安全な値)
  */
 export function usageShapes(
   whole: Spec,
   check: InferredShapes | undefined,
   name: string,
   units: Map<string, UnitSpec>,
-): { node: string; shapes: Record<string, { shape: number[]; dtype?: string }> } | null {
+): { node: string; shapes: Record<string, UsageShape> } | null {
+  if (!check) return null
   const unitName = `${SUBGRAPH_PREFIX}${name}`
-  const entry = Object.entries(whole.nodes).find(([, node]) => node.unit === unitName)
-  if (!entry || !check) return null
-  const [node, def] = entry
-  const shapes: Record<string, { shape: number[]; dtype?: string }> = {}
-  for (const [port, refs] of Object.entries(nodeInputs(def, units.get(unitName)))) {
-    const ref = refs[0]
-    if (ref === undefined) continue
-    const { name: source, port: sourcePort } = parseRef(ref)
-    const input = whole.inputs[source]
-    if (input?.shape) {
-      shapes[port] = { shape: input.shape, dtype: input.dtype }
-      continue
+  const unit = units.get(unitName)
+  const ports = unit?.inputs.map((port) => port.name) ?? []
+  const users = Object.keys(check.nodes).filter((key) => whole.nodes[key]?.unit === unitName)
+  for (const node of users) {
+    const refs = nodeInputs(whole.nodes[node]!, unit)
+    const shapes: Record<string, UsageShape> = {}
+    for (const port of ports) {
+      const ref = refs[port]?.[0]
+      if (ref === undefined) break
+      const { name: source, port: sourcePort } = parseRef(ref)
+      const input = whole.inputs[source]
+      if (input) {
+        if (!input.shape) break
+        shapes[port] = {
+          shape: input.shape,
+          dtype: input.dtype ?? 'float32',
+          fill: input.fill ?? 'zeros',
+        }
+        continue
+      }
+      const result = check.nodes[source]
+      const value = (
+        result?.status === 'ok' && result.outputs
+          ? sourcePort
+            ? result.outputs[sourcePort]
+            : Object.values(result.outputs)[0]
+          : undefined
+      ) as { kind?: string; shape?: number[]; dtype?: string } | undefined
+      if (value?.kind !== 'tensor' || !Array.isArray(value.shape)) break
+      shapes[port] = { shape: value.shape, dtype: value.dtype ?? 'float32', fill: 'zeros' }
     }
-    const result = check.nodes[source]
-    if (result?.status !== 'ok' || !result.outputs) continue
-    const value = (sourcePort ? result.outputs[sourcePort] : Object.values(result.outputs)[0]) as
-      { kind?: string; shape?: number[]; dtype?: string } | undefined
-    if (value?.kind === 'tensor' && Array.isArray(value.shape)) {
-      shapes[port] = { shape: value.shape, dtype: value.dtype }
-    }
+    if (Object.keys(shapes).length === ports.length) return { node, shapes }
   }
-  return { node, shapes }
+  return null
 }
 
 /** 部分モデルを確かめる定義の入力の形を, 使う所の形に置き換えたもの */
-export function withInputShapes(
-  target: Spec,
-  shapes: Record<string, { shape: number[]; dtype?: string }>,
-): Spec {
+export function withInputShapes(target: Spec, shapes: Record<string, UsageShape>): Spec {
   if (Object.keys(shapes).length === 0) return target
   return {
     ...target,
@@ -348,8 +367,8 @@ export function withInputShapes(
         const used = shapes[port]
         if (!used) return [port, input]
         // 入力の例に使える型だけを使い, それ以外は書いた型のまま
-        const dtype = used.dtype && DTYPES.has(used.dtype) ? used.dtype : input?.dtype
-        return [port, { ...input, shape: used.shape, ...(dtype ? { dtype } : {}) }]
+        const dtype = DTYPES.has(used.dtype) ? used.dtype : input?.dtype
+        return [port, { ...input, shape: used.shape, fill: used.fill, ...(dtype ? { dtype } : {}) }]
       }),
     ),
   }
