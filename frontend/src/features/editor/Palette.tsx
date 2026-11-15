@@ -220,5 +220,5 @@ export function Palette({
 
 /** 使えない理由の入れ方を, このアプリの入れ方 (make setup EXTRAS=...) にする */
 function appReason(reason: string): string {
-  return reason.replace(/pip install "ml-modelcontrol\[(\w+)\]"/g, 'make setup EXTRAS=$1')
+  return reason.replace(/pip install -e "\.\[(\w+)\]"/g, 'make setup EXTRAS=$1')
 }
