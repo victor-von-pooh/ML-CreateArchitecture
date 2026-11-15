@@ -98,7 +98,10 @@ export function Palette({
             if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
             if (event.keyCode === 229 || event.repeat) return
             const first = firstMatch(units, query)
-            if (first) onAdd(first, true)
+            if (!first) return
+            onAdd(first, true)
+            // 置いた後は検索を消す (次に探すときに前の文字が残らないように)
+            setQuery('')
           }}
           aria-describedby={`${searchId}-hint`}
           placeholder="部品を探す (例: conv, gcn)"

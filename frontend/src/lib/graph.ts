@@ -575,6 +575,68 @@ export function forkSubgraph(
   return { spec: { ...retarget(whole), subgraphs }, name }
 }
 
+/**
+ * 使えない部品 (ライブラリが無いもの) と登録されていない部品のノードの, 口を
+ * 定義から推し量った仮の部品
+ *
+ * 口が分からないと線を描けないので, 入力の口はノードの inputs の名前 (省略形は
+ * input), 出力の口は他から「ノード:口」で参照される名前 (無ければ out) にする
+ */
+export function placeholderUnits(spec: Spec, units: Map<string, UnitSpec>): UnitSpec[] {
+  const found = new Map<string, { inputs: Set<string>; outputs: Set<string> }>()
+  for (const node of Object.values(spec.nodes)) {
+    const known = units.get(node.unit)
+    if (known && (known.available || known.inputs.length + known.outputs.length > 0)) continue
+    const entry = found.get(node.unit) ?? { inputs: new Set(), outputs: new Set() }
+    if (typeof node.inputs === 'string') entry.inputs.add('input')
+    else Object.keys(node.inputs ?? {}).forEach((port) => entry.inputs.add(port))
+    found.set(node.unit, entry)
+  }
+  if (found.size === 0) return []
+  // 他から参照される出力の口
+  const refs: string[] = []
+  const collect = (value: unknown) => {
+    if (typeof value === 'string') refs.push(value)
+    else if (Array.isArray(value)) value.forEach(collect)
+    else if (value && typeof value === 'object') Object.values(value).forEach(collect)
+  }
+  Object.values(spec.nodes).forEach((node) => collect(node.inputs))
+  Object.values(spec.outputs).forEach(collect)
+  for (const ref of refs) {
+    const { name, port } = parseRef(ref)
+    const unit = spec.nodes[name]?.unit
+    if (unit && port && found.has(unit)) found.get(unit)!.outputs.add(port)
+  }
+  return [...found.entries()].map(([name, { inputs, outputs }]) => {
+    const known = units.get(name)
+    return {
+      ...(known ?? {
+        name,
+        category: '',
+        source: '',
+        description: '',
+        params: [],
+        forward_params: [],
+        extra_params: true,
+        available: false,
+        reason: '登録されていない部品です',
+      }),
+      inputs: [...inputs].map((port) => ({
+        name: port,
+        description: '',
+        optional: false,
+        variadic: false,
+      })),
+      outputs: [...(outputs.size > 0 ? outputs : ['out'])].map((port) => ({
+        name: port,
+        description: '',
+        optional: false,
+        variadic: false,
+      })),
+    }
+  })
+}
+
 /** 名前の部分モデルを除いた subgraphs (空なら undefined) */
 export function withoutSubgraph(subgraphs: Spec['subgraphs'], name: string): Spec['subgraphs'] {
   const rest = Object.fromEntries(Object.entries(subgraphs ?? {}).filter(([key]) => key !== name))
