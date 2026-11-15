@@ -87,6 +87,9 @@ function Editor() {
     [spec, units.data],
   )
   const [importing, setImporting] = useState(false)
+  // 部品の一覧に出す, 部分モデルの操作の結果の知らせ
+  const [notice, setNotice] = useState<{ text: string } | null>(null)
+  const notify = (text: string) => setNotice({ text })
   const dirty = useMemo(() => JSON.stringify(spec) !== saved, [spec, saved])
 
   // 新しく置くものは, キャンバスに見えている範囲の真ん中の近くで, 他の
@@ -343,19 +346,27 @@ function Editor() {
           <aside aria-label="部品の一覧" className="min-h-0 border-r border-line bg-surface">
             <Palette
               units={paletteUnits}
+              notice={notice}
               onAdd={add}
               onImport={() => setImporting(true)}
               onRemove={(unit) => {
                 // 使っているノードがある部分モデルは消さない
                 const name = unit.name.slice(SUBGRAPH_PREFIX.length)
                 const users = subgraphUsers(spec, name)
-                if (users.length > 0) {
-                  window.alert(
-                    `部分モデル ${name} は ${users.join(', ')} で使っているので消せません. 先にそのノードを消してください.`,
+                if (users.nodes.length > 0) {
+                  notify(
+                    `部分モデル ${name} はノード ${users.nodes.join(', ')} で使っているので消せません. 先にそのノードを消してください`,
+                  )
+                  return
+                }
+                if (users.subgraphs.length > 0) {
+                  notify(
+                    `部分モデル ${name} は部分モデル ${users.subgraphs.join(', ')} の中で使っているので消せません. 先にそちらを消してください`,
                   )
                   return
                 }
                 setSpec(removeSubgraph(spec, name))
+                notify(`部分モデル ${name} を消しました`)
               }}
             />
           </aside>
@@ -393,7 +404,25 @@ function Editor() {
       {importing && (
         <SubgraphDialog
           current={ownFile}
-          onImport={(name, source) => setSpec(embedSubgraph(spec, name, source).spec)}
+          onImport={(name, source) => {
+            // 写すと同じ中身のものは 1 つにまとまるので, 変わらない場合は
+            // 履歴に残さずに知らせるだけ
+            const embedded = embedSubgraph(spec, name, source)
+            const unit = `${SUBGRAPH_PREFIX}${embedded.name}`
+            if (
+              spec.subgraphs?.[embedded.name] &&
+              JSON.stringify(embedded.spec) === JSON.stringify(spec)
+            ) {
+              notify(`${unit} は既にあります (同じ中身)`)
+              return
+            }
+            setSpec(embedded.spec)
+            notify(
+              embedded.name === name
+                ? `${unit} を部品の一覧に加えました`
+                : `${unit} として加えました (同じ名前で中身の違うものがあるか, 名前に使えないため)`,
+            )
+          }}
           onClose={() => setImporting(false)}
         />
       )}

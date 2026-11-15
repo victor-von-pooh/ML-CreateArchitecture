@@ -55,22 +55,43 @@ describe('subgraphs', () => {
     expect(Object.keys(second.spec.subgraphs ?? {})).toEqual(['block', 'block_2'])
   })
 
-  it('写す定義の部分モデルも写し, 中身の違う同じ名前は誤り', () => {
+  it('写す定義の部分モデルも写し, 中身の違う同じ名前は番号を付けて中の参照も直す', () => {
     const inner = embedSubgraph(emptySpec('outer'), 'block', block()).spec
     const outer: Spec = { ...inner, nodes: { b: { unit: 'sub.block', inputs: { x: 'x' } } } }
     const result = embedSubgraph(emptySpec(), 'outer', outer)
     expect(Object.keys(result.spec.subgraphs ?? {}).sort()).toEqual(['block', 'outer'])
     expect(result.spec.subgraphs?.outer).not.toHaveProperty('subgraphs')
 
-    const conflict = { ...result.spec, subgraphs: { block: { ...block(), description: '別' } } }
-    expect(() => embedSubgraph(conflict, 'outer', outer)).toThrow('block')
+    const conflict: Spec = {
+      ...emptySpec(),
+      subgraphs: { block: { ...block(), description: '別' } },
+    }
+    const renamed = embedSubgraph(conflict, 'outer', outer).spec
+    expect(renamed.subgraphs?.block?.description).toBe('別')
+    expect(renamed.subgraphs?.block_2?.description).toBe('残差')
+    expect(renamed.subgraphs?.outer?.nodes.b?.unit).toBe('sub.block_2')
+  })
+
+  it('予約語と, 書き出すクラスの名前 (Model) と重なる名前は付け直す', () => {
+    expect(embedSubgraph(emptySpec(), 'class', block()).name).toBe('class_')
+    expect(embedSubgraph(emptySpec(), 'None', block()).name).toBe('None_')
+    expect(embedSubgraph(emptySpec(), 'model', block()).name).toBe('model_2')
+    const first = embedSubgraph(emptySpec(), 'res_block', block()).spec
+    const changed = { ...block(), description: '別' }
+    // resBlock と res_block は同じクラスの名前 ResBlock になる
+    expect(embedSubgraph(first, 'resBlock', changed).name).toBe('resBlock_2')
   })
 
   it('使っているノードを探し, 消すと subgraphs も空なら無くなる', () => {
     const spec = embedSubgraph(emptySpec(), 'block', block()).spec
     const used: Spec = { ...spec, nodes: { b: { unit: 'sub.block', inputs: { x: 'x' } } } }
-    expect(subgraphUsers(used, 'block')).toEqual(['b'])
-    expect(subgraphUsers(spec, 'block')).toEqual([])
+    expect(subgraphUsers(used, 'block')).toEqual({ nodes: ['b'], subgraphs: [] })
+    expect(subgraphUsers(spec, 'block')).toEqual({ nodes: [], subgraphs: [] })
+    const nested = embedSubgraph(emptySpec(), 'outer', {
+      ...used,
+      outputs: { y: 'b:y' },
+    }).spec
+    expect(subgraphUsers(nested, 'block')).toEqual({ nodes: [], subgraphs: ['outer'] })
     expect(removeSubgraph(spec, 'block')).not.toHaveProperty('subgraphs')
   })
 })

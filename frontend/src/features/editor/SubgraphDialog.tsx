@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 
 import { api } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
@@ -29,12 +30,28 @@ export function SubgraphDialog({
     staleTime: Infinity,
   })
   const load = useMutation({
-    mutationFn: async ({ source, name }: { source: 'model' | 'example'; name: string }) => {
-      const model = source === 'model' ? await api.getModel(name) : await api.getExample(name)
-      onImport(model.name, model.spec as unknown as Spec)
-    },
-    onSuccess: onClose,
+    mutationFn: ({ source, name }: { source: 'model' | 'example'; name: string }) =>
+      source === 'model' ? api.getModel(name) : api.getExample(name),
   })
+  // 読み込んだ定義は, ダイアログを開いている間だけ写す (読み込みの途中で
+  // 閉じた場合は写さない. 呼び出しごとの onSuccess は閉じた後は呼ばれない)
+  const [importError, setImportError] = useState<unknown>(null)
+  const pick = (source: 'model' | 'example', name: string) => {
+    setImportError(null)
+    load.mutate(
+      { source, name },
+      {
+        onSuccess: (model) => {
+          try {
+            onImport(model.name, model.spec as unknown as Spec)
+            onClose()
+          } catch (error) {
+            setImportError(error)
+          }
+        },
+      },
+    )
+  }
   const own = (models.data ?? []).filter((model) => model.name !== current)
   return (
     <Dialog title="別の定義を部品にする" onClose={onClose}>
@@ -42,8 +59,11 @@ export function SubgraphDialog({
         選んだ定義を, 今の定義の中に部分モデルとして写します. 部品の一覧の「部分モデル」から置いて,
         普通の部品と同じようにつなげます (定義の入力が入力の口, 出力が出力の口).
         元の定義を後で変えても, 写したものは変わりません.
+        今開いている定義自身は写せないので一覧に出しません.
       </p>
+      {load.isPending && <Spinner label="定義を読み込み中" />}
       {load.error && <ErrorBox error={load.error} />}
+      {importError ? <ErrorBox error={importError} /> : null}
       <h3 className="mb-1 text-xs font-semibold text-ink-2">保存した定義</h3>
       {models.isPending ? (
         <Spinner />
@@ -58,7 +78,7 @@ export function SubgraphDialog({
               <button
                 type="button"
                 disabled={load.isPending}
-                onClick={() => load.mutate({ source: 'model', name: model.name })}
+                onClick={() => pick('model', model.name)}
                 className="flex w-full items-center justify-between px-2 py-2 text-left hover:bg-surface-2"
               >
                 <span className="font-mono text-sm">{model.name}</span>
@@ -80,7 +100,7 @@ export function SubgraphDialog({
               <button
                 type="button"
                 disabled={load.isPending}
-                onClick={() => load.mutate({ source: 'example', name: example.name })}
+                onClick={() => pick('example', example.name)}
                 className="w-full px-2 py-2 text-left hover:bg-surface-2"
               >
                 <span className="block font-mono text-sm">{example.name}</span>

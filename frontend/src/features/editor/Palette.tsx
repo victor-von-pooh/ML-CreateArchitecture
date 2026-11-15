@@ -28,8 +28,11 @@ export function Palette({
   onAdd,
   onImport,
   onRemove,
+  notice,
 }: {
   units: UnitSpec[]
+  /** 部分モデルの操作の結果の知らせ (変わるたびに検索を消して見せる) */
+  notice?: { text: string } | null
   /** 部品を置く (focus はキーボードで置いた場合) */
   onAdd: (unit: UnitSpec, focus?: boolean) => void
   /** 保存した定義を部分モデルとして写す対話を開く */
@@ -43,6 +46,13 @@ export function Palette({
     subgraph: true,
     ml_modelcontrol: true,
   })
+  // 部分モデルを加えたら, 検索で隠れないように検索を消す (知らせが変わった
+  // 描画の中で前の知らせと比べる)
+  const [seen, setSeen] = useState(notice)
+  if (notice !== seen) {
+    setSeen(notice)
+    if (notice) setQuery('')
+  }
 
   // 名前と説明で絞り込み, 出どころごとにまとめる
   // 打鍵の間は前の結果を見せ, 多くの部品の描き直しで入力を止めない
@@ -101,12 +111,15 @@ export function Palette({
           <button
             type="button"
             onClick={onImport}
-            title="保存した定義を, この定義の中で 1 つの部品 (部分モデル) として使えるようにする"
+            title="保存した定義か例を, この定義の中で 1 つの部品 (部分モデル) として使えるようにする"
             className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs text-ink-2 hover:bg-surface-2"
           >
             <Layers className="size-3.5 text-ink-3" aria-hidden />
             別の定義を部品にする
           </button>
+          <p role="status" className="px-2 pt-1 text-[10px] text-ink-2 empty:hidden">
+            {notice?.text}
+          </p>
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
@@ -159,7 +172,7 @@ export function Palette({
                           onClick={() => onRemove(unit)}
                           aria-label={`部分モデル ${unit.name} を消す`}
                           title={`部分モデル ${unit.name} を定義から消す`}
-                          className="rounded p-1 text-ink-3 hover:bg-surface-2 hover:text-critical-text"
+                          className="flex size-6 shrink-0 items-center justify-center rounded text-ink-3 hover:bg-surface-2 hover:text-critical-text"
                         >
                           <Trash2 className="size-3" aria-hidden />
                         </button>
