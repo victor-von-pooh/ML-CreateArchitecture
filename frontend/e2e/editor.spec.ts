@@ -611,3 +611,22 @@ test('部品の一覧からキャンバスにドラッグして置ける', async
   // ドラッグで置いた場合は線を引かない
   await expect(page.locator('.react-flow__edge')).toHaveCount(0)
 })
+
+test('狭い画面では左右の欄を畳んで始まり, 開いて使える', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await page.goto('/')
+  await expect(page.locator('[data-id="x"]')).toBeVisible()
+  await expect(page.getByRole('complementary', { name: '部品の一覧' })).toBeHidden()
+  await expect(page.getByRole('complementary', { name: '詳細' })).toBeHidden()
+
+  // / で部品の一覧を開いて検索に移り, Enter で置くと詳細も開く
+  await page.keyboard.press('/')
+  await expect(page.getByPlaceholder('部品を探す')).toBeFocused()
+  await page.getByPlaceholder('部品を探す').fill('nn.ReLU')
+  await page.getByPlaceholder('部品を探す').press('Enter')
+  await expect(page.getByRole('complementary', { name: '詳細' })).toBeVisible()
+
+  // 畳むボタンで閉じる
+  await page.getByRole('button', { name: '部品の一覧を畳む' }).click()
+  await expect(page.getByRole('complementary', { name: '部品の一覧' })).toBeHidden()
+})
