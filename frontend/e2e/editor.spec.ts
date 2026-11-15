@@ -377,7 +377,7 @@ test('保存した定義を部分モデルとして写し, 部品として置い
 
   // 中身は詳細で読める
   await page.locator('[data-id="residual_mlp1"]').click()
-  await page.getByText('部分モデルの中身').click()
+  await page.getByText('部分モデルの中身', { exact: true }).click()
   await expect(page.locator('aside[aria-label="詳細"]')).toContainText('fc1: nn.Linear')
   await page.locator('[data-id="residual_mlp1"]').click()
   await page.keyboard.press('Delete')
