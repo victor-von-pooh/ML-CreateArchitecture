@@ -444,6 +444,10 @@ test('部分モデルの中身を編集し, 本体に戻ると使うノードの
   await page.getByLabel('out_features').press('Enter')
   // 中の形は, 本体で使う所に入る形 (例の [8, 16] ではなく本体の [4, 16]) で推定
   await expect(page.locator('[data-id="head"]')).toContainText('[4, 5]', { timeout: 20_000 })
+  // YAML は書いたままの入力の形 (推定に使った本体の形ではない)
+  await page.getByRole('button', { name: 'YAML', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('shape: [8, 16]')
+  await page.getByRole('button', { name: '閉じる' }).click()
   await expect(page.getByRole('complementary', { name: '編集している部分モデル' })).toContainText(
     'ノード residual_mlp1 に入る形',
   )
