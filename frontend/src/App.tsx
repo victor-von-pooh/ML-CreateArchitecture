@@ -232,6 +232,19 @@ function Editor() {
           near.y >= bounds.y &&
           near.x + size.width <= bounds.x + bounds.width &&
           near.y + size.height <= bounds.y + bounds.height))
+    // 望む位置 (選んでいるものの右) が見えている範囲の外なら, その位置に置いて
+    // 表示をそこへ動かす (真ん中に飛ばさず, つながりの順に並ぶように)
+    if (near && !visible) {
+      const spot = freeSpot(rects, near, size)
+      window.requestAnimationFrame(
+        () =>
+          void flow.setCenter(spot.x + size.width / 2, spot.y + size.height / 2, {
+            duration: 200,
+            zoom: flow.getZoom(),
+          }),
+      )
+      return spot
+    }
     const wanted = visible
       ? near
       : { x: Math.round(point.x - size.width / 2), y: Math.round(point.y - size.height / 2) }
@@ -489,7 +502,7 @@ function Editor() {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return
       const key = event.key.toLowerCase()
       if (key === 'z' && !event.shiftKey) undoSpec()
-      else if ((key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey)) redoSpec()
+      else if ((key === 'z' && event.shiftKey) || key === 'y') redoSpec()
       else if (event.shiftKey || !['c', 'v', 'd'].includes(key)) return
       // 押し続けた場合の繰り返しでは, 写しを増やさない
       else if (event.repeat) return
@@ -561,7 +574,7 @@ function Editor() {
             // 並べ直した全体が見えるように表示の範囲を合わせる
             // (文字が読める倍率より小さくはしない)
             window.requestAnimationFrame(
-              () => void flow.fitView({ duration: 200, maxZoom: 1, minZoom: 0.5, padding: 0.1 }),
+              () => void flow.fitView({ duration: 200, maxZoom: 1, minZoom: 0.2, padding: 0.1 }),
             )
           }}
           onUndo={previous ? undoSpec : undefined}
