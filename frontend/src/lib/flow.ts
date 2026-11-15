@@ -32,6 +32,8 @@ export function flowNodes(
     nodes.push({
       id: name,
       type: 'modelInput',
+      // 読み上げの名前 (種類と形)
+      ariaLabel: `入力 ${name} [${(input.shape ?? []).join(', ')}]`,
       position: { x: input.ui?.x ?? fallback(name).x, y: input.ui?.y ?? fallback(name).y },
       data: { name, input, errors: errors.get(`inputs.${name}`) ?? 0 },
       selected: selected === name,
@@ -41,6 +43,7 @@ export function flowNodes(
     nodes.push({
       id: name,
       type: 'unit',
+      ariaLabel: unitLabel(name, node.unit, check?.nodes?.[name], errors.get(name) ?? 0),
       position: { x: node.ui?.x ?? fallback(name).x, y: node.ui?.y ?? fallback(name).y },
       data: {
         name,
@@ -62,6 +65,7 @@ export function flowNodes(
     nodes.push({
       id,
       type: 'modelOutput',
+      ariaLabel: `出力 ${name}${name in spec.outputs ? '' : ' (未接続)'}`,
       position: { x: ui?.x ?? fallback(id).x, y: ui?.y ?? fallback(id).y },
       data: { name, shape: shape ? formatShape(shape) : null, connected: name in spec.outputs },
       selected: selected === `output:${name}`,
@@ -83,6 +87,12 @@ export function flowEdges(
     sourceHandle: `out:${wire.sourcePort}`,
     target: wire.target,
     targetHandle: `in:${wire.targetPort}`,
+    // 読み上げの名前 (どこの口からどこの口へ)
+    ariaLabel: `${wire.source}${wire.sourcePort === 'out' ? '' : ` の ${wire.sourcePort}`} から ${
+      wire.target.startsWith('output:')
+        ? `出力 ${wire.target.slice(7)}`
+        : `${wire.target} の ${wire.targetPort}`
+    } への線`,
   }))
 }
 
@@ -103,4 +113,25 @@ export function moveItem(spec: Spec, id: string, position: { x: number; y: numbe
   const node = spec.nodes[id]
   if (!node) return spec
   return { ...spec, nodes: { ...spec.nodes, [id]: { ...node, ui: { ...node.ui, ...ui } } } }
+}
+
+/** 部品のノードの読み上げの名前 (名前, 部品, 出力の形, 誤りの数) */
+function unitLabel(
+  name: string,
+  unit: string,
+  result: { status: string; outputs?: Record<string, unknown> } | undefined,
+  errors: number,
+): string {
+  const shapes = Object.entries(result?.outputs ?? {})
+    .map(([port, shape]) => `${port} ${formatShape(shape)}`)
+    .join(', ')
+  const state =
+    errors > 0
+      ? `, 誤り ${errors} 件`
+      : result?.status === 'error'
+        ? ', 計算の誤り'
+        : result?.status === 'skipped'
+          ? ', 前のノードの誤りで計算できない'
+          : ''
+  return `ノード ${name} (${unit})${shapes ? `, 出力 ${shapes}` : ''}${state}`
 }

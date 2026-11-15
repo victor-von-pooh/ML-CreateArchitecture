@@ -443,7 +443,13 @@ export function Toolbar({
           </span>
         )}
         <span>
-          パラメータ数 <span className="font-mono">{formatCount(check?.params)}</span>
+          パラメータ数{' '}
+          <span
+            className="font-mono"
+            title={check?.params != null ? `${check.params.toLocaleString()} 個` : undefined}
+          >
+            {formatCount(check?.params)}
+          </span>
         </span>
         {/* 部品がまだ無い (新規の直後) は, 誤りの数ではなく始め方を出す */}
         {Object.keys(spec.nodes).length === 0 ? (
@@ -460,7 +466,9 @@ export function Toolbar({
           variant="ghost"
           icon={theme === 'dark' ? Sun : Moon}
           onClick={toggle}
-          aria-label="明るさを切り替える"
+          aria-label="暗い表示"
+          aria-pressed={theme === 'dark'}
+          title={theme === 'dark' ? '明るい表示にする' : '暗い表示にする'}
         />
       </div>
       {save.error && (
