@@ -245,6 +245,51 @@ export function subgraphView(document: Spec, name: string): Spec {
   }
 }
 
+/** 定義 (本体か部分モデル) のノードが直接使う部分モデルの名前 */
+function directSubgraphs(graph: { nodes?: Record<string, NodeDef> } | undefined): string[] {
+  return Object.values(graph?.nodes ?? {})
+    .map((node) => node.unit)
+    .filter((unit) => unit.startsWith(SUBGRAPH_PREFIX))
+    .map((unit) => unit.slice(SUBGRAPH_PREFIX.length))
+}
+
+/** 部分モデル start から (中の部分モデルを通って) たどれる部分モデルの名前 (start を含む) */
+export function reachableSubgraphs(subgraphs: Spec['subgraphs'], start: string[]): Set<string> {
+  const found = new Set<string>()
+  const stack = [...start]
+  while (stack.length > 0) {
+    const name = stack.pop()!
+    if (found.has(name) || !subgraphs?.[name]) continue
+    found.add(name)
+    stack.push(...directSubgraphs(subgraphs[name]))
+  }
+  return found
+}
+
+/**
+ * 部分モデル editing の中に置くと循環になる部品か (editing 自身と, 中で
+ * editing を使う部分モデル)
+ */
+export function makesCycle(subgraphs: Spec['subgraphs'], editing: string, unit: string): boolean {
+  if (!unit.startsWith(SUBGRAPH_PREFIX)) return false
+  return reachableSubgraphs(subgraphs, [unit.slice(SUBGRAPH_PREFIX.length)]).has(editing)
+}
+
+/**
+ * 部分モデルを 1 つの定義として確かめるための定義 (自分自身を除き, 中で
+ * 使う部分モデルだけを subgraphs に持つ)
+ */
+export function subgraphCheckTarget(view: Spec, editing: string): Spec {
+  const used = reachableSubgraphs(view.subgraphs, directSubgraphs(view))
+  used.delete(editing)
+  const subgraphs = Object.fromEntries(
+    Object.entries(view.subgraphs ?? {}).filter(([key]) => used.has(key)),
+  )
+  const { subgraphs: _all, ...rest } = view
+  void _all
+  return Object.keys(subgraphs).length > 0 ? { ...rest, subgraphs } : rest
+}
+
 /** 名前の部分モデルを除いた subgraphs (空なら undefined) */
 export function withoutSubgraph(subgraphs: Spec['subgraphs'], name: string): Spec['subgraphs'] {
   const rest = Object.fromEntries(Object.entries(subgraphs ?? {}).filter(([key]) => key !== name))

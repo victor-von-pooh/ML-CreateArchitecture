@@ -8,6 +8,8 @@ import {
   subgraphUnits,
   subgraphUsers,
   subgraphView,
+  makesCycle,
+  subgraphCheckTarget,
   writeSubgraph,
   type Spec,
 } from './graph'
@@ -113,5 +115,31 @@ describe('subgraphs', () => {
     expect(written.inputs).toEqual(spec.inputs)
     // 変えずに書き戻すと同じ中身
     expect(JSON.stringify(writeSubgraph(spec, 'block', view))).toBe(JSON.stringify(spec))
+  })
+
+  it('置くと循環になる部分モデルと, 確かめるときに持たせる部分モデル', () => {
+    const inner = embedSubgraph(emptySpec(), 'block', block()).spec
+    const outer: Spec = {
+      ...inner,
+      nodes: { b: { unit: 'sub.block', inputs: { x: 'x' } } },
+      outputs: { y: 'b:y' },
+    }
+    const spec = embedSubgraph(
+      embedSubgraph(emptySpec(), 'outer', outer).spec,
+      'other',
+      block(),
+    ).spec
+    // block の中に, block 自身と block を使う outer は置けない. other は置ける
+    expect(makesCycle(spec.subgraphs, 'block', 'sub.block')).toBe(true)
+    expect(makesCycle(spec.subgraphs, 'block', 'sub.outer')).toBe(true)
+    expect(makesCycle(spec.subgraphs, 'block', 'sub.other')).toBe(false)
+    expect(makesCycle(spec.subgraphs, 'block', 'nn.Linear')).toBe(false)
+
+    // outer を確かめるときは, 中で使う block だけを持たせる
+    const target = subgraphCheckTarget(subgraphView(spec, 'outer'), 'outer')
+    expect(Object.keys(target.subgraphs ?? {})).toEqual(['block'])
+    expect(subgraphCheckTarget(subgraphView(spec, 'block'), 'block')).not.toHaveProperty(
+      'subgraphs',
+    )
   })
 })
