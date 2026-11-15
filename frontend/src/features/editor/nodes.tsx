@@ -73,7 +73,7 @@ export function UnitNode({ data, selected }: NodeProps<UnitFlowNode>) {
             <div
               key={port.name}
               title={port.name}
-              className="relative truncate pl-2 font-mono text-[10px] whitespace-nowrap text-ink-2"
+              className="relative pl-2 font-mono text-[10px] whitespace-nowrap text-ink-2"
               style={{ height: ROW, lineHeight: `${ROW}px` }}
             >
               <Handle
@@ -83,8 +83,11 @@ export function UnitNode({ data, selected }: NodeProps<UnitFlowNode>) {
                 style={{ top: 9, left: -5 }}
                 className={clsx(port.optional && '!bg-surface-2')}
               />
-              {port.name}
-              {port.variadic ? ' …' : port.optional ? ' ?' : ''}
+              {/* 省略は中の文字だけ (口の点は枠の外に出すので切らない) */}
+              <span className="block truncate">
+                {port.name}
+                {port.variadic ? ' …' : port.optional ? ' ?' : ''}
+              </span>
             </div>
           ))}
         </div>
@@ -96,11 +99,13 @@ export function UnitNode({ data, selected }: NodeProps<UnitFlowNode>) {
               <div
                 key={port.name}
                 title={label}
-                className="relative truncate pr-2 text-right font-mono text-[10px] whitespace-nowrap"
+                className="relative pr-2 text-right font-mono text-[10px] whitespace-nowrap"
                 style={{ height: ROW, lineHeight: `${ROW}px` }}
               >
-                <span className="text-ink-3">{shape ? formatShape(shape) : ''}</span>{' '}
-                <span className="text-ink-2">{port.name}</span>
+                <span className="block truncate">
+                  <span className="text-ink-3">{shape ? formatShape(shape) : ''}</span>{' '}
+                  <span className="text-ink-2">{port.name}</span>
+                </span>
                 <Handle
                   type="source"
                   position={Position.Right}

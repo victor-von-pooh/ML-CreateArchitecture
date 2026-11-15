@@ -9,7 +9,7 @@ import {
   type EdgeChange,
   type NodeChange,
 } from '@xyflow/react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import type { CheckResult } from '../../api/client'
 import { flowEdges, flowNodes, moveItem, UNIT_DRAG_TYPE } from '../../lib/flow'
@@ -72,6 +72,19 @@ export function Canvas({
   const edges = useMemo(() => flowEdges(spec, units, activeEdge), [spec, units, activeEdge])
   const { theme } = useTheme()
 
+  // Delete キーで消すと, キャンバスは線とノードの削除を別々に知らせるので,
+  // 同じ操作の中の削除を元に戻す 1 回分にまとめる印
+  const deleting = useRef<string | null>(null)
+  const deleteMark = () => {
+    if (deleting.current === null) {
+      deleting.current = `delete:${Date.now()}`
+      window.setTimeout(() => {
+        deleting.current = null
+      }, 0)
+    }
+    return deleting.current
+  }
+
   // ノードの移動, 選択, 削除を定義に反映
   const onNodesChange = (changes: NodeChange[]) => {
     let next = spec
@@ -92,7 +105,13 @@ export function Canvas({
     }
     if (Object.keys(measured).length > 0) setSizes((current) => ({ ...current, ...measured }))
     // 同じノードのドラッグの移動は 1 回分にまとめる
-    if (next !== spec) onChange(next, moved.length > 0 ? `move:${moved.join(',')}` : undefined)
+    const removed = changes.some((change) => change.type === 'remove')
+    if (next !== spec) {
+      onChange(
+        next,
+        removed ? deleteMark() : moved.length > 0 ? `move:${moved.join(',')}` : undefined,
+      )
+    }
   }
 
   // 線の削除を定義に反映
@@ -105,7 +124,8 @@ export function Canvas({
         if (change.selected) onSelect(null)
       }
     }
-    if (next !== spec) onChange(next)
+    const removed = changes.some((change) => change.type === 'remove')
+    if (next !== spec) onChange(next, removed ? deleteMark() : undefined)
   }
 
   // 線を引いたら, つなぎ先を定義に追加

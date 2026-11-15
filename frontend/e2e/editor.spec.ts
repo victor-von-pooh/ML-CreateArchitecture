@@ -634,3 +634,28 @@ test('狭い画面では左右の欄を畳んで始まり, 開いて使える', 
   await page.getByRole('button', { name: '部品の一覧を畳む' }).click()
   await expect(page.getByRole('complementary', { name: '部品の一覧' })).toBeHidden()
 })
+
+test('部品のノードの出力の口から線を引け, Delete で消すと 1 回で元に戻る', async ({ page }) => {
+  await page.goto('/')
+  // x → relu1 (線を引いて置く), 何も選ばずに relu2 を置く
+  await page.locator('[data-id="x"]').click()
+  await page.getByPlaceholder('部品を探す').fill('nn.ReLU')
+  await page.getByPlaceholder('部品を探す').press('Enter')
+  await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } })
+  await page.getByPlaceholder('部品を探す').press('Enter')
+  await expect(page.locator('.react-flow__edge')).toHaveCount(1)
+
+  // relu1 の出力の口から relu2 の入力の口へドラッグ
+  const from = page.locator('[data-id="relu1"] [data-handleid="out:out"]')
+  const to = page.locator('[data-id="relu2"] [data-handleid="in:input"]')
+  await from.dragTo(to)
+  await expect(page.locator('.react-flow__edge')).toHaveCount(2)
+
+  // relu1 を Delete で消し, 1 回の元に戻すで線ごと戻る
+  await page.locator('[data-id="relu1"]').click()
+  await page.keyboard.press('Delete')
+  await expect(page.locator('[data-id="relu1"]')).toHaveCount(0)
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(page.locator('[data-id="relu1"]')).toBeVisible()
+  await expect(page.locator('.react-flow__edge')).toHaveCount(2)
+})
