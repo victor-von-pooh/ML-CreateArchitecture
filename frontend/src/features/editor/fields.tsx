@@ -400,7 +400,6 @@ export function NameField({
   )
 }
 
-/** 口のつなぎ先を選ぶ欄 (線を引かずに, キーボードでもつなげる) */
 /** リストの 2 つの要素を入れ替えたリスト */
 function swap<T>(items: T[], a: number, b: number): T[] {
   const next = [...items]
@@ -408,9 +407,11 @@ function swap<T>(items: T[], a: number, b: number): T[] {
   return next
 }
 
-/** 入力の口のつなぎ先の欄 (1 つは選択, 複数は並びと追加の選択) */
+/** 入力の口のつなぎ先の欄 (1 つは選択, 複数は並びと追加の選択. 線を引かずに,
+ * キーボードでもつなげる) */
 export function PortRefs({
   port,
+  description = '',
   refs,
   options,
   variadic,
@@ -418,6 +419,8 @@ export function PortRefs({
   onChange,
 }: {
   port: string
+  /** 登録簿の口の説明 (無ければ空. 欄の下に出し, 欄の説明として読み上げる) */
+  description?: string
   refs: string[]
   options: { value: string; label: string }[]
   variadic: boolean
@@ -443,13 +446,22 @@ export function PortRefs({
       {!optional && <span className="text-critical-text"> *</span>}
     </label>
   )
+  // 口の説明 (引数の欄の説明と同じく, 欄の下に小さく出す)
+  const hintId = `${id}-hint`
+  const hint = description ? (
+    <p id={hintId} className="col-start-2 text-[10px] text-ink-3">
+      {description}
+    </p>
+  ) : null
+  const describedBy = description ? hintId : undefined
   // 1 つだけつなぐ口は選択, 複数つなぐ口は並びと追加の選択
   if (!variadic) {
     return (
-      <div className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-center gap-2">
+      <div className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5">
         {label}
         <select
           id={id}
+          aria-describedby={describedBy}
           value={refs[0] ?? ''}
           onChange={(event) => onChange(event.target.value ? [event.target.value] : [])}
           className="h-7 w-full rounded-md border border-line bg-bg px-1 font-mono text-xs"
@@ -464,11 +476,12 @@ export function PortRefs({
             </option>
           ))}
         </select>
+        {hint}
       </div>
     )
   }
   return (
-    <div className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-start gap-2">
+    <div className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-start gap-x-2 gap-y-0.5">
       {label}
       <div className="space-y-1">
         <ol className="space-y-1">
@@ -516,6 +529,7 @@ export function PortRefs({
           id={id}
           value=""
           aria-label={`${port} につなぎ先を加える`}
+          aria-describedby={describedBy}
           onChange={(event) => event.target.value && onChange([...refs, event.target.value])}
           className="h-7 w-full rounded-md border border-line bg-bg px-1 font-mono text-xs"
         >
@@ -527,6 +541,7 @@ export function PortRefs({
           ))}
         </select>
       </div>
+      {hint}
     </div>
   )
 }

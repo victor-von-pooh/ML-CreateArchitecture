@@ -3,7 +3,7 @@ import { useState } from 'react'
 
 import { api } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
-import { ErrorBox, Spinner } from '../../components/ui'
+import { ErrorBox, ExampleButton, Spinner } from '../../components/ui'
 import type { Spec, SubgraphOrigin } from '../../lib/graph'
 
 /**
@@ -112,15 +112,12 @@ export function SubgraphDialog({
         <ul className="divide-y divide-line">
           {examples.data.map((example) => (
             <li key={example.name}>
-              <button
-                type="button"
+              <ExampleButton
+                name={example.name}
+                description={example.description}
                 disabled={load.isPending}
                 onClick={() => pick('example', example.name)}
-                className="w-full px-2 py-2 text-left hover:bg-surface-2"
-              >
-                <span className="block font-mono text-sm">{example.name}</span>
-                <span className="block text-xs text-ink-3">{example.description}</span>
-              </button>
+              />
             </li>
           ))}
         </ul>
