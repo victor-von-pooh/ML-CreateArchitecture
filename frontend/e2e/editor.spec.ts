@@ -830,3 +830,73 @@ test('1024 px の幅でも上の操作は 1 行に収まる', async ({ page }) =
   await expect(page.locator('[data-id="x"]')).toBeVisible()
   expect((await page.locator('header').boundingBox())!.height).toBeLessThan(60)
 })
+
+test('口が 2 つの演算 (行列の積, 再パラメータ化) は, 口ごとに点と選択の欄を出す', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await page.getByPlaceholder('部品を探す').fill('op.MatMul')
+  await page
+    .getByRole('button', { name: /^op\.MatMul/ })
+    .first()
+    .click()
+  const matmul = page.locator('[data-id="matmul1"]')
+  await expect(matmul.locator('[data-handleid="in:input"]')).toHaveCount(1)
+  await expect(matmul.locator('[data-handleid="in:other"]')).toHaveCount(1)
+  await expect(page.getByLabel(/^input/)).toBeVisible()
+  await expect(page.getByLabel(/^other/)).toBeVisible()
+})
+
+test('全結合の出力を等分して, 平均と対数分散から潜在変数を引く', async ({ page }) => {
+  await page.goto('/')
+
+  // 全結合の層で 8 次元にして, 入力につなぐ
+  await page.getByPlaceholder('部品を探す').fill('nn.Linear')
+  await page
+    .getByRole('button', { name: /^nn\.Linear/ })
+    .first()
+    .click()
+  await page.getByLabel('in_features').fill('16')
+  await page.getByLabel('in_features').press('Enter')
+  await page.getByLabel('out_features').fill('8')
+  await page.getByLabel('out_features').press('Enter')
+  await page.getByLabel(/^input/).selectOption('x')
+
+  // 全結合を選んで等分の部品を 2 つ置く (前半 index 0 と後半 index 1)
+  const placeChunk = async () => {
+    await page.locator('[data-id="linear1"]').click()
+    await page.getByPlaceholder('部品を探す').fill('op.Chunk')
+    await page
+      .getByRole('button', { name: /^op\.Chunk/ })
+      .first()
+      .click()
+  }
+  await placeChunk()
+  await expect(page.locator('[data-id="chunk1"]')).toBeVisible()
+  await placeChunk()
+  await expect(page.locator('[data-id="chunk2"]')).toBeVisible()
+  await page.getByLabel('index', { exact: true }).fill('1')
+  await page.getByLabel('index', { exact: true }).press('Enter')
+
+  // 前半を選んで再パラメータ化を置くと mu につながり, logvar は選択の欄でつなぐ
+  await page.locator('[data-id="chunk1"]').click()
+  await page.getByPlaceholder('部品を探す').fill('op.Reparameterize')
+  await page
+    .getByRole('button', { name: /^op\.Reparameterize/ })
+    .first()
+    .click()
+  const node = page.locator('[data-id="reparameterize1"]')
+  await expect(node.locator('[data-handleid="in:mu"]')).toHaveCount(1)
+  await expect(node.locator('[data-handleid="in:logvar"]')).toHaveCount(1)
+  await expect(page.getByLabel(/^mu/)).toHaveValue('chunk1')
+  await page.getByLabel(/^logvar/).selectOption('chunk2')
+  await page.getByRole('button', { name: '出力', exact: true }).click()
+  await page.getByLabel(/つなぎ先/).selectOption('reparameterize1')
+
+  // 等分した半分 (4 次元) の形が出て, 誤りが無い
+  await expect(page.locator('.react-flow__edge')).toHaveCount(6)
+  await expect(node).toContainText('[4, 4]', { timeout: 20_000 })
+  await expect(page.locator('[data-id="chunk2"]')).toContainText('[4, 4]')
+  await expect(page.locator('header')).toContainText('パラメータ数 136')
+  await expect(page.locator('header')).toContainText('誤り 0 件')
+})
