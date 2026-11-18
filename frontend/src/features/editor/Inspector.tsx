@@ -401,6 +401,7 @@ export function Inspector({
             <PortRefs
               key={`${selected}-${port.name}`}
               port={port.name}
+              description={port.description}
               refs={nodeInputs(node, unit)[port.name] ?? []}
               options={refOptions(spec, units, selected)}
               variadic={port.variadic}

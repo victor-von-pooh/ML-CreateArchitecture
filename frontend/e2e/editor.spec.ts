@@ -900,3 +900,41 @@ test('全結合の出力を等分して, 平均と対数分散から潜在変数
   await expect(page.locator('header')).toContainText('パラメータ数 136')
   await expect(page.locator('header')).toContainText('誤り 0 件')
 })
+
+test('VAE の雛形を開くと, 誤り 0 件で形とパラメータ数が出る', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く', exact: true }).click()
+  // 例のボタンの名前は例の名前だけで, 数行の説明はボタンの説明として読む
+  const example = page.getByRole('button', { name: 'vae', exact: true })
+  await expect(example).toHaveAccessibleDescription(/^VAE/)
+  await example.click()
+
+  // 誤り 0 件は確認の結果が届く前にも出るので, 例に固有の値を先に待つ
+  await expect(page.locator('[data-id="z"]')).toContainText('[8, 8]', { timeout: 20_000 })
+  await expect(page.locator('[data-id="dec2"]')).toContainText('[8, 16]')
+  await expect(page.locator('header')).toContainText('パラメータ数 1.9K')
+  await expect(page.locator('header')).toContainText('誤り 0 件')
+})
+
+test('再パラメータ化のノードは, 口の説明を詳細のつなぎ先とノードの口に出す', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く', exact: true }).click()
+  await page.getByRole('button', { name: /^vae/ }).click()
+  const node = page.locator('[data-id="z"]')
+  await expect(node).toContainText('[8, 8]', { timeout: 20_000 })
+
+  // ノードの口の行は, マウスを重ねると口の説明を出す
+  await expect(node.getByTitle('mu: 平均')).toHaveCount(1)
+  await expect(node.getByTitle(/^logvar: 対数分散/)).toHaveCount(1)
+
+  // 詳細の入力のつなぎ先は, 口の説明を欄の下に出し, 欄の説明として読み上げる
+  // (ノードの真ん中は口の点の近くなので, 名前の所を押して選ぶ)
+  await node.getByText('z', { exact: true }).click()
+  const details = page.getByRole('complementary', { name: '詳細' })
+  await expect(details.getByRole('combobox', { name: /^mu/ })).toHaveAccessibleDescription('平均')
+  await expect(details.getByRole('combobox', { name: /^logvar/ })).toHaveAccessibleDescription(
+    /^対数分散/,
+  )
+  await expect(details.getByText('平均', { exact: true })).toBeVisible()
+  await expect(details.getByText(/^対数分散/)).toBeVisible()
+})

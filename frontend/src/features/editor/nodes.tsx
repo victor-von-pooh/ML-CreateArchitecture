@@ -32,6 +32,11 @@ const ROW = 22
 // マウスを重ねると全体を出す)
 const NODE_MAX = 236
 
+/** 口の行のマウスを重ねたときの文字 (登録簿の口の説明があれば後ろに付ける) */
+function portTitle(label: string, description: string): string {
+  return description ? `${label}: ${description}` : label
+}
+
 /** ノードの枠 (選択と誤りで色を変える) */
 function frame(selected: boolean, errors: number): string {
   return clsx(
@@ -72,7 +77,7 @@ export function UnitNode({ data, selected }: NodeProps<UnitFlowNode>) {
           {inputs.map((port) => (
             <div
               key={port.name}
-              title={port.name}
+              title={portTitle(port.name, port.description)}
               className="relative pl-2 font-mono text-[10px] whitespace-nowrap text-ink-2"
               style={{ height: ROW, lineHeight: `${ROW}px` }}
             >
@@ -98,7 +103,7 @@ export function UnitNode({ data, selected }: NodeProps<UnitFlowNode>) {
             return (
               <div
                 key={port.name}
-                title={label}
+                title={portTitle(label, port.description)}
                 className="relative pr-2 text-right font-mono text-[10px] whitespace-nowrap"
                 style={{ height: ROW, lineHeight: `${ROW}px` }}
               >

@@ -18,7 +18,7 @@ import { useEffect, useId, useState } from 'react'
 
 import { api, type CheckResult } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
-import { Button, ErrorBox, Spinner } from '../../components/ui'
+import { Button, ErrorBox, ExampleButton, Spinner } from '../../components/ui'
 import { failedNodes, formatCount } from '../../lib/format'
 import { danglingNodes, emptySpec, freshName, type Spec, type UnitSpec } from '../../lib/graph'
 import { subgraphCheckTarget } from '../../lib/subgraph'
@@ -142,14 +142,11 @@ function OpenDialog({
         <ul className="divide-y divide-line">
           {examples.data.map((example) => (
             <li key={example.name}>
-              <button
-                type="button"
+              <ExampleButton
+                name={example.name}
+                description={example.description}
                 onClick={() => onOpen('example', example.name)}
-                className="w-full px-2 py-2 text-left hover:bg-surface-2"
-              >
-                <span className="block font-mono text-sm">{example.name}</span>
-                <span className="block text-xs text-ink-3">{example.description}</span>
-              </button>
+              />
             </li>
           ))}
         </ul>
