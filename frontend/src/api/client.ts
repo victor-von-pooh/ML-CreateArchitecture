@@ -13,6 +13,7 @@ export type ExampleSummary = Schemas['ExampleSummary']
 export type PretrainedInfo = Schemas['PretrainedInfo']
 export type WeightsResult = Schemas['WeightsResult']
 export type WeightsReport = Schemas['WeightsReport']
+export type ModulesInfo = Schemas['ModulesInfo']
 
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
@@ -55,6 +56,8 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listUnits: () => request<UnitSpec[]>('/api/units'),
+  /** 起動の設定で読み込んだ自作の部品のモジュール */
+  listModules: () => request<ModulesInfo>('/api/modules'),
   /** 確認と形の推定 (infer が false なら確認だけ) */
   check: (spec: Spec, infer = true) =>
     request<CheckResult>('/api/check', {

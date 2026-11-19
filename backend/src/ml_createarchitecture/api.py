@@ -18,6 +18,7 @@ from ml_modelcontrol import (
 )
 from pydantic import BaseModel
 
+from ml_createarchitecture.settings import MODULES_ENV
 from ml_createarchitecture.store import (
     ModelError,
     ModelNotFoundError,
@@ -166,6 +167,45 @@ def list_units() -> list[dict[str, Any]]:
     units: list[dict[str, Any]] = describe_units()
 
     return units
+
+
+class CustomModule(BaseModel):
+    # 起動の設定に書いたモジュールの名前と, 読み込んだ部品の名前
+    name: str
+    units: list[str]
+
+
+class ModulesInfo(BaseModel):
+    # 起動の設定の環境変数の名前と, 読み込んだモジュール (書いた順)
+    env: str
+    modules: list[CustomModule]
+
+
+@router.get("/modules")
+def list_custom_modules(request: Request) -> ModulesInfo:
+    """
+    起動の設定で読み込んだ自作の部品のモジュールを返す関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+
+    Returns
+    ----------
+    info: ModulesInfo
+        環境変数の名前と, モジュールごとの部品の名前
+    """
+    loaded: dict[str, list[str]] = request.app.state.custom_modules
+    info = ModulesInfo(
+        env=MODULES_ENV,
+        modules=[
+            CustomModule(name=name, units=units)
+            for name, units in loaded.items()
+        ]
+    )
+
+    return info
 
 
 @router.post("/check")

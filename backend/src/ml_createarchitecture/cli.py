@@ -62,7 +62,12 @@ def main() -> None:
 
     # 起動ごとのトークン付きの URL の表示
     # 全てのアドレスで待ち受ける場合も, 手元のブラウザで開ける URL を表示
-    app = create_app(token=get_token(None))
+    # 自作の部品のモジュールを読み込めない場合は, 理由を出して止める
+    try:
+        app = create_app(token=get_token(None))
+    except ValueError as error:
+        print(f"起動できません: {error}", flush=True)
+        raise SystemExit(1) from error
     shown = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
     print(
         "ML-CreateArchitecture を開く: "

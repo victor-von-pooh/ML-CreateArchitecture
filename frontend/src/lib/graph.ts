@@ -39,6 +39,8 @@ export interface UnitSpec {
   reason: string
   /** 学習済みの重みを読む引数の名前 (空なら重みを読まない部品. ライセンスの欄を出すもの) */
   weights_params?: string[]
+  /** 起動の設定のモジュールから読み込んだ自作の部品の, 宣言したモジュール (他は空) */
+  module?: string
 }
 
 /** 位置などの画面の情報 */

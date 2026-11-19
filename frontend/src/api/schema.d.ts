@@ -33,6 +33,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/modules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Custom Modules
+         * @description 起動の設定で読み込んだ自作の部品のモジュールを返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *
+         *     Returns
+         *     ----------
+         *     info: ModulesInfo
+         *         環境変数の名前と, モジュールごとの部品の名前
+         */
+        get: operations["list_custom_modules"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/check": {
         parameters: {
             query?: never;
@@ -359,6 +389,13 @@ export interface components {
              */
             yaml: string;
         };
+        /** CustomModule */
+        CustomModule: {
+            /** Name */
+            name: string;
+            /** Units */
+            units: string[];
+        };
         /** ExampleSummary */
         ExampleSummary: {
             /** Name */
@@ -418,6 +455,13 @@ export interface components {
             name: string;
             /** Updated At */
             updated_at: string;
+        };
+        /** ModulesInfo */
+        ModulesInfo: {
+            /** Env */
+            env: string;
+            /** Modules */
+            modules: components["schemas"]["CustomModule"][];
         };
         /** NodeResult */
         NodeResult: {
@@ -646,6 +690,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+        };
+    };
+    list_custom_modules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModulesInfo"];
                 };
             };
         };

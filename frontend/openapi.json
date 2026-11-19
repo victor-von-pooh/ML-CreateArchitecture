@@ -29,6 +29,25 @@
         }
       }
     },
+    "/api/modules": {
+      "get": {
+        "summary": "List Custom Modules",
+        "description": "起動の設定で読み込んだ自作の部品のモジュールを返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\n\nReturns\n----------\ninfo: ModulesInfo\n    環境変数の名前と, モジュールごとの部品の名前",
+        "operationId": "list_custom_modules",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModulesInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/check": {
       "post": {
         "summary": "Check Spec",
@@ -473,6 +492,27 @@
         ],
         "title": "CheckResult"
       },
+      "CustomModule": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "units": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Units"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "units"
+        ],
+        "title": "CustomModule"
+      },
       "ExampleSummary": {
         "properties": {
           "name": {
@@ -628,6 +668,27 @@
           "updated_at"
         ],
         "title": "ModelSummary"
+      },
+      "ModulesInfo": {
+        "properties": {
+          "env": {
+            "type": "string",
+            "title": "Env"
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/CustomModule"
+            },
+            "type": "array",
+            "title": "Modules"
+          }
+        },
+        "type": "object",
+        "required": [
+          "env",
+          "modules"
+        ],
+        "title": "ModulesInfo"
       },
       "NodeResult": {
         "properties": {

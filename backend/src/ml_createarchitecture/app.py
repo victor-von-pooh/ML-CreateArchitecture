@@ -11,9 +11,10 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
+from ml_modelcontrol import register_units_from
 
 from ml_createarchitecture.api import router
-from ml_createarchitecture.settings import get_data_dir
+from ml_createarchitecture.settings import get_custom_modules, get_data_dir
 from ml_createarchitecture.store import ModelStore
 
 # ビルド済みの画面を置く場所 (パッケージの中)
@@ -261,9 +262,43 @@ def mount_frontend(app: FastAPI, static_dir: Path) -> None:
         return response
 
 
+def load_custom_modules(modules: list[str]) -> dict[str, list[str]]:
+    """
+    起動の設定の自作の部品のモジュールを読み込み, ログに出す関数
+
+    書いたモジュールは任意のコードとして動く (信頼できるものだけを書く)
+
+    Parameters
+    ----------
+    modules: list[str]
+        モジュールの名前
+
+    Returns
+    ----------
+    loaded: dict[str, list[str]]
+        モジュールの名前ごとの, 登録した部品の名前
+
+    Raises
+    ----------
+    ValueError
+        読み込めないモジュールがある場合 (起動を止める)
+    """
+    # モジュールごとに, どの部品を読み込んだかを表示
+    loaded: dict[str, list[str]] = register_units_from(modules)
+    for module, names in loaded.items():
+        print(
+            f"自作の部品を読み込みました: {module} → "
+            f"{', '.join(names) or '(部品なし)'}",
+            flush=True
+        )
+
+    return loaded
+
+
 def create_app(
     data_dir: Optional[Path] = None, token: Optional[str] = None,
-    allowed_hosts: Optional[list[str]] = None
+    allowed_hosts: Optional[list[str]] = None,
+    modules: Optional[list[str]] = None
 ) -> FastAPI:
     """
     アプリを組み立てる関数
@@ -276,6 +311,9 @@ def create_app(
         API の呼び出しに求めるトークン, None の場合は環境変数かランダムに作成
     allowed_hosts: Optional[list[str]] = None
         受け付けるホスト名, None の場合は 127.0.0.1 と localhost
+    modules: Optional[list[str]] = None
+        読み込む自作の部品のモジュール, None の場合は起動の設定
+        (ML_CREATEARCHITECTURE_MODULES)
 
     Returns
     ----------
@@ -285,6 +323,12 @@ def create_app(
     app = FastAPI(
         title="ML-CreateArchitecture", version="0.1.0",
         generate_unique_id_function=route_id
+    )
+
+    # 起動の設定に書いた自作の部品のモジュールだけを読み込み
+    # (画面と API と定義からは選べない)
+    app.state.custom_modules = load_custom_modules(
+        get_custom_modules() if modules is None else modules
     )
 
     # モデルの定義のファイルの置き場をアプリに保存

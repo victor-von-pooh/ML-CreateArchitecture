@@ -79,6 +79,40 @@ torchvision と timm のモデル (`tv.Model`, `timm.Model`) の名前は, 右�
 | 部分モデルの中身を編集する | 部分モデルのノードをダブルクリックするか, 詳細の「部分モデルの中身を編集」. 変更は, その部分モデルを使う全てのノードに反映される. Esc で 1 つ上の階層に戻る (上の階層の名前を押してもよい) |
 | 部分モデルを 1 つのノードだけ変える | 部分モデルのノードの詳細の「このノードだけの部分モデルにする」(2 つ以上のノードが使う部分モデルの場合に出る. 写して別の部分モデルにし, 他のノードはそのまま) |
 
+### 自作の部品を使う
+
+研究で書いた自作の部品 (`nn.Module` のクラス) は, 部品を宣言したモジュールの名前を環境変数 `ML_CREATEARCHITECTURE_MODULES` (カンマで区切って複数) に書いて起動すると, 部品の一覧の「自作 (モジュールの名前)」に出る. モジュールはバックエンドの Python から import できる場所 (`PYTHONPATH` か, バックエンドの環境に入れたパッケージ) に置く.
+
+```python
+# my_lab/units.py
+import torch
+from torch import nn
+
+
+class Scale(nn.Module):
+    """入力を決めた倍にする部品"""
+
+    def __init__(self, factor: float = 2.0):
+        super().__init__()
+        self.factor = factor
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * self.factor
+
+
+# 部品の宣言 (クラスか, ML-ModelControl の register_unit の引数の辞書)
+UNITS = [{"cls": Scale, "name": "lab.Scale"}]
+```
+
+```bash
+ML_CREATEARCHITECTURE_MODULES=my_lab.units PYTHONPATH=<my_lab を置いたディレクトリ> make serve
+```
+
+起動のログに `自作の部品を読み込みました: my_lab.units → lab.Scale` と出る. 読み込めないモジュールがあると, 理由を出して起動しない. 宣言の書き方 (`UNITS` のほかに `register_units(register)` の関数も書ける) は ML-ModelControl の README を参照.
+
+- **書いたモジュールは, 起動のときに任意のコードとして動く**. 自分や仲間が書いた, 信頼できるコードだけを書く
+- 読み込むのは, この環境変数に書いたモジュールだけ. 定義のファイルに書かれた部品の名前や, 画面と API からは何も読み込まない. 登録されていない部品を使う定義を開くと, そのノードに「この部品は登録されていません. 自作の部品なら起動の設定に足してください」と, 環境変数の名前と今読み込んでいるモジュールが出る
+
 ### 保存した定義を使う
 
 保存した定義は `~/.ml-createarchitecture/models/<名前>.yaml` に置かれる (環境変数 `ML_CREATEARCHITECTURE_HOME` で変えられる). [ML-ModelControl](https://github.com/victor-von-pooh/ML-ModelControl) の `build_model` でそのまま `nn.Module` にできる. ML-ModelControl はこのアプリのバックエンドに入っているので, 試すだけなら `cd backend && uv run python` で使える (自分の環境では `pip install "ml-modelcontrol @ git+https://github.com/victor-von-pooh/ML-ModelControl.git"`).
