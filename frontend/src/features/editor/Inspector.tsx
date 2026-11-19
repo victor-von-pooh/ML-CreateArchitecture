@@ -18,6 +18,7 @@ import {
 import { incomingValues } from '../../lib/subgraph'
 import { NodeState } from './NodeState'
 import { PretrainedLicense } from './PretrainedLicense'
+import { CustomModuleHint } from './CustomModuleHint'
 
 // 入力の例に使える型と値の作り方 (ML-ModelControl と同じ)
 
@@ -112,6 +113,8 @@ export function Inspector({
           <p className="text-warning-text">パラメータ数が上限を超えるので, 形は推定していません.</p>
         )}
         <IssueList issues={issuesFor((issue) => !issue.node)} />
+        {/* 登録されていない部品は, ノードを選ばなくても起動の設定の案内を出す */}
+        <CustomModuleHint issues={check?.issues ?? []} />
         {/* ノードの誤りと注意 (引数の不足, 出力に届かない, つなぎ忘れなど) は,
             選ばないと見えないので一覧にする (押すと選ぶ) */}
         {nodeWarnings.length > 0 && (
@@ -408,6 +411,7 @@ export function Inspector({
         </div>
       )}
       <IssueList issues={nodeIssues} />
+      <CustomModuleHint issues={nodeIssues} />
       {(unit?.inputs.length ?? 0) > 0 && (
         <fieldset className="space-y-2">
           <legend className="mb-1 text-xs font-semibold">入力のつなぎ先</legend>

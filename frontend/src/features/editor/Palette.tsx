@@ -5,23 +5,7 @@ import { useDeferredValue, useId, useMemo, useState } from 'react'
 import type { UnitSpec } from '../../lib/graph'
 import { firstMatch, matchesQuery } from '../../lib/search'
 import { UNIT_DRAG_TYPE } from '../../lib/flow'
-
-// 出どころの表示名と並び順
-const SOURCES: Record<string, string> = {
-  subgraph: '部分モデル',
-  ml_modelcontrol: '演算',
-  'torch.nn': 'PyTorch',
-  torch_geometric: 'PyTorch Geometric',
-  transformers: 'Hugging Face',
-  torchvision: 'torchvision',
-  timm: 'timm',
-  torchaudio: 'torchaudio',
-  einops: 'einops',
-  kornia: 'Kornia',
-  monai: 'MONAI',
-  segmentation_models_pytorch: 'smp (segmentation_models_pytorch)',
-  custom: '自作',
-}
+import { groupLabel, groupUnits, isModuleGroup } from '../../lib/groups'
 
 /** 部品を出どころと分類ごとに並べ, 検索して選べる一覧 */
 export function Palette({
@@ -61,24 +45,12 @@ export function Palette({
     if (notice) setQuery('')
   }
 
-  // 名前と説明で絞り込み, 出どころごとにまとめる
+  // 名前と説明で絞り込み, 出どころごと (起動の設定のモジュールの自作の部品はモジュールごと) にまとめる
   // 打鍵の間は前の結果を見せ, 多くの部品の描き直しで入力を止めない
   const deferred = useDeferredValue(query)
   const groups = useMemo(() => {
     const text = deferred.trim().toLowerCase()
-    const matched = units.filter((unit) => matchesQuery(unit, text))
-    const order = Object.keys(SOURCES)
-    const bySource = new Map<string, UnitSpec[]>()
-    for (const unit of matched) {
-      const list = bySource.get(unit.source)
-      if (list) list.push(unit)
-      else bySource.set(unit.source, [unit])
-    }
-    const rank = (source: string) => {
-      const index = order.indexOf(source)
-      return index < 0 ? order.length : index
-    }
-    return [...bySource.entries()].sort(([a], [b]) => rank(a) - rank(b))
+    return groupUnits(units.filter((unit) => matchesQuery(unit, text)))
   }, [units, deferred])
 
   return (
@@ -129,7 +101,8 @@ export function Palette({
       )}
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
         {groups.map(([source, items]) => {
-          const expanded = open[source] || query.trim() !== ''
+          // 起動の設定に書いたモジュールのまとまりは, 閉じるまで開いておく
+          const expanded = (open[source] ?? isModuleGroup(source)) || query.trim() !== ''
           return (
             <section key={source} className="mb-1">
               <button
@@ -143,8 +116,8 @@ export function Palette({
                 ) : (
                   <ChevronRight className="size-3.5" aria-hidden />
                 )}
-                <span className="min-w-0 truncate" title={SOURCES[source] ?? source}>
-                  {SOURCES[source] ?? source}
+                <span className="min-w-0 truncate" title={groupLabel(source)}>
+                  {groupLabel(source)}
                 </span>
                 <span className="ml-auto shrink-0 font-normal text-ink-3">{items.length}</span>
               </button>
