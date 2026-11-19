@@ -162,7 +162,7 @@ export function Palette({
                           event.dataTransfer.setData(UNIT_DRAG_TYPE, unit.name)
                           event.dataTransfer.effectAllowed = 'copy'
                         }}
-                        title={unit.available ? unit.description : appReason(unit.reason)}
+                        title={unit.available ? unitTitle(unit) : appReason(unit.reason)}
                         className={clsx(
                           'group flex min-w-0 flex-1 items-start gap-1.5 rounded px-2 py-1 text-left',
                           unit.available ? 'hover:bg-surface-2' : 'cursor-not-allowed opacity-50',
@@ -221,4 +221,10 @@ export function Palette({
 /** 使えない理由の入れ方を, このアプリの入れ方 (make setup EXTRAS=...) にする */
 function appReason(reason: string): string {
   return reason.replace(/pip install -e "\.\[(\w+)\]"/g, 'make setup EXTRAS=$1')
+}
+
+/** 部品の説明 (学習済みの重みを読める部品は, ライセンスを詳細で確かめる案内を足す) */
+function unitTitle(unit: UnitSpec): string {
+  if (!unit.weights_params?.length) return unit.description
+  return `${unit.description} (学習済みの重みを読める. ライセンスは置いた後の詳細で確かめる)`
 }

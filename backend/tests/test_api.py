@@ -1,7 +1,9 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from ml_modelcontrol import clear_pretrained_cache, pretrained
 
 from ml_createarchitecture.app import create_app
 
@@ -251,3 +253,66 @@ def test_examples(client: TestClient) -> None:
     model = client.get("/api/examples/cnn_classifier").json()
     assert "conv1" in model["spec"]["nodes"]
     assert client.get("/api/examples/nope").status_code == 404
+
+
+def test_pretrained(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    学習済みの重みのライセンスを返し, 重みを読まない場合は null を返す
+    ことを確かめる関数 (ネットワークは使わない)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    monkeypatch: pytest.MonkeyPatch
+        差し替えの道具
+
+    Returns
+    ----------
+    None
+    """
+    # Hugging Face を読む関数を, 名前ごとに決めた情報を返すものに差し替え
+    clear_pretrained_cache()
+    monkeypatch.setattr(pretrained, "fetch_hub_metadata", fake_hub)
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    body = {"unit": "hf.AutoModel", "params": {"model_name": "org/nc"}}
+    response = client.post("/api/pretrained", json=body)
+    assert response.status_code == 200
+    info = response.json()
+    assert info["status"] == "noncommercial" and info["alert"] is True
+    assert info["pinned_revision"] == "a" * 40
+    assert "Hugging Face" in info["source"]
+
+    # 重みを読まない場合は null, 登録簿に無い部品は 404
+    body["params"]["pretrained"] = False
+    assert client.post("/api/pretrained", json=body).json() is None
+    response = client.post(
+        "/api/pretrained", json={"unit": "nn.NoSuch", "params": {}}
+    )
+    assert response.status_code == 404
+    clear_pretrained_cache()
+
+
+def fake_hub(hub_id: str, revision: str) -> dict[str, Any]:
+    """
+    テストで Hugging Face の代わりに決めた情報を返す関数
+
+    Parameters
+    ----------
+    hub_id: str
+        置き場の名前
+    revision: str
+        版
+
+    Returns
+    ----------
+    metadata: dict[str, Any]
+        非商用のライセンスのモデルの情報
+    """
+    metadata: dict[str, Any] = {
+        "sha": "a" * 40, "cardData": {"license": "cc-by-nc-4.0"}
+    }
+
+    return metadata

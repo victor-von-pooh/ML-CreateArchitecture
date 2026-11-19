@@ -7,9 +7,10 @@ cd "$(dirname "$0")"
 WORK="$PWD/.work"
 PORT="${E2E_PORT:-8792}"
 
-# 前回の結果を消して, 決まったトークンで起動
+# 前回の結果を消して, 決まったトークンで起動. 学習済みの重みのライセンスなどで
+# Hugging Face を読みに行かないように, ネットワークを使わない設定 (HF_HUB_OFFLINE)
 rm -rf "$WORK"
 mkdir -p "$WORK"
 cd ../../backend
 ML_CREATEARCHITECTURE_HOME="$WORK/home" ML_CREATEARCHITECTURE_TOKEN=e2e-token \
-  exec uv run ml-createarchitecture --port "$PORT"
+  HF_HUB_OFFLINE=1 exec uv run ml-createarchitecture --port "$PORT"
