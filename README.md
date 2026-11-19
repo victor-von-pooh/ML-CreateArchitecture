@@ -105,13 +105,13 @@ UNITS = [{"cls": Scale, "name": "lab.Scale"}]
 ```
 
 ```bash
-ML_CREATEARCHITECTURE_MODULES=my_lab.units PYTHONPATH=<my_lab を置いたディレクトリ> make serve
+ML_CREATEARCHITECTURE_MODULES=my_lab.units PYTHONPATH=<my_lab を置いたディレクトリの絶対パス> make serve
 ```
 
-起動のログに `自作の部品を読み込みました: my_lab.units → lab.Scale` と出る. 読み込めないモジュールがあると, 理由を出して起動しない. 宣言の書き方 (`UNITS` のほかに `register_units(register)` の関数も書ける) は ML-ModelControl の README を参照.
+起動のログに `自作の部品を読み込みました: my_lab.units → lab.Scale` と出る. 読み込めないモジュールがあると, 理由を出して起動しない. `make serve` はバックエンドのディレクトリで起動するので, `PYTHONPATH` は絶対パスで書く. 開発用のサーバー (`make dev-backend`) でも同じ環境変数で読み込むが, 自作の部品のファイルを直しても作り直されないので起動し直す. 宣言の書き方 (`UNITS` のほかに `register_units(register)` の関数も書ける) は ML-ModelControl の README を参照.
 
 - **書いたモジュールは, 起動のときに任意のコードとして動く**. 自分や仲間が書いた, 信頼できるコードだけを書く
-- 読み込むのは, この環境変数に書いたモジュールだけ. 定義のファイルに書かれた部品の名前や, 画面と API からは何も読み込まない. 登録されていない部品を使う定義を開くと, そのノードに「この部品は登録されていません. 自作の部品なら起動の設定に足してください」と, 環境変数の名前と今読み込んでいるモジュールが出る
+- 読み込むのは, この環境変数に書いたモジュールだけ. 定義のファイルに書かれた部品の名前や, 画面と API からは何も読み込まない. 登録されていない部品を使う定義を開くと, 登録されていないという誤りと, 起動の設定 (環境変数の名前) に足す案内と, 今読み込んでいるモジュールが出る
 
 ### 保存した定義を使う
 

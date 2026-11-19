@@ -48,7 +48,8 @@ def main() -> None:
 
     # 画面の型を生成するための仕様の書き出し
     if args.openapi is not None:
-        app = create_app(token="unused")
+        # 仕様の書き出しでは自作の部品のモジュールを読み込まない
+        app = create_app(token="unused", modules=[])
         text = json.dumps(app.openapi(), ensure_ascii=False, indent=2)
         args.openapi.write_text(text + "\n", encoding="utf-8")
         return

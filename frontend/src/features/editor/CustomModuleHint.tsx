@@ -33,9 +33,11 @@ export function CustomModuleHint({ issues }: { issues: Issue[] }) {
         今読み込んでいるモジュール:{' '}
         {modules.isPending
           ? '読んでいます'
-          : loaded.length > 0
-            ? loaded.map((module) => module.name).join(', ')
-            : 'なし'}
+          : modules.isError
+            ? '読めませんでした'
+            : loaded.length > 0
+              ? loaded.map((module) => module.name).join(', ')
+              : 'なし'}
       </p>
       <p className="text-ink-3">
         書いたモジュールは起動のときに任意のコードとして動くので,

@@ -113,7 +113,8 @@ export function Inspector({
           <p className="text-warning-text">パラメータ数が上限を超えるので, 形は推定していません.</p>
         )}
         <IssueList issues={issuesFor((issue) => !issue.node)} />
-        <CustomModuleHint issues={issuesFor((issue) => !issue.node)} />
+        {/* 登録されていない部品は, ノードを選ばなくても起動の設定の案内を出す */}
+        <CustomModuleHint issues={check?.issues ?? []} />
         {/* ノードの誤りと注意 (引数の不足, 出力に届かない, つなぎ忘れなど) は,
             選ばないと見えないので一覧にする (押すと選ぶ) */}
         {nodeWarnings.length > 0 && (
