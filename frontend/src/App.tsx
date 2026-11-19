@@ -36,19 +36,10 @@ import {
   subgraphCheckTarget,
   writeSubgraph,
 } from './lib/subgraph'
+import { useDebounced } from './lib/debounce'
 import { clearDraft, readDraft, tabId, writeDraft, type Draft } from './lib/draft'
 import { useHistory } from './lib/history'
 import { arrangeSpec, freeSpot, placeMissing, unitSize } from './lib/layout'
-
-/** 書き換えている途中の値が落ち着いてから使う (確認の回数を抑える) */
-function useDebounced<T>(value: T, delay: number): T {
-  const [current, setCurrent] = useState(value)
-  useEffect(() => {
-    const timer = window.setTimeout(() => setCurrent(value), delay)
-    return () => window.clearTimeout(timer)
-  }, [value, delay])
-  return current
-}
 
 /** モデルの定義を部品の一覧, キャンバス, 詳細で編集する画面 */
 export function App() {

@@ -37,6 +37,8 @@ export interface UnitSpec {
   extra_params: boolean
   available: boolean
   reason: string
+  /** 学習済みの重みを読む引数の名前 (空なら重みを読まない部品. ライセンスの欄を出すもの) */
+  weights_params?: string[]
 }
 
 /** 位置などの画面の情報 */

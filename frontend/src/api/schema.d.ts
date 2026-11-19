@@ -93,6 +93,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/pretrained": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Pretrained
+         * @description ノードが読む学習済みの重みのライセンスを, 配布元から読んで返す関数
+         *
+         *     結果は ML-ModelControl がプロセスの中に覚えるので, 同じモデルを何度
+         *     選んでもネットワークは 1 回だけ使う
+         *
+         *     Parameters
+         *     ----------
+         *     body: PretrainedBody
+         *         部品の名前と引数の値
+         *
+         *     Returns
+         *     ----------
+         *     info: Optional[PretrainedInfo]
+         *         ライセンスの情報, 重みを読まない場合は null
+         */
+        post: operations["read_pretrained"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/examples": {
         parameters: {
             query?: never;
@@ -375,6 +408,59 @@ export interface components {
             /** Error */
             error?: string | null;
         };
+        /** PretrainedBody */
+        PretrainedBody: {
+            /** Unit */
+            unit: string;
+            /**
+             * Params
+             * @default {}
+             */
+            params: {
+                [key: string]: unknown;
+            };
+        };
+        /** PretrainedInfo */
+        PretrainedInfo: {
+            /** Unit */
+            unit: string;
+            /** Library */
+            library: string;
+            /** Model */
+            model: string;
+            /** Hub Id */
+            hub_id?: string | null;
+            /** Revision */
+            revision?: string | null;
+            /** Pinned Revision */
+            pinned_revision?: string | null;
+            /** License */
+            license?: string | null;
+            /**
+             * Licenses
+             * @default []
+             */
+            licenses: string[];
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+            /** Status */
+            status: string;
+            /** Redistributable */
+            redistributable: boolean;
+            /** Gated */
+            gated: boolean;
+            /** Alert */
+            alert: boolean;
+            /** Message */
+            message: string;
+            /** Source */
+            source: string;
+            /** Url */
+            url?: string | null;
+        };
         /** SpecBody */
         SpecBody: {
             /** Spec */
@@ -484,6 +570,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_pretrained: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PretrainedBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PretrainedInfo"] | null;
                 };
             };
             /** @description Validation Error */

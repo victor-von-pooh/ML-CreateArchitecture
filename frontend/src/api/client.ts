@@ -10,6 +10,7 @@ export type ModelSummary = Schemas['ModelSummary']
 export type ModelFile = Schemas['ModelFile']
 export type ExportResult = Schemas['ExportResult']
 export type ExampleSummary = Schemas['ExampleSummary']
+export type PretrainedInfo = Schemas['PretrainedInfo']
 
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
@@ -62,6 +63,12 @@ export const api = {
     request<ExportResult>('/api/export', {
       method: 'POST',
       body: JSON.stringify({ spec, class_name: className }),
+    }),
+  /** 学習済みの重みのライセンス (重みを読まない場合は null) */
+  pretrained: (unit: string, params: Record<string, unknown>) =>
+    request<PretrainedInfo | null>('/api/pretrained', {
+      method: 'POST',
+      body: JSON.stringify({ unit, params }),
     }),
   listModels: () => request<ModelSummary[]>('/api/models'),
   listExamples: () => request<ExampleSummary[]>('/api/examples'),

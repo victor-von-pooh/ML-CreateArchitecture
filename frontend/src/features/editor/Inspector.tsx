@@ -16,6 +16,7 @@ import {
   type UnitSpec,
 } from '../../lib/graph'
 import { incomingValues } from '../../lib/subgraph'
+import { PretrainedLicense } from './PretrainedLicense'
 
 // 入力の例に使える型と値の作り方 (ML-ModelControl と同じ)
 
@@ -343,6 +344,15 @@ export function Inspector({
         <div className="font-mono text-xs font-semibold">{node.unit}</div>
         {unit?.description && <p className="text-xs text-ink-3">{unit.description}</p>}
       </div>
+      {/* 学習済みの重みを読める部品は, 配布元から読んだライセンスと警告 */}
+      {(unit?.weights_params?.length ?? 0) > 0 && (
+        <PretrainedLicense
+          key={`license:${selected}`}
+          unit={node.unit}
+          params={node.params ?? {}}
+          weightsParams={unit?.weights_params ?? []}
+        />
+      )}
       {node.unit.startsWith(SUBGRAPH_PREFIX) && (
         <SubgraphContents
           sub={spec.subgraphs?.[node.unit.slice(SUBGRAPH_PREFIX.length)]}

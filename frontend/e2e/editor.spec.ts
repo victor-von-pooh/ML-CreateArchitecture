@@ -938,3 +938,25 @@ test('再パラメータ化のノードは, 口の説明を詳細のつなぎ先
   await expect(details.getByText('平均', { exact: true })).toBeVisible()
   await expect(details.getByText(/^対数分散/)).toBeVisible()
 })
+
+test('学習済みの重みを読むノードは, ライセンスと読めなかったことを警告として出す', async ({
+  page,
+}) => {
+  // 通しのテストはネットワークを使わない設定で起動するので, 配布元は読めない
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く' }).click()
+  await page.getByRole('button', { name: /^bert_classifier/ }).click()
+  await page.locator('[data-id="bert"]').click()
+  const license = page.getByRole('region', { name: '学習済みの重みのライセンス' })
+  await expect(license).toContainText('警告: 商用で使えるか分からない', { timeout: 20_000 })
+  await expect(license.getByRole('status')).toContainText('ネットワークを使わない設定')
+  await expect(license).toContainText('重みを写さず, 出どころの名前と版から読む')
+
+  // 重みを読まない設定にすると, 読まないと出す
+  await page.getByLabel('pretrained', { exact: true }).uncheck()
+  await expect(license).toContainText('今の引数では学習済みの重みを読みません')
+
+  // 重みを読まない部品には欄を出さない
+  await page.locator('[data-id="head"]').click()
+  await expect(page.getByRole('region', { name: '学習済みの重みのライセンス' })).toHaveCount(0)
+})

@@ -107,6 +107,53 @@
         }
       }
     },
+    "/api/pretrained": {
+      "post": {
+        "summary": "Read Pretrained",
+        "description": "ノードが読む学習済みの重みのライセンスを, 配布元から読んで返す関数\n\n結果は ML-ModelControl がプロセスの中に覚えるので, 同じモデルを何度\n選んでもネットワークは 1 回だけ使う\n\nParameters\n----------\nbody: PretrainedBody\n    部品の名前と引数の値\n\nReturns\n----------\ninfo: Optional[PretrainedInfo]\n    ライセンスの情報, 重みを読まない場合は null",
+        "operationId": "read_pretrained",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PretrainedBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PretrainedInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Read Pretrained"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/examples": {
       "get": {
         "summary": "List Example Models",
@@ -582,6 +629,146 @@
           "status"
         ],
         "title": "NodeResult"
+      },
+      "PretrainedBody": {
+        "properties": {
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "unit"
+        ],
+        "title": "PretrainedBody"
+      },
+      "PretrainedInfo": {
+        "properties": {
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "library": {
+            "type": "string",
+            "title": "Library"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "hub_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hub Id"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "pinned_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned Revision"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
+          "licenses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Licenses",
+            "default": []
+          },
+          "confirmed": {
+            "type": "boolean",
+            "title": "Confirmed",
+            "default": false
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "redistributable": {
+            "type": "boolean",
+            "title": "Redistributable"
+          },
+          "gated": {
+            "type": "boolean",
+            "title": "Gated"
+          },
+          "alert": {
+            "type": "boolean",
+            "title": "Alert"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "unit",
+          "library",
+          "model",
+          "status",
+          "redistributable",
+          "gated",
+          "alert",
+          "message",
+          "source"
+        ],
+        "title": "PretrainedInfo"
       },
       "SpecBody": {
         "properties": {

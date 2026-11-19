@@ -6,10 +6,12 @@ from ml_modelcontrol import (
     describe_units,
     dump_spec,
     export_python,
+    get_unit,
     infer,
     list_examples,
     load_example,
     load_spec,
+    pretrained_info,
     validate,
 )
 from pydantic import BaseModel
@@ -268,6 +270,65 @@ def export_spec(body: ExportBody) -> ExportResult:
     result = ExportResult(code=code)
 
     return result
+
+
+class PretrainedBody(BaseModel):
+    # 部品の名前と引数の値
+    unit: str
+    params: dict[str, Any] = {}
+
+
+class PretrainedInfo(BaseModel):
+    # 学習済みの重みのライセンスの情報 (ML-ModelControl の pretrained_info).
+    # 分類 (commercial, noncommercial, unknown), 警告するか, 画面に出す説明,
+    # どこから読んだか, 推論の一式に写せるか, 読んだ版
+    unit: str
+    library: str
+    model: str
+    hub_id: Optional[str] = None
+    revision: Optional[str] = None
+    pinned_revision: Optional[str] = None
+    license: Optional[str] = None
+    licenses: list[str] = []
+    confirmed: bool = False
+    status: str
+    redistributable: bool
+    gated: bool
+    alert: bool
+    message: str
+    source: str
+    url: Optional[str] = None
+
+
+@router.post("/pretrained")
+def read_pretrained(body: PretrainedBody) -> Optional[PretrainedInfo]:
+    """
+    ノードが読む学習済みの重みのライセンスを, 配布元から読んで返す関数
+
+    結果は ML-ModelControl がプロセスの中に覚えるので, 同じモデルを何度
+    選んでもネットワークは 1 回だけ使う
+
+    Parameters
+    ----------
+    body: PretrainedBody
+        部品の名前と引数の値
+
+    Returns
+    ----------
+    info: Optional[PretrainedInfo]
+        ライセンスの情報, 重みを読まない場合は null
+    """
+    # 登録簿に無い部品は 404 (情報を読む途中の誤りと分けるため先に確認)
+    try:
+        get_unit(body.unit)
+    except KeyError as error:
+        raise HTTPException(
+            404, f"部品 {body.unit} は登録されていません"
+        ) from error
+    found = pretrained_info(body.unit, body.params)
+    info = None if found is None else PretrainedInfo(**found)
+
+    return info
 
 
 class ExampleSummary(BaseModel):
