@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, ExternalLink, Loader2 } from 'lucide-react
 
 import { api, type PretrainedInfo } from '../../api/client'
 import { useDebounced } from '../../lib/debounce'
+import { licenseParams } from '../../lib/license'
 
 // 分類ごとの見出しと色 (商用で使えないものは誤り, 分からないものは注意の色)
 const STATUS_STYLE: Record<string, { label: string; className: string }> = {
@@ -18,19 +19,23 @@ const STATUS_STYLE: Record<string, { label: string; className: string }> = {
   },
 }
 
-/** 学習済みの重みのライセンス (配布元から読んだもの) と警告. 重みを読む部品のノードの詳細に出す */
+/** 学習済みの重みのライセンス (配布元から読んだもの) と警告. 重みを読む部品のノードの詳細に出す
+ * (ノードを選び直したら前のノードの結果を出さないように, 呼ぶ側はノードの名前を key にする) */
 export function PretrainedLicense({
   unit,
   params,
+  weightsParams,
 }: {
   unit: string
   params: Record<string, unknown>
+  weightsParams: string[]
 }) {
   // 打っている途中のモデルの名前で読みに行かないように, 落ち着いてから聞く
-  const target = useDebounced({ unit, params }, 600)
+  const target = useDebounced(licenseParams(params, weightsParams), 600)
   const query = useQuery({
-    queryKey: ['pretrained', target.unit, target.params],
-    queryFn: () => api.pretrained(target.unit, target.params),
+    queryKey: ['pretrained', unit, target],
+    queryFn: () =>
+      api.pretrained(unit, Object.fromEntries(JSON.parse(target) as [string, unknown][])),
     // バックエンドが結果を覚えるので, 画面では選び直しても聞き直さない
     staleTime: 10 * 60 * 1000,
     retry: false,
@@ -44,7 +49,9 @@ export function PretrainedLicense({
           配布元からライセンスを読んでいます
         </p>
       ) : query.isError ? (
-        <p className="text-critical-text">ライセンスを読めませんでした: {query.error.message}</p>
+        <p role="alert" className="text-critical-text">
+          ライセンスを読めませんでした: {query.error.message}
+        </p>
       ) : query.data ? (
         <LicenseCard info={query.data} />
       ) : (
@@ -59,8 +66,8 @@ function LicenseCard({ info }: { info: PretrainedInfo }) {
   const style = STATUS_STYLE[info.status] ?? STATUS_STYLE.unknown!
   return (
     <div
-      // 警告は読み上げる (ノードを選んだときと, モデルの名前を変えたとき)
-      role={info.alert ? 'alert' : 'status'}
+      // 結果は控えめに読み上げる (ノードを選ぶたびに割り込まないように)
+      role="status"
       className={clsx('space-y-1 rounded-md border p-2', style.className)}
     >
       <p className="flex items-start gap-1.5 font-semibold">

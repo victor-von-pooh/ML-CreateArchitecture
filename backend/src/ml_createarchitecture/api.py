@@ -6,6 +6,7 @@ from ml_modelcontrol import (
     describe_units,
     dump_spec,
     export_python,
+    get_unit,
     infer,
     list_examples,
     load_example,
@@ -317,13 +318,14 @@ def read_pretrained(body: PretrainedBody) -> Optional[PretrainedInfo]:
     info: Optional[PretrainedInfo]
         ライセンスの情報, 重みを読まない場合は null
     """
-    # 登録簿に無い部品は 404
+    # 登録簿に無い部品は 404 (情報を読む途中の誤りと分けるため先に確認)
     try:
-        found = pretrained_info(body.unit, body.params)
+        get_unit(body.unit)
     except KeyError as error:
         raise HTTPException(
             404, f"部品 {body.unit} は登録されていません"
         ) from error
+    found = pretrained_info(body.unit, body.params)
     info = None if found is None else PretrainedInfo(**found)
 
     return info

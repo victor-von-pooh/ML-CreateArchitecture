@@ -949,7 +949,7 @@ test('学習済みの重みを読むノードは, ライセンスと読めなか
   await page.locator('[data-id="bert"]').click()
   const license = page.getByRole('region', { name: '学習済みの重みのライセンス' })
   await expect(license).toContainText('警告: 商用で使えるか分からない', { timeout: 20_000 })
-  await expect(license.getByRole('alert')).toContainText('ネットワークを使わない設定')
+  await expect(license.getByRole('status')).toContainText('ネットワークを使わない設定')
   await expect(license).toContainText('重みを写さず, 出どころの名前と版から読む')
 
   // 重みを読まない設定にすると, 読まないと出す

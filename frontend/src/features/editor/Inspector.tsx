@@ -346,7 +346,12 @@ export function Inspector({
       </div>
       {/* 学習済みの重みを読める部品は, 配布元から読んだライセンスと警告 */}
       {(unit?.weights_params?.length ?? 0) > 0 && (
-        <PretrainedLicense unit={node.unit} params={node.params ?? {}} />
+        <PretrainedLicense
+          key={`license:${selected}`}
+          unit={node.unit}
+          params={node.params ?? {}}
+          weightsParams={unit?.weights_params ?? []}
+        />
       )}
       {node.unit.startsWith(SUBGRAPH_PREFIX) && (
         <SubgraphContents
