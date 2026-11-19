@@ -31,7 +31,10 @@ export function PretrainedLicense({
   weightsParams: string[]
 }) {
   // 打っている途中のモデルの名前で読みに行かないように, 落ち着いてから聞く
-  const target = useDebounced(licenseParams(params, weightsParams), 600)
+  const current = licenseParams(params, weightsParams)
+  const target = useDebounced(current, 600)
+  // 落ち着くまでの間は, 前の引数の結果を今の引数の結果として見せない
+  const settling = current !== target
   const query = useQuery({
     queryKey: ['pretrained', unit, target],
     queryFn: () =>
@@ -43,7 +46,7 @@ export function PretrainedLicense({
   return (
     <section aria-label="学習済みの重みのライセンス" className="space-y-1 text-xs">
       <h3 className="font-semibold">学習済みの重みのライセンス</h3>
-      {query.isPending ? (
+      {settling || query.isPending ? (
         <p role="status" className="flex items-center gap-1.5 text-ink-3">
           <Loader2 className="size-3.5 animate-spin" aria-hidden />
           配布元からライセンスを読んでいます

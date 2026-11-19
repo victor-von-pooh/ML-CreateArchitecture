@@ -17,4 +17,15 @@ describe('licenseParams', () => {
       ),
     ).toBe(text)
   })
+
+  it('重みを変える引数 (timm の pretrained_cfg など) も送る', () => {
+    const text = licenseParams(
+      { model_name: 'resnet50', pretrained: true, pretrained_cfg: 'fb_swsl_ig1b_ft_in1k' },
+      ['pretrained'],
+    )
+    expect(text).toContain('"pretrained_cfg","fb_swsl_ig1b_ft_in1k"')
+    expect(licenseParams({ model_name: 'resnet50', pretrained: true }, ['pretrained'])).not.toBe(
+      text,
+    )
+  })
 })

@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -255,6 +256,25 @@ def test_examples(client: TestClient) -> None:
     assert client.get("/api/examples/nope").status_code == 404
 
 
+@pytest.fixture
+def fresh_cache() -> Iterator[None]:
+    """
+    学習済みの重みのライセンスの覚えた結果を, テストの前後で消す関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    clear_pretrained_cache()
+    yield
+    clear_pretrained_cache()
+
+
+@pytest.mark.usefixtures("fresh_cache")
 def test_pretrained(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -274,7 +294,6 @@ def test_pretrained(
     None
     """
     # Hugging Face を読む関数を, 名前ごとに決めた情報を返すものに差し替え
-    clear_pretrained_cache()
     monkeypatch.setattr(pretrained, "fetch_hub_metadata", fake_hub)
     monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
     body = {"unit": "hf.AutoModel", "params": {"model_name": "org/nc"}}
@@ -292,7 +311,6 @@ def test_pretrained(
         "/api/pretrained", json={"unit": "nn.NoSuch", "params": {}}
     )
     assert response.status_code == 404
-    clear_pretrained_cache()
 
 
 def fake_hub(hub_id: str, revision: str) -> dict[str, Any]:
