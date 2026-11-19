@@ -394,6 +394,10 @@ def test_weights_report(client: TestClient, tmp_path: Path) -> None:
         "/api/check", json={"spec": SPEC}
     ).json()["yaml"]
 
+    # 外部の重みが無い定義は組み立てずに空の報告
+    body = client.post("/api/weights", json={"spec": SPEC}).json()
+    assert body == {"ok": True, "reports": [], "error": None}
+
     # strict (既定) では合わない重みで誤りの文
     del spec["nodes"]["fc"]["weights"]["strict"]
     body = client.post("/api/weights", json={"spec": spec}).json()

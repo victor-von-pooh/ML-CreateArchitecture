@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { Download, Plus, Trash2 } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import type { WeightsReport, WeightsResult } from '../../api/client'
 import { Button } from '../../components/ui'
@@ -12,6 +12,8 @@ import {
   parseShareLines,
   ruleKind,
   setNodeState,
+  setNodeStates,
+  shareSources,
   switchRuleKind,
   switchWeightsSource,
   weightsSource,
@@ -40,7 +42,24 @@ function TextField({
   onCommit: (text: string) => void
 }) {
   const id = useId()
+  const errorId = `${id}-error`
   const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  // 欄の外で値が変わったら (元に戻すなど), 前の誤りを消し, 打ちかけの文字が
+  // 無ければ欄に出す (作り直さないので Enter の後も focus が残る)
+  const [seen, setSeen] = useState(value)
+  if (seen !== value) {
+    setSeen(value)
+    setError(null)
+  }
+  const committed = useRef(value)
+  useEffect(() => {
+    const input = inputRef.current
+    if (input && (document.activeElement !== input || input.value === committed.current)) {
+      input.value = value
+    }
+    committed.current = value
+  }, [value])
   const commit = (text: string) => {
     const message = check?.(text) ?? null
     setError(message)
@@ -52,17 +71,22 @@ function TextField({
         {label}
       </label>
       <input
+        ref={inputRef}
         id={id}
-        // 欄の外で値が変わったら (元に戻すなど) 作り直して合わせる
-        key={value}
         defaultValue={value}
+        data-committed={value}
         placeholder={placeholder}
         onBlur={(event) => commit(event.target.value)}
         onKeyDown={(event) => event.key === 'Enter' && commit(event.currentTarget.value)}
         aria-invalid={error !== null}
+        aria-describedby={error ? errorId : undefined}
         className={INPUT}
       />
-      {error && <p className="text-[11px] text-critical-text">{error}</p>}
+      {error && (
+        <p id={errorId} className="text-[11px] text-critical-text">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
@@ -104,7 +128,8 @@ function SelectField<T extends string>({
 }: {
   label: string
   value: T
-  options: [T, string][]
+  /** 値, 見せる文字, 選べないか */
+  options: [T, string, boolean?][]
   onChange: (value: T) => void
 }) {
   const id = useId()
@@ -119,8 +144,8 @@ function SelectField<T extends string>({
         onChange={(event) => onChange(event.target.value as T)}
         className={SELECT}
       >
-        {options.map(([key, text]) => (
-          <option key={key} value={key}>
+        {options.map(([key, text, disabled]) => (
+          <option key={key} value={key} disabled={disabled}>
             {text}
           </option>
         ))}
@@ -152,7 +177,32 @@ export function NodeState({
   return (
     <fieldset className="space-y-2" aria-label="パラメータの状態">
       <legend className="mb-1 text-xs font-semibold">パラメータの状態</legend>
-      <ShareField spec={spec} name={name} node={node} onChange={(value) => set('share', value)} />
+      <ShareField
+        spec={spec}
+        name={name}
+        node={node}
+        onChange={(value) => {
+          if (typeof value !== 'string') return set('share', value)
+          // ノード全体の共有は, 元のノードの引数に合わせ, 状態の項目を外す
+          // (元のノードに従うため. 1 回の変更にまとめる)
+          const next = setNodeStates(spec, name, {
+            share: value,
+            train: undefined,
+            eval_mode: undefined,
+            zero_init: undefined,
+            weights: undefined,
+          })
+          const params = spec.nodes[value]?.params
+          onChange(
+            params === undefined
+              ? next
+              : {
+                  ...next,
+                  nodes: { ...next.nodes, [name]: { ...next.nodes[name]!, params: { ...params } } },
+                },
+          )
+        }}
+      />
       {wholeShare ? (
         <p className="text-[11px] text-ink-3">
           ノード全体を共有するので, 学習するか, 初期値, 外部の重みは共有の元のノード (
@@ -236,9 +286,13 @@ function ShareField({
   const share = node.share
   const mode = share === undefined ? 'none' : typeof share === 'string' ? 'node' : 'params'
   // ノード全体を共有できるのは, 同じ部品で自分も共有していないノード
+  // (このノードを元に共有しているノードがあれば, 連鎖になるので選べない)
   const candidates = Object.entries(spec.nodes)
-    .filter(([key, other]) => key !== name && other.unit === node.unit && !other.share)
+    .filter(([key, other]) => key !== name && other.unit === node.unit && other.share === undefined)
     .map(([key]) => key)
+  const sharedBy = Object.values(spec.nodes).some((other) =>
+    shareSources(other.share).includes(name),
+  )
   return (
     <div className="space-y-1">
       <SelectField
@@ -246,7 +300,15 @@ function ShareField({
         value={mode}
         options={[
           ['none', 'しない'],
-          ['node', 'ノード全体 (同じ部品)'],
+          [
+            'node',
+            sharedBy
+              ? 'ノード全体 (このノードを共有の元にしているノードがあるので選べません)'
+              : candidates.length === 0
+                ? 'ノード全体 (同じ部品のノードがありません)'
+                : 'ノード全体 (同じ部品. 引数も元に合わせる)',
+            mode !== 'node' && (sharedBy || candidates.length === 0),
+          ],
           ['params', 'パラメータごと'],
         ]}
         onChange={(value) =>
@@ -261,7 +323,7 @@ function ShareField({
       />
       {typeof share === 'string' && (
         <SelectField
-          label="共有の元のノード (引数も同じ値にする)"
+          label="共有の元のノード"
           value={share}
           options={[
             ...(candidates.includes(share) ? [] : [[share, share || '(選ぶ)'] as [string, string]]),
@@ -470,7 +532,7 @@ function RemapRows({
           </div>
           {ruleKind(rule) === 'prefix' ? (
             <TextField
-              label="前置き (ファイルのキー)"
+              label="前置き (ファイルのキー. 空なら全てのキーに当たる)"
               value={rule.from ?? ''}
               placeholder="model.blocks."
               onCommit={(text) => replace(index, { ...rule, from: text })}
@@ -540,7 +602,7 @@ function ReadWeights({ onRead }: { onRead: () => Promise<WeightsResult> }) {
         </p>
       )}
       {read.data?.ok && (
-        <section aria-label="重みの読み込みの報告" className="space-y-2">
+        <section role="status" aria-label="重みの読み込みの報告" className="space-y-2">
           {read.data.reports.length === 0 && (
             <p className="text-xs text-ink-3">外部の重みを読むノードがありません.</p>
           )}

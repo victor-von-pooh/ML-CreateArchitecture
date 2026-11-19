@@ -6,6 +6,8 @@ import {
   parseNames,
   parseShareLines,
   setNodeState,
+  setNodeStates,
+  shareSources,
   switchRuleKind,
   switchWeightsSource,
   usesState,
@@ -63,6 +65,15 @@ describe('パラメータの状態', () => {
     expect(spec.nodes.head!.share).toEqual({ weight: 'tok.weight' })
     spec = setNodeState(spec, 'head', 'share', 'tok')
     expect(renameItem(spec, 'tok', 'emb').nodes.head!.share).toBe('emb')
+  })
+
+  it('まとめて書き換え, 共有の元の名前を取り出す', () => {
+    const frozen = setNodeState(linearSpec(), 'head', 'train', false)
+    const shared = setNodeStates(frozen, 'head', { share: 'embed', train: undefined })
+    expect(shared.nodes.head).not.toHaveProperty('train')
+    expect(shared.nodes.head!.share).toBe('embed')
+    expect(shareSources({ weight: 'embed.weight' })).toEqual(['embed'])
+    expect(shareSources(undefined)).toEqual([])
   })
 
   it('外部の重みの出どころを切り替えても付け替えと strict を残す', () => {

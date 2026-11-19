@@ -1005,7 +1005,7 @@ test('パラメータの状態: 凍結, 零初期化, 共有, 外部の重みを
   // strict を外すと, 読めた / 形の違う / 新しい / 使わない重みの数
   await state.getByLabel(/合わない重みがあれば止める/).uncheck()
   await state.getByRole('button', { name: '重みを読んで確かめる' }).click()
-  const report = state.getByRole('region', { name: '重みの読み込みの報告' })
+  const report = state.getByRole('status', { name: '重みの読み込みの報告' })
   await expect(report).toContainText('linear1', { timeout: 20_000 })
   await expect(report.locator('[data-count="読めた"]')).toHaveText('1')
   await expect(report.locator('[data-count="形の違う"]')).toHaveText('0')
@@ -1020,6 +1020,8 @@ test('パラメータの状態: 凍結, 零初期化, 共有, 外部の重みを
   await second.getByLabel('重みの共有 (share)').selectOption('node')
   await expect(second.getByLabel(/共有の元のノード/)).toHaveValue('linear1')
   await expect(second.getByLabel('学習する')).toHaveCount(0)
+  // (複製で写した凍結と外部の重みは外れ, 誤り無し)
+  await expect(page.locator('header')).toContainText('誤り 0 件', { timeout: 20_000 })
 
   // 共有の元の名前を変えると, 共有の値も書き換わり, YAML は版 2
   await page.locator('[data-id="linear1"]').click()

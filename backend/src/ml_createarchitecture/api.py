@@ -1,3 +1,4 @@
+import threading
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -367,6 +368,42 @@ class WeightsResult(BaseModel):
     error: Optional[str] = None
 
 
+# 外部の重みの読み込みを 1 つずつにする鍵 (大きな重みを並べて読まないため)
+WEIGHTS_LOCK = threading.Lock()
+
+
+def uses_weights(spec: dict[str, Any]) -> bool:
+    """
+    定義 (本体か部分モデル) のノードに外部の重み (weights) があるかを返す
+    関数
+
+    Parameters
+    ----------
+    spec: dict[str, Any]
+        モデルの定義
+
+    Returns
+    ----------
+    found: bool
+        weights を持つノードがあれば True
+    """
+    # 本体と部分モデルのノードの確認
+    graphs = [spec]
+    subgraphs = spec.get("subgraphs")
+    if isinstance(subgraphs, dict):
+        graphs += list(subgraphs.values())
+    nodes: list[Any] = []
+    for graph in graphs:
+        found_nodes = graph.get("nodes") if isinstance(graph, dict) else None
+        if isinstance(found_nodes, dict):
+            nodes += list(found_nodes.values())
+    found = any(
+        isinstance(node, dict) and "weights" in node for node in nodes
+    )
+
+    return found
+
+
 @router.post("/weights")
 def read_weights(body: WeightsBody, request: Request) -> WeightsResult:
     """
@@ -387,6 +424,18 @@ def read_weights(body: WeightsBody, request: Request) -> WeightsResult:
     result: WeightsResult
         読めたか, ノードごとの報告, 読めない場合の誤りの文
     """
+    # 外部の重みが無ければ組み立てない (学習済みの重みの取得を避けるため).
+    # 読んでいる途中なら待たずに知らせる
+    if not uses_weights(body.spec):
+        result = WeightsResult(ok=True)
+        return result
+    if not WEIGHTS_LOCK.acquire(blocking=False):
+        result = WeightsResult(
+            ok=False, error="他の重みの読み込みの途中です. 終わってから押して"
+            "ください"
+        )
+        return result
+
     # 相対のパスは定義の置き場から (保存した定義の置き場と同じ)
     # 定義の誤りと読み込みの誤りは, 誤りの文として返却
     base_dir = get_store(request).root
@@ -400,6 +449,8 @@ def read_weights(body: WeightsBody, request: Request) -> WeightsResult:
             ok=False, error=f"{type(error).__name__}: {error}"
         )
         return result
+    finally:
+        WEIGHTS_LOCK.release()
     result = WeightsResult(
         ok=True,
         reports=[WeightsReport(**item) for item in model.weights_report]

@@ -362,7 +362,10 @@ export function pasteNode(
   position: { x: number; y: number },
 ): { spec: Spec; name: string } {
   const name = freshName(spec, source.unit)
-  const copy = structuredClone(source)
+  // 共有 (share) は写さない (別の定義に貼ると元のノードが違うため. 共有する
+  // 場合は貼った後に選び直す)
+  const { share: _share, ...copy } = structuredClone(source)
+  void _share
   const node: NodeDef = { ...copy, inputs: {}, ui: { ...copy.ui, ...position } }
   return { spec: { ...spec, nodes: { ...spec.nodes, [name]: node } }, name }
 }

@@ -36,6 +36,22 @@ export function setNodeState<K extends StateKey>(
   return withStateVersion({ ...spec, nodes: { ...spec.nodes, [name]: next } })
 }
 
+/** ノードの状態の項目をまとめて書き換えた (undefined なら消した) 定義 (1 回の変更にするため) */
+export function setNodeStates(
+  spec: Spec,
+  name: string,
+  patch: { [K in StateKey]?: NodeDef[K] | undefined },
+): Spec {
+  const node = spec.nodes[name]
+  if (!node) return spec
+  const next: NodeDef = { ...node }
+  for (const [key, value] of Object.entries(patch) as [StateKey, unknown][]) {
+    if (value === undefined) delete next[key]
+    else (next as unknown as Record<string, unknown>)[key] = value
+  }
+  return withStateVersion({ ...spec, nodes: { ...spec.nodes, [name]: next } })
+}
+
 /** カンマか空白で区切ったパラメータの名前のリスト */
 export function parseNames(text: string): string[] {
   return text
@@ -102,4 +118,11 @@ export function switchRuleKind(rule: RemapRule, kind: 'prefix' | 'pattern'): Rem
   if (kind === ruleKind(rule)) return rule
   if (kind === 'pattern') return { pattern: rule.from ?? '', to: rule.to }
   return { from: rule.pattern ?? '', to: rule.to }
+}
+
+/** 共有 (share) の元のノードの名前 (共有しなければ空) */
+export function shareSources(share: NodeDef['share']): string[] {
+  if (share === undefined) return []
+  if (typeof share === 'string') return [share]
+  return Object.values(share).map((ref) => ref.split('.')[0] ?? '')
 }
