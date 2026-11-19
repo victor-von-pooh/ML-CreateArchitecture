@@ -126,6 +126,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/weights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Weights
+         * @description 定義を組み立てて外部の重みを読み, ノードごとの報告を返す関数
+         *
+         *     ファイルとネットワークを使い重みも作るので, 編集のたびの確認では
+         *     呼ばず, 画面のボタンを押したときだけ呼ぶ
+         *
+         *     Parameters
+         *     ----------
+         *     body: WeightsBody
+         *         モデルの定義
+         *     request: Request
+         *         リクエスト (相対のパスの元にする定義の置き場を取り出す)
+         *
+         *     Returns
+         *     ----------
+         *     result: WeightsResult
+         *         読めたか, ノードごとの報告, 読めない場合の誤りの文
+         */
+        post: operations["read_weights"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/examples": {
         parameters: {
             query?: never;
@@ -486,6 +521,99 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** WeightsBody */
+        WeightsBody: {
+            /** Spec */
+            spec: {
+                [key: string]: unknown;
+            };
+        };
+        /** WeightsLicense */
+        WeightsLicense: {
+            /** Unit */
+            unit?: string | null;
+            /** Library */
+            library: string;
+            /** Model */
+            model: string;
+            /** Hub Id */
+            hub_id?: string | null;
+            /** Revision */
+            revision?: string | null;
+            /** Pinned Revision */
+            pinned_revision?: string | null;
+            /** License */
+            license?: string | null;
+            /**
+             * Licenses
+             * @default []
+             */
+            licenses: string[];
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+            /** Status */
+            status: string;
+            /** Redistributable */
+            redistributable: boolean;
+            /** Gated */
+            gated: boolean;
+            /** Alert */
+            alert: boolean;
+            /** Message */
+            message: string;
+            /** Source */
+            source: string;
+            /** Url */
+            url?: string | null;
+        };
+        /** WeightsReport */
+        WeightsReport: {
+            /** Node */
+            node: string;
+            /** Source */
+            source: string;
+            /** Strict */
+            strict: boolean;
+            /** Loaded */
+            loaded: number;
+            /** Mismatched */
+            mismatched: number;
+            /** New */
+            new: number;
+            /** Unused */
+            unused: number;
+            /**
+             * Mismatched Keys
+             * @default []
+             */
+            mismatched_keys: unknown[][];
+            /**
+             * New Keys
+             * @default []
+             */
+            new_keys: string[];
+            /**
+             * Unused Keys
+             * @default []
+             */
+            unused_keys: string[];
+            license?: components["schemas"]["WeightsLicense"] | null;
+        };
+        /** WeightsResult */
+        WeightsResult: {
+            /** Ok */
+            ok: boolean;
+            /**
+             * Reports
+             * @default []
+             */
+            reports: components["schemas"]["WeightsReport"][];
+            /** Error */
+            error?: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -603,6 +731,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PretrainedInfo"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_weights: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeightsBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeightsResult"];
                 };
             };
             /** @description Validation Error */

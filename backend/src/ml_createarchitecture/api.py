@@ -3,6 +3,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Request
 from ml_modelcontrol import (
     SpecError,
+    build_model,
     describe_units,
     dump_spec,
     export_python,
@@ -329,6 +330,82 @@ def read_pretrained(body: PretrainedBody) -> Optional[PretrainedInfo]:
     info = None if found is None else PretrainedInfo(**found)
 
     return info
+
+
+class WeightsBody(BaseModel):
+    # モデルの定義
+    spec: dict[str, Any]
+
+
+class WeightsLicense(PretrainedInfo):
+    # 外部の重みのライセンス (Hugging Face の置き場から読む場合は部品が無い)
+    unit: Optional[str] = None  # type: ignore[assignment]
+
+
+class WeightsReport(BaseModel):
+    # 外部の重みを読んだノード (部分モデルの中は . でつなぐ), 出どころ,
+    # 合わない重みで止めるか, 読めた / 形の違う / 新しい / 使わない重みの
+    # 数とキーの一部 (形の違うものはキー, ファイルの形, ノードの形),
+    # ライセンス
+    node: str
+    source: str
+    strict: bool
+    loaded: int
+    mismatched: int
+    new: int
+    unused: int
+    mismatched_keys: list[list[Any]] = []
+    new_keys: list[str] = []
+    unused_keys: list[str] = []
+    license: Optional[WeightsLicense] = None
+
+
+class WeightsResult(BaseModel):
+    # 読めたか, ノードごとの報告, 読めない場合の誤りの文
+    ok: bool
+    reports: list[WeightsReport] = []
+    error: Optional[str] = None
+
+
+@router.post("/weights")
+def read_weights(body: WeightsBody, request: Request) -> WeightsResult:
+    """
+    定義を組み立てて外部の重みを読み, ノードごとの報告を返す関数
+
+    ファイルとネットワークを使い重みも作るので, 編集のたびの確認では
+    呼ばず, 画面のボタンを押したときだけ呼ぶ
+
+    Parameters
+    ----------
+    body: WeightsBody
+        モデルの定義
+    request: Request
+        リクエスト (相対のパスの元にする定義の置き場を取り出す)
+
+    Returns
+    ----------
+    result: WeightsResult
+        読めたか, ノードごとの報告, 読めない場合の誤りの文
+    """
+    # 相対のパスは定義の置き場から (保存した定義の置き場と同じ)
+    # 定義の誤りと読み込みの誤りは, 誤りの文として返却
+    base_dir = get_store(request).root
+    try:
+        model = build_model(body.spec, base_dir=base_dir)
+    except SpecError as error:
+        result = WeightsResult(ok=False, error=str(error))
+        return result
+    except Exception as error:
+        result = WeightsResult(
+            ok=False, error=f"{type(error).__name__}: {error}"
+        )
+        return result
+    result = WeightsResult(
+        ok=True,
+        reports=[WeightsReport(**item) for item in model.weights_report]
+    )
+
+    return result
 
 
 class ExampleSummary(BaseModel):

@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { Copy, Trash2 } from 'lucide-react'
 
-import type { CheckResult, Issue } from '../../api/client'
+import type { CheckResult, Issue, WeightsResult } from '../../api/client'
 import { Button } from '../../components/ui'
 import { failedNodes, formatCount, formatShape } from '../../lib/format'
 import { parseShape } from '../../lib/params'
@@ -16,6 +16,7 @@ import {
   type UnitSpec,
 } from '../../lib/graph'
 import { incomingValues } from '../../lib/subgraph'
+import { NodeState } from './NodeState'
 import { PretrainedLicense } from './PretrainedLicense'
 
 // 入力の例に使える型と値の作り方 (ML-ModelControl と同じ)
@@ -37,6 +38,7 @@ export function Inspector({
   onEditSubgraph,
   onForkSubgraph,
   forkable,
+  onReadWeights,
 }: {
   spec: Spec
   units: Map<string, UnitSpec>
@@ -52,6 +54,8 @@ export function Inspector({
   onForkSubgraph?: (node: string) => void
   /** 2 つ以上のノードが使う部分モデルの名前 (写す操作を出すもの) */
   forkable?: Set<string>
+  /** 定義全体を組み立てて外部の重みを読む (報告を返す) */
+  onReadWeights?: () => Promise<WeightsResult>
 }) {
   const taken = (value: string) => value in spec.inputs || value in spec.nodes
   const issuesFor = (predicate: (issue: Issue) => boolean) =>
@@ -457,6 +461,14 @@ export function Inspector({
           ))}
         </fieldset>
       )}
+      <NodeState
+        key={`state:${selected}`}
+        spec={spec}
+        name={selected}
+        node={node}
+        onChange={onChange}
+        onReadWeights={onReadWeights}
+      />
       <Button
         variant="secondary"
         icon={Copy}

@@ -65,7 +65,7 @@ export function PretrainedLicense({
 }
 
 /** ライセンスの分類, 説明, どこから読んだか, 推論の一式での扱い */
-function LicenseCard({ info }: { info: PretrainedInfo }) {
+export function LicenseCard({ info }: { info: PretrainedInfo }) {
   const style = STATUS_STYLE[info.status] ?? STATUS_STYLE.unknown!
   return (
     <div

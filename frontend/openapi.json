@@ -154,6 +154,45 @@
         }
       }
     },
+    "/api/weights": {
+      "post": {
+        "summary": "Read Weights",
+        "description": "定義を組み立てて外部の重みを読み, ノードごとの報告を返す関数\n\nファイルとネットワークを使い重みも作るので, 編集のたびの確認では\n呼ばず, 画面のボタンを押したときだけ呼ぶ\n\nParameters\n----------\nbody: WeightsBody\n    モデルの定義\nrequest: Request\n    リクエスト (相対のパスの元にする定義の置き場を取り出す)\n\nReturns\n----------\nresult: WeightsResult\n    読めたか, ノードごとの報告, 読めない場合の誤りの文",
+        "operationId": "read_weights",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WeightsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeightsResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/examples": {
       "get": {
         "summary": "List Example Models",
@@ -828,6 +867,257 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WeightsBody": {
+        "properties": {
+          "spec": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Spec"
+          }
+        },
+        "type": "object",
+        "required": [
+          "spec"
+        ],
+        "title": "WeightsBody"
+      },
+      "WeightsLicense": {
+        "properties": {
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "library": {
+            "type": "string",
+            "title": "Library"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "hub_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hub Id"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "pinned_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned Revision"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
+          "licenses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Licenses",
+            "default": []
+          },
+          "confirmed": {
+            "type": "boolean",
+            "title": "Confirmed",
+            "default": false
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "redistributable": {
+            "type": "boolean",
+            "title": "Redistributable"
+          },
+          "gated": {
+            "type": "boolean",
+            "title": "Gated"
+          },
+          "alert": {
+            "type": "boolean",
+            "title": "Alert"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "library",
+          "model",
+          "status",
+          "redistributable",
+          "gated",
+          "alert",
+          "message",
+          "source"
+        ],
+        "title": "WeightsLicense"
+      },
+      "WeightsReport": {
+        "properties": {
+          "node": {
+            "type": "string",
+            "title": "Node"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "strict": {
+            "type": "boolean",
+            "title": "Strict"
+          },
+          "loaded": {
+            "type": "integer",
+            "title": "Loaded"
+          },
+          "mismatched": {
+            "type": "integer",
+            "title": "Mismatched"
+          },
+          "new": {
+            "type": "integer",
+            "title": "New"
+          },
+          "unused": {
+            "type": "integer",
+            "title": "Unused"
+          },
+          "mismatched_keys": {
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Mismatched Keys",
+            "default": []
+          },
+          "new_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "New Keys",
+            "default": []
+          },
+          "unused_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unused Keys",
+            "default": []
+          },
+          "license": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeightsLicense"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "node",
+          "source",
+          "strict",
+          "loaded",
+          "mismatched",
+          "new",
+          "unused"
+        ],
+        "title": "WeightsReport"
+      },
+      "WeightsResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "reports": {
+            "items": {
+              "$ref": "#/components/schemas/WeightsReport"
+            },
+            "type": "array",
+            "title": "Reports",
+            "default": []
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "WeightsResult"
       }
     }
   }

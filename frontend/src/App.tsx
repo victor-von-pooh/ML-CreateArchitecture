@@ -39,6 +39,7 @@ import {
 import { useDebounced } from './lib/debounce'
 import { clearDraft, readDraft, tabId, writeDraft, type Draft } from './lib/draft'
 import { useHistory } from './lib/history'
+import { withStateVersion } from './lib/state'
 import { arrangeSpec, freeSpot, placeMissing, unitSize } from './lib/layout'
 
 /** モデルの定義を部品の一覧, キャンバス, 詳細で編集する画面 */
@@ -77,17 +78,21 @@ function Editor() {
   )
   const setHistory = history.set
   // 部分モデルを編集している間の変更は, 定義の中の部分モデルに書き戻す
+  // (版 2 の項目 (凍結, 共有など) を使った定義は版を 2 に)
   const setSpec = useCallback(
     (next: Spec | ((current: Spec) => Spec), merge?: string) => {
       if (!editingName) {
-        setHistory(next, merge)
+        setHistory(
+          (current) => withStateVersion(typeof next === 'function' ? next(current) : next),
+          merge,
+        )
         return
       }
       setHistory((current) => {
         if (!current.subgraphs?.[editingName]) return current
         const view = subgraphView(current, editingName)
         const value = typeof next === 'function' ? next(view) : next
-        return writeSubgraph(current, editingName, value)
+        return withStateVersion(writeSubgraph(current, editingName, value))
       }, merge)
     },
     [editingName, setHistory],
@@ -921,6 +926,7 @@ function Editor() {
               onDuplicate={duplicate}
               onEditSubgraph={(name) => openPath([...validPath, name])}
               forkable={forkable}
+              onReadWeights={() => api.weights(latest.current)}
               onForkSubgraph={(node) => {
                 const forked = forkSubgraph(whole, node, editingName)
                 if (!forked) return

@@ -11,6 +11,8 @@ export type ModelFile = Schemas['ModelFile']
 export type ExportResult = Schemas['ExportResult']
 export type ExampleSummary = Schemas['ExampleSummary']
 export type PretrainedInfo = Schemas['PretrainedInfo']
+export type WeightsResult = Schemas['WeightsResult']
+export type WeightsReport = Schemas['WeightsReport']
 
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
@@ -69,6 +71,12 @@ export const api = {
     request<PretrainedInfo | null>('/api/pretrained', {
       method: 'POST',
       body: JSON.stringify({ unit, params }),
+    }),
+  /** 定義全体を組み立てて外部の重みを読み, ノードごとの報告を返す */
+  weights: (spec: Spec) =>
+    request<WeightsResult>('/api/weights', {
+      method: 'POST',
+      body: JSON.stringify({ spec }),
     }),
   listModels: () => request<ModelSummary[]>('/api/models'),
   listExamples: () => request<ExampleSummary[]>('/api/examples'),

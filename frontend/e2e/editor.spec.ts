@@ -960,3 +960,75 @@ test('学習済みの重みを読むノードは, ライセンスと読めなか
   await page.locator('[data-id="head"]').click()
   await expect(page.getByRole('region', { name: '学習済みの重みのライセンス' })).toHaveCount(0)
 })
+
+test('パラメータの状態: 凍結, 零初期化, 共有, 外部の重みを欄で書き, 読んだ数を出す', async ({
+  page,
+}) => {
+  await page.goto('/')
+
+  // 全結合 (16 → 4) を置いて入力と出力につなぐ
+  await page.getByPlaceholder('部品を探す').fill('nn.Linear')
+  await page
+    .getByRole('button', { name: /^nn\.Linear/ })
+    .first()
+    .click()
+  await page.getByLabel('in_features').fill('16')
+  await page.getByLabel('in_features').press('Enter')
+  await page.getByLabel('out_features').fill('4')
+  await page.getByLabel('out_features').press('Enter')
+  await page.getByLabel(/^input/).selectOption('x')
+  await page.getByRole('button', { name: '出力' }).click()
+  await page.getByLabel(/つなぎ先/).selectOption('linear1')
+  await expect(page.locator('header')).toContainText('誤り 0 件', { timeout: 20_000 })
+
+  // 凍結と零初期化 (名前を選ぶ)
+  await page.locator('[data-id="linear1"]').click()
+  const state = page.getByRole('group', { name: 'パラメータの状態' })
+  await state.getByLabel('学習する').uncheck()
+  await state.getByLabel('零初期化 (zero_init)').selectOption('names')
+  await state.getByLabel(/0 にするパラメータの名前/).fill('bias')
+  await state.getByLabel(/0 にするパラメータの名前/).press('Enter')
+
+  // 外部の重み: ファイルと前置きの付け替え
+  await state.getByLabel('外部の重み (weights)').selectOption('path')
+  await state.getByLabel(/ファイルのパス/).fill('e2e_base.pt')
+  await state.getByLabel(/ファイルのパス/).press('Enter')
+  await state.getByRole('button', { name: '付け替えを足す' }).click()
+  const rule = state.getByRole('group', { name: '付け替え 1' })
+  await rule.getByLabel(/^前置き/).fill('model.fc.')
+  await rule.getByLabel(/^前置き/).press('Enter')
+
+  // 既定 (strict) では, ファイルに無い bias で止まると出す
+  await state.getByRole('button', { name: '重みを読んで確かめる' }).click()
+  await expect(state.getByRole('alert')).toContainText('strict: false', { timeout: 20_000 })
+
+  // strict を外すと, 読めた / 形の違う / 新しい / 使わない重みの数
+  await state.getByLabel(/合わない重みがあれば止める/).uncheck()
+  await state.getByRole('button', { name: '重みを読んで確かめる' }).click()
+  const report = state.getByRole('region', { name: '重みの読み込みの報告' })
+  await expect(report).toContainText('linear1', { timeout: 20_000 })
+  await expect(report.locator('[data-count="読めた"]')).toHaveText('1')
+  await expect(report.locator('[data-count="形の違う"]')).toHaveText('0')
+  await expect(report.locator('[data-count="新しい"]')).toHaveText('1')
+  await expect(report.locator('[data-count="使わない"]')).toHaveText('1')
+
+  // 2 つ目の全結合でノード全体を共有すると, 他の状態の欄は出さない
+  await page.locator('[data-id="linear1"]').click()
+  await page.keyboard.press('Control+d')
+  await page.locator('[data-id="linear2"]').click()
+  const second = page.getByRole('group', { name: 'パラメータの状態' })
+  await second.getByLabel('重みの共有 (share)').selectOption('node')
+  await expect(second.getByLabel(/共有の元のノード/)).toHaveValue('linear1')
+  await expect(second.getByLabel('学習する')).toHaveCount(0)
+
+  // 共有の元の名前を変えると, 共有の値も書き換わり, YAML は版 2
+  await page.locator('[data-id="linear1"]').click()
+  await page.locator('[data-name-field]').fill('base')
+  await page.locator('[data-name-field]').press('Enter')
+  await page.getByRole('button', { name: 'YAML', exact: true }).click()
+  const yaml = page.getByRole('dialog')
+  await expect(yaml).toContainText('format_version: 2')
+  await expect(yaml).toContainText('train: false')
+  await expect(yaml).toContainText('zero_init:')
+  await expect(yaml).toContainText('share: base')
+})
