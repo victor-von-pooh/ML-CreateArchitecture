@@ -39,6 +39,7 @@ import {
 import { useDebounced } from './lib/debounce'
 import { clearDraft, readDraft, tabId, writeDraft, type Draft } from './lib/draft'
 import { useHistory } from './lib/history'
+import { withStateVersion } from './lib/state'
 import { arrangeSpec, freeSpot, placeMissing, unitSize } from './lib/layout'
 
 /** モデルの定義を部品の一覧, キャンバス, 詳細で編集する画面 */
@@ -75,8 +76,19 @@ function Editor() {
     () => (editingName ? subgraphView(whole, editingName) : whole),
     [whole, editingName],
   )
-  const setHistory = history.set
+  // 履歴に残す全ての変更で, 版 2 の項目 (凍結, 共有など) を使った定義は
+  // 版を 2 に (部分モデルを写す, 写して分けるなどの変更も)
+  const historySet = history.set
+  const setHistory = useCallback(
+    (next: Spec | ((current: Spec) => Spec), merge?: string) =>
+      historySet(
+        (current) => withStateVersion(typeof next === 'function' ? next(current) : next),
+        merge,
+      ),
+    [historySet],
+  )
   // 部分モデルを編集している間の変更は, 定義の中の部分モデルに書き戻す
+  // (版 2 の項目 (凍結, 共有など) を使った定義は版を 2 に)
   const setSpec = useCallback(
     (next: Spec | ((current: Spec) => Spec), merge?: string) => {
       if (!editingName) {
@@ -643,7 +655,7 @@ function Editor() {
             setOwnFile(source === 'model' ? name : null)
             // 位置の無いもの (手で書いた定義など) は, 開いたときに一度だけ
             // 段に分けた位置を書く (後の編集で動かないように)
-            const placed = placeMissing(loaded, unitsFor(loaded))
+            const placed = withStateVersion(placeMissing(loaded, unitsFor(loaded)))
             history.reset(placed)
             setEditing(null)
             setSaved(JSON.stringify(placed))
@@ -714,7 +726,7 @@ function Editor() {
                 }
                 let placed: Spec
                 try {
-                  placed = placeMissing(draft.spec, unitsFor(draft.spec))
+                  placed = withStateVersion(placeMissing(draft.spec, unitsFor(draft.spec)))
                 } catch {
                   clearDraft(draft.tab)
                   setDraft(null)
@@ -921,6 +933,7 @@ function Editor() {
               onDuplicate={duplicate}
               onEditSubgraph={(name) => openPath([...validPath, name])}
               forkable={forkable}
+              onReadWeights={() => api.weights(latest.current)}
               onForkSubgraph={(node) => {
                 const forked = forkSubgraph(whole, node, editingName)
                 if (!forked) return

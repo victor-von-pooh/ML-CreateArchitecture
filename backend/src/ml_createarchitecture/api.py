@@ -1,8 +1,10 @@
+import threading
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from ml_modelcontrol import (
     SpecError,
+    build_model,
     describe_units,
     dump_spec,
     export_python,
@@ -329,6 +331,172 @@ def read_pretrained(body: PretrainedBody) -> Optional[PretrainedInfo]:
     info = None if found is None else PretrainedInfo(**found)
 
     return info
+
+
+class WeightsBody(BaseModel):
+    # モデルの定義
+    spec: dict[str, Any]
+
+
+class WeightsLicense(PretrainedInfo):
+    # 外部の重みのライセンス (Hugging Face の置き場から読む場合は部品が無い)
+    unit: Optional[str] = None  # type: ignore[assignment]
+
+
+class WeightsReport(BaseModel):
+    # 外部の重みを読んだノード (部分モデルの中は . でつなぐ), 出どころ,
+    # 合わない重みで止めるか, 読めた / 形の違う / 新しい / 使わない重みの
+    # 数とキーの一部 (形の違うものはキー, ファイルの形, ノードの形),
+    # ライセンス
+    node: str
+    source: str
+    strict: bool
+    loaded: int
+    mismatched: int
+    new: int
+    unused: int
+    mismatched_keys: list[list[Any]] = []
+    new_keys: list[str] = []
+    unused_keys: list[str] = []
+    license: Optional[WeightsLicense] = None
+    # 注意の文 (共有するパラメータをファイルから読まなかったなど)
+    warnings: list[str] = []
+
+
+class WeightsResult(BaseModel):
+    # 読めたか, ノードごとの報告, 読めない場合の誤りの文
+    ok: bool
+    reports: list[WeightsReport] = []
+    error: Optional[str] = None
+
+
+# 外部の重みの読み込みを 1 つずつにする鍵 (大きな重みを並べて読まないため)
+WEIGHTS_LOCK = threading.Lock()
+
+
+def uses_weights(spec: dict[str, Any]) -> bool:
+    """
+    定義 (本体か部分モデル) のノードに外部の重み (weights) があるかを返す
+    関数
+
+    Parameters
+    ----------
+    spec: dict[str, Any]
+        モデルの定義
+
+    Returns
+    ----------
+    found: bool
+        weights を持つノードがあれば True
+    """
+    # 本体と部分モデルのノードの確認
+    graphs = [spec]
+    subgraphs = spec.get("subgraphs")
+    if isinstance(subgraphs, dict):
+        graphs += list(subgraphs.values())
+    nodes: list[Any] = []
+    for graph in graphs:
+        found_nodes = graph.get("nodes") if isinstance(graph, dict) else None
+        if isinstance(found_nodes, dict):
+            nodes += list(found_nodes.values())
+    found = any(
+        isinstance(node, dict) and "weights" in node for node in nodes
+    )
+
+    return found
+
+
+def too_large_to_build(spec: dict[str, Any]) -> Optional[str]:
+    """
+    確認 (POST /api/check) と同じ見積もりで, 組み立てるには大きすぎるかを
+    確かめる関数
+
+    Parameters
+    ----------
+    spec: dict[str, Any]
+        モデルの定義
+
+    Returns
+    ----------
+    message: Optional[str]
+        大きすぎる場合の説明, 組み立ててよい場合は None
+    """
+    # 入力の例の要素数と, パラメータ数の上限 (形の推定と同じ) の確認.
+    # 読めない定義は組み立てで誤りの文になるので, ここでは止めない
+    message = input_too_large(spec)
+    if message is not None:
+        return message
+    try:
+        estimated = infer(spec)
+    except Exception:
+        return message
+    if estimated["estimated_only"]:
+        message = (
+            f"パラメータ数 ({estimated['params']}) が形の推定の上限を超える"
+            "ので, 重みを読んで組み立てません"
+        )
+
+    return message
+
+
+@router.post("/weights")
+def read_weights(body: WeightsBody, request: Request) -> WeightsResult:
+    """
+    定義を組み立てて外部の重みを読み, ノードごとの報告を返す関数
+
+    ファイルとネットワークを使い重みも作るので, 編集のたびの確認では
+    呼ばず, 画面のボタンを押したときだけ呼ぶ
+
+    Parameters
+    ----------
+    body: WeightsBody
+        モデルの定義
+    request: Request
+        リクエスト (相対のパスの元にする定義の置き場を取り出す)
+
+    Returns
+    ----------
+    result: WeightsResult
+        読めたか, ノードごとの報告, 読めない場合の誤りの文
+    """
+    # 外部の重みが無ければ組み立てない (学習済みの重みの取得を避けるため).
+    # 読んでいる途中なら待たずに知らせる
+    if not uses_weights(body.spec):
+        result = WeightsResult(ok=True)
+        return result
+    # 確認と同じ大きさの見積もりで, 大きすぎるモデルは組み立てない
+    too_large = too_large_to_build(body.spec)
+    if too_large is not None:
+        result = WeightsResult(ok=False, error=too_large)
+        return result
+    if not WEIGHTS_LOCK.acquire(blocking=False):
+        result = WeightsResult(
+            ok=False, error="他の重みの読み込みの途中です. 終わってから押して"
+            "ください"
+        )
+        return result
+
+    # 相対のパスは定義の置き場から (保存した定義の置き場と同じ)
+    # 定義の誤りと読み込みの誤りは, 誤りの文として返却
+    base_dir = get_store(request).root
+    try:
+        model = build_model(body.spec, base_dir=base_dir)
+    except SpecError as error:
+        result = WeightsResult(ok=False, error=str(error))
+        return result
+    except Exception as error:
+        result = WeightsResult(
+            ok=False, error=f"{type(error).__name__}: {error}"
+        )
+        return result
+    finally:
+        WEIGHTS_LOCK.release()
+    result = WeightsResult(
+        ok=True,
+        reports=[WeightsReport(**item) for item in model.weights_report]
+    )
+
+    return result
 
 
 class ExampleSummary(BaseModel):

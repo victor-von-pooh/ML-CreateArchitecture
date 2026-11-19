@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import torch
 from fastapi.testclient import TestClient
 from ml_modelcontrol import clear_pretrained_cache, pretrained
 
@@ -334,3 +335,92 @@ def fake_hub(hub_id: str, revision: str) -> dict[str, Any]:
     }
 
     return metadata
+
+
+def test_weights_report(client: TestClient, tmp_path: Path) -> None:
+    """
+    外部の重みを読んで, ノードごとの数の報告を返すことと, 読めない場合の
+    誤りの文を確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ (下の models が定義の置き場)
+
+    Returns
+    ----------
+    None
+    """
+    # 定義の置き場に重みのファイルを置き (相対のパスの元), 一部だけを読む
+    (tmp_path / "models").mkdir()
+    torch.save(
+        {"model.fc.weight": torch.ones(2, 3), "model.head.weight":
+         torch.ones(5, 3)},
+        tmp_path / "models" / "base.pt"
+    )
+    spec = {
+        **SPEC, "format_version": 2,
+        "nodes": {
+            **SPEC["nodes"],
+            "fc": {
+                **SPEC["nodes"]["fc"],
+                "train": False,
+                "weights": {
+                    "path": "base.pt",
+                    "remap": [{"from": "model.fc.", "to": ""}],
+                    "strict": False
+                }
+            }
+        }
+    }
+    response = client.post("/api/weights", json={"spec": spec})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"]
+    report = body["reports"][0]
+    assert report["node"] == "fc"
+    assert (report["loaded"], report["mismatched"], report["new"],
+            report["unused"]) == (1, 0, 1, 1)
+    assert report["new_keys"] == ["bias"]
+    assert report["license"] is None
+
+    # 確認は重みを読まず, 凍結を学習するパラメータ数に反映し, YAML は版 2
+    checked = client.post("/api/check", json={"spec": spec}).json()
+    assert checked["nodes"]["fc"]["trainable"] == 0
+    assert "format_version: 2" in checked["yaml"]
+    assert "format_version: 1" in client.post(
+        "/api/check", json={"spec": SPEC}
+    ).json()["yaml"]
+
+    # 外部の重みが無い定義は組み立てずに空の報告
+    body = client.post("/api/weights", json={"spec": SPEC}).json()
+    assert body == {"ok": True, "reports": [], "error": None}
+
+    # 定義の置き場の外のファイルは読まない (手元の絶対のパスも出さない)
+    outside = tmp_path / "outside.pt"
+    torch.save({"weight": torch.ones(2, 3)}, outside)
+    away = {**spec, "nodes": {**spec["nodes"], "fc": {
+        **spec["nodes"]["fc"],
+        "weights": {"path": "../outside.pt", "strict": False}
+    }}}
+    body = client.post("/api/weights", json={"spec": away}).json()
+    assert not body["ok"]
+    assert "外にある" in body["error"]
+    assert str(tmp_path) not in body["error"]
+
+    # 形の推定の上限を超える大きさのモデルは組み立てない
+    huge = {**spec, "nodes": {**spec["nodes"], "fc": {
+        **spec["nodes"]["fc"],
+        "params": {"in_features": 3, "out_features": 100_000_000}
+    }}}
+    body = client.post("/api/weights", json={"spec": huge}).json()
+    assert not body["ok"]
+    assert "上限" in body["error"]
+
+    # strict (既定) では合わない重みで誤りの文
+    del spec["nodes"]["fc"]["weights"]["strict"]
+    body = client.post("/api/weights", json={"spec": spec}).json()
+    assert not body["ok"]
+    assert "strict: false" in body["error"]

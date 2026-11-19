@@ -56,12 +56,39 @@ export interface InputDef {
   ui?: Ui
 }
 
+/** キーの付け替えの 1 行 (前置きの置き換えか, 番号を付け替える正規表現) */
+export interface RemapRule {
+  from?: string
+  pattern?: string
+  to: string
+  offset?: number
+}
+
+/** 外部の重み (ファイル, Hugging Face の置き場, 学習済みの部品のどれか 1 つから読む) */
+export interface WeightsDef {
+  path?: string
+  hub?: string
+  file?: string
+  revision?: string
+  unit?: string
+  params?: Record<string, unknown>
+  state_key?: string
+  remap?: RemapRule[]
+  strict?: boolean
+}
+
 export interface NodeDef {
   unit: string
   params?: Record<string, unknown>
   forward_params?: Record<string, unknown>
   inputs?: Record<string, string | string[]> | string
   description?: string
+  /** 定義の版 2 のパラメータの状態 (凍結, 評価の形, 零初期化, 外部の重み, 共有) */
+  train?: boolean
+  eval_mode?: boolean
+  zero_init?: boolean | string[]
+  weights?: WeightsDef
+  share?: string | Record<string, string>
   ui?: Ui
 }
 
@@ -335,7 +362,10 @@ export function pasteNode(
   position: { x: number; y: number },
 ): { spec: Spec; name: string } {
   const name = freshName(spec, source.unit)
-  const copy = structuredClone(source)
+  // 共有 (share) は写さない (別の定義に貼ると元のノードが違うため. 共有する
+  // 場合は貼った後に選び直す)
+  const { share: _share, ...copy } = structuredClone(source)
+  void _share
   const node: NodeDef = { ...copy, inputs: {}, ui: { ...copy.ui, ...position } }
   return { spec: { ...spec, nodes: { ...spec.nodes, [name]: node } }, name }
 }
@@ -401,7 +431,7 @@ export function renameItem(spec: Spec, oldName: string, newName: string): Spec {
             Array.isArray(value) ? value.map(rename) : rename(value),
           ]),
         )
-      return [key, { ...node, inputs: next }]
+      return [key, { ...node, inputs: next, ...renamedShare(node, oldName, newName) }]
     }),
   )
   const outputs = Object.fromEntries(
@@ -485,4 +515,20 @@ export function setPortRefs(
     inputs[key] = variadic ? values : values[0]!
   }
   return { ...spec, nodes: { ...spec.nodes, [name]: { ...node, inputs } } }
+}
+
+/** 共有の元の名前 (share の値) を書き換えた share (共有しないノードは空) */
+function renamedShare(node: NodeDef, oldName: string, newName: string): Partial<NodeDef> {
+  const share = node.share
+  if (share === undefined) return {}
+  if (typeof share === 'string') return { share: share === oldName ? newName : share }
+  return {
+    share: Object.fromEntries(
+      Object.entries(share).map(([key, ref]) => {
+        const dot = ref.indexOf('.')
+        const source = dot < 0 ? ref : ref.slice(0, dot)
+        return [key, source === oldName ? `${newName}${ref.slice(source.length)}` : ref]
+      }),
+    ),
+  }
 }
