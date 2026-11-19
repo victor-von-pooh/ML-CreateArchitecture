@@ -601,6 +601,11 @@ export interface components {
              */
             unused_keys: string[];
             license?: components["schemas"]["WeightsLicense"] | null;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
         };
         /** WeightsResult */
         WeightsResult: {

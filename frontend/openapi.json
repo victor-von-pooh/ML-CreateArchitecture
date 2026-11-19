@@ -1073,6 +1073,14 @@
                 "type": "null"
               }
             ]
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
           }
         },
         "type": "object",

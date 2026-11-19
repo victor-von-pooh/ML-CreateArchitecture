@@ -1033,4 +1033,34 @@ test('パラメータの状態: 凍結, 零初期化, 共有, 外部の重みを
   await expect(yaml).toContainText('train: false')
   await expect(yaml).toContainText('zero_init:')
   await expect(yaml).toContainText('share: base')
+  await page.keyboard.press('Escape')
+
+  // つないでいない複製を消して保存し, 新規 (版 1) の定義に部分モデルと
+  // して写しても読める (凍結などを持つので版を 2 に)
+  await page.locator('[data-id="linear2"]').click()
+  await page.keyboard.press('Delete')
+  await expect(page.locator('[data-id="linear2"]')).toHaveCount(0)
+  page.on('dialog', (dialog) => void dialog.accept())
+  await page.getByLabel('保存する名前').fill('e2e_state')
+  await page.getByRole('button', { name: /^保存/ }).click()
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '新規' }).click()
+  await page.getByRole('button', { name: '別の定義を部品にする' }).click()
+  await page.getByRole('button', { name: /^e2e_state/ }).click()
+  const unit = page.getByRole('button', { name: /^sub\.e2e_state/ })
+  await expect(unit).toBeVisible()
+  // (写しただけで, 部品を置く前から版 1 の誤りにならない)
+  await expect(page.locator('aside[aria-label="詳細"]')).toContainText('パラメータ数', {
+    timeout: 20_000,
+  })
+  await page.waitForTimeout(1500)
+  await expect(page.locator('aside[aria-label="詳細"]')).not.toContainText('format_version')
+  await unit.click()
+  await page.getByLabel(/^x/).selectOption('x')
+  await page.getByRole('button', { name: '出力', exact: true }).click()
+  await page.getByLabel(/つなぎ先/).selectOption('e2e_state1')
+  await expect(page.locator('[data-id="e2e_state1"]')).toContainText('[4, 4]', {
+    timeout: 20_000,
+  })
+  await expect(page.locator('header')).toContainText('誤り 0 件')
 })

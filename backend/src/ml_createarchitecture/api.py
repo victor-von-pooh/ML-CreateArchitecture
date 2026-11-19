@@ -359,6 +359,8 @@ class WeightsReport(BaseModel):
     new_keys: list[str] = []
     unused_keys: list[str] = []
     license: Optional[WeightsLicense] = None
+    # 注意の文 (共有するパラメータをファイルから読まなかったなど)
+    warnings: list[str] = []
 
 
 class WeightsResult(BaseModel):
@@ -404,6 +406,39 @@ def uses_weights(spec: dict[str, Any]) -> bool:
     return found
 
 
+def too_large_to_build(spec: dict[str, Any]) -> Optional[str]:
+    """
+    確認 (POST /api/check) と同じ見積もりで, 組み立てるには大きすぎるかを
+    確かめる関数
+
+    Parameters
+    ----------
+    spec: dict[str, Any]
+        モデルの定義
+
+    Returns
+    ----------
+    message: Optional[str]
+        大きすぎる場合の説明, 組み立ててよい場合は None
+    """
+    # 入力の例の要素数と, パラメータ数の上限 (形の推定と同じ) の確認.
+    # 読めない定義は組み立てで誤りの文になるので, ここでは止めない
+    message = input_too_large(spec)
+    if message is not None:
+        return message
+    try:
+        estimated = infer(spec)
+    except Exception:
+        return message
+    if estimated["estimated_only"]:
+        message = (
+            f"パラメータ数 ({estimated['params']}) が形の推定の上限を超える"
+            "ので, 重みを読んで組み立てません"
+        )
+
+    return message
+
+
 @router.post("/weights")
 def read_weights(body: WeightsBody, request: Request) -> WeightsResult:
     """
@@ -428,6 +463,11 @@ def read_weights(body: WeightsBody, request: Request) -> WeightsResult:
     # 読んでいる途中なら待たずに知らせる
     if not uses_weights(body.spec):
         result = WeightsResult(ok=True)
+        return result
+    # 確認と同じ大きさの見積もりで, 大きすぎるモデルは組み立てない
+    too_large = too_large_to_build(body.spec)
+    if too_large is not None:
+        result = WeightsResult(ok=False, error=too_large)
         return result
     if not WEIGHTS_LOCK.acquire(blocking=False):
         result = WeightsResult(

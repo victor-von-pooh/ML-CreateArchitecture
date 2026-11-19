@@ -398,6 +398,27 @@ def test_weights_report(client: TestClient, tmp_path: Path) -> None:
     body = client.post("/api/weights", json={"spec": SPEC}).json()
     assert body == {"ok": True, "reports": [], "error": None}
 
+    # 定義の置き場の外のファイルは読まない (手元の絶対のパスも出さない)
+    outside = tmp_path / "outside.pt"
+    torch.save({"weight": torch.ones(2, 3)}, outside)
+    away = {**spec, "nodes": {**spec["nodes"], "fc": {
+        **spec["nodes"]["fc"],
+        "weights": {"path": "../outside.pt", "strict": False}
+    }}}
+    body = client.post("/api/weights", json={"spec": away}).json()
+    assert not body["ok"]
+    assert "外にある" in body["error"]
+    assert str(tmp_path) not in body["error"]
+
+    # 形の推定の上限を超える大きさのモデルは組み立てない
+    huge = {**spec, "nodes": {**spec["nodes"], "fc": {
+        **spec["nodes"]["fc"],
+        "params": {"in_features": 3, "out_features": 100_000_000}
+    }}}
+    body = client.post("/api/weights", json={"spec": huge}).json()
+    assert not body["ok"]
+    assert "上限" in body["error"]
+
     # strict (既定) では合わない重みで誤りの文
     del spec["nodes"]["fc"]["weights"]["strict"]
     body = client.post("/api/weights", json={"spec": spec}).json()

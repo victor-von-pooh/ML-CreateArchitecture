@@ -174,6 +174,11 @@ export function NodeState({
     value: NodeDef[K] | undefined,
   ) => onChange(setNodeState(spec, name, key, value))
   const wholeShare = typeof node.share === 'string'
+  // 今の定義の印 (重みの報告を出すかの判定)
+  const stamp = JSON.stringify(spec)
+  const leftover = (['train', 'eval_mode', 'zero_init', 'weights'] as const).filter(
+    (key) => key in node,
+  )
   return (
     <fieldset className="space-y-2" aria-label="パラメータの状態">
       <legend className="mb-1 text-xs font-semibold">パラメータの状態</legend>
@@ -192,28 +197,57 @@ export function NodeState({
             zero_init: undefined,
             weights: undefined,
           })
+          // 元のノードに引数が無ければ, このノードの引数も外す
           const params = spec.nodes[value]?.params
-          onChange(
-            params === undefined
-              ? next
-              : {
-                  ...next,
-                  nodes: { ...next.nodes, [name]: { ...next.nodes[name]!, params: { ...params } } },
-                },
-          )
+          const { params: _own, ...rest } = next.nodes[name]!
+          void _own
+          onChange({
+            ...next,
+            nodes: {
+              ...next.nodes,
+              [name]: params === undefined ? rest : { ...rest, params: { ...params } },
+            },
+          })
         }}
       />
       {wholeShare ? (
-        <p className="text-[11px] text-ink-3">
-          ノード全体を共有するので, 学習するか, 初期値, 外部の重みは共有の元のノード (
-          <span className="font-mono">{String(node.share)}</span>) に従います.
-        </p>
+        <>
+          <p className="text-[11px] text-ink-3">
+            ノード全体を共有するので, 学習するか, 初期値, 外部の重みは共有の元のノード (
+            <span className="font-mono">{String(node.share)}</span>) に従います.
+          </p>
+          {/* 手で書いた定義などで状態の項目が残る場合は, 外せるように */}
+          {leftover.length > 0 && (
+            <div className="space-y-1 text-[11px] text-critical-text">
+              <p>ノード全体を共有するノードには書けない項目 ({leftover.join(', ')}) があります.</p>
+              <Button
+                variant="secondary"
+                icon={Trash2}
+                onClick={() =>
+                  onChange(
+                    setNodeStates(
+                      spec,
+                      name,
+                      Object.fromEntries(leftover.map((key) => [key, undefined])),
+                    ),
+                  )
+                }
+              >
+                書けない項目を外す
+              </Button>
+            </div>
+          )}
+        </>
       ) : (
         <>
           <CheckField
             label="学習する"
             checked={node.train !== false}
-            hint="外すと凍結 (勾配が来ず, 更新されない)"
+            hint={
+              node.share === undefined
+                ? '外すと凍結 (勾配が来ず, 更新されない)'
+                : '外すと凍結. 共有するパラメータは共有の元のノードの設定に従います'
+            }
             onChange={(checked) => set('train', checked ? undefined : false)}
           />
           <CheckField
@@ -227,6 +261,7 @@ export function NodeState({
             weights={node.weights}
             onChange={(value) => set('weights', value)}
             onRead={onReadWeights}
+            stamp={stamp}
           />
         </>
       )}
@@ -350,6 +385,12 @@ function ShareLines({
   const id = useId()
   const text = formatShareLines(share)
   const [error, setError] = useState<string | null>(null)
+  // 欄の外で値が変わったら (元に戻すなど) 前の誤りを消す
+  const [seen, setSeen] = useState(text)
+  if (seen !== text) {
+    setSeen(text)
+    setError(null)
+  }
   const commit = (value: string) => {
     const parsed = parseShareLines(value)
     if (typeof parsed === 'string') return setError(parsed)
@@ -380,10 +421,13 @@ function WeightsField({
   weights,
   onChange,
   onRead,
+  stamp,
 }: {
   weights: WeightsDef | undefined
   onChange: (value: WeightsDef | undefined) => void
   onRead?: () => Promise<WeightsResult>
+  /** 今の定義の印 (読んだ後に定義が変わったら, 前の報告を出さない) */
+  stamp: string
 }) {
   const source = weightsSource(weights)
   const update = (patch: Partial<WeightsDef>) => {
@@ -480,7 +524,7 @@ function WeightsField({
             hint="外すと, 形の違う重みと新しい重みは今の値のまま読む (頭を差し替える場合など)"
             onChange={(checked) => update({ strict: checked ? undefined : false })}
           />
-          {onRead && <ReadWeights onRead={onRead} />}
+          {onRead && <ReadWeights onRead={onRead} stamp={stamp} />}
         </div>
       )}
     </div>
@@ -578,30 +622,36 @@ function RemapRows({
 }
 
 /** 外部の重みを実際に読み, ノードごとの数を出す */
-function ReadWeights({ onRead }: { onRead: () => Promise<WeightsResult> }) {
+function ReadWeights({ onRead, stamp }: { onRead: () => Promise<WeightsResult>; stamp: string }) {
   const read = useMutation({ mutationFn: onRead })
+  // 読んだときの定義の印 (定義が変われば前の報告は今の定義のものではない)
+  const [readAt, setReadAt] = useState<string | null>(null)
+  const current = readAt === stamp
   return (
     <div className="space-y-1">
       <Button
         variant="secondary"
         icon={Download}
-        onClick={() => read.mutate()}
+        onClick={() => {
+          setReadAt(stamp)
+          read.mutate()
+        }}
         disabled={read.isPending}
         title="定義全体を組み立てて外部の重みを読む (ファイルとネットワークを使う)"
       >
         {read.isPending ? '重みを読んでいます' : '重みを読んで確かめる'}
       </Button>
-      {read.isError && (
+      {current && read.isError && (
         <p role="alert" className="text-xs text-critical-text">
           読めませんでした: {read.error.message}
         </p>
       )}
-      {read.data && !read.data.ok && (
+      {current && read.data && !read.data.ok && (
         <p role="alert" className="text-xs text-critical-text [overflow-wrap:anywhere]">
           {read.data.error}
         </p>
       )}
-      {read.data?.ok && (
+      {current && read.data?.ok && (
         <section role="status" aria-label="重みの読み込みの報告" className="space-y-2">
           {read.data.reports.length === 0 && (
             <p className="text-xs text-ink-3">外部の重みを読むノードがありません.</p>
@@ -658,6 +708,11 @@ function ReportCard({ report }: { report: WeightsReport }) {
         keys={report.unused_keys ?? []}
         total={report.unused}
       />
+      {(report.warnings ?? []).map((message) => (
+        <p key={message} className="text-warning-text [overflow-wrap:anywhere]">
+          {message}
+        </p>
+      ))}
       {report.license && (
         <LicenseCard info={{ ...report.license, unit: report.license.unit ?? '' }} />
       )}
