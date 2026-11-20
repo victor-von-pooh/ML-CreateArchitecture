@@ -420,7 +420,7 @@
     "/api/dataset/inputs": {
       "post": {
         "summary": "Read Dataset Inputs",
-        "description": "データセットから, モデルの入力と出す値の数を読む関数\n\nParameters\n----------\nbody: PathBody\n    データセットのディレクトリ\n\nReturns\n----------\nresult: DatasetInputs\n    入力 (形はバッチの次元を例の大きさにしたもの), タスク, 目的の列,\n    クラス, 出す値の数\n\nRaises\n----------\nHTTPException\n    ML-EDA が無い場合は 501, ディレクトリか説明が無い場合は 404,\n    読めない場合 (版 2, 知らない版など) は 422",
+        "description": "データセットから, モデルの入力と出す値の数を読む関数\n\nParameters\n----------\nbody: PathBody\n    データセットのディレクトリ\n\nReturns\n----------\nresult: DatasetInputs\n    入力 (形はバッチの次元を例の大きさにしたものと, データセットの\n    形), タスク, 目的の列, クラス, 正解の種類, 出す値の数\n\nRaises\n----------\nHTTPException\n    ML-EDA が無い場合は 501, ディレクトリか説明が無い場合は 404,\n    読めない場合 (知らない版, 知らない項目の組など) は 422",
         "operationId": "read_dataset_inputs",
         "requestBody": {
           "content": {
@@ -665,6 +665,21 @@
           "dtype": {
             "type": "string",
             "title": "Dtype"
+          },
+          "dataset_shape": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Dataset Shape",
+            "description": "model_inputs の形 (決まらない次元は null)"
           }
         },
         "type": "object",
@@ -721,6 +736,18 @@
               }
             ],
             "title": "Classes"
+          },
+          "target_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Kind",
+            "description": "ファイルの組の正解の種類 (mask, point_cloud など)"
           },
           "outputs": {
             "anyOf": [

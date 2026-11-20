@@ -366,14 +366,14 @@ export interface paths {
          *     Returns
          *     ----------
          *     result: DatasetInputs
-         *         入力 (形はバッチの次元を例の大きさにしたもの), タスク, 目的の列,
-         *         クラス, 出す値の数
+         *         入力 (形はバッチの次元を例の大きさにしたものと, データセットの
+         *         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数
          *
          *     Raises
          *     ----------
          *     HTTPException
          *         ML-EDA が無い場合は 501, ディレクトリか説明が無い場合は 404,
-         *         読めない場合 (版 2, 知らない版など) は 422
+         *         読めない場合 (知らない版, 知らない項目の組など) は 422
          */
         post: operations["read_dataset_inputs"];
         delete?: never;
@@ -542,6 +542,11 @@ export interface components {
             shape: number[];
             /** Dtype */
             dtype: string;
+            /**
+             * Dataset Shape
+             * @description model_inputs の形 (決まらない次元は null)
+             */
+            dataset_shape?: (number | null)[];
         };
         /** DatasetInputs */
         DatasetInputs: {
@@ -555,6 +560,11 @@ export interface components {
             target?: string | null;
             /** Classes */
             classes?: unknown[] | null;
+            /**
+             * Target Kind
+             * @description ファイルの組の正解の種類 (mask, point_cloud など)
+             */
+            target_kind?: string | null;
             /** Outputs */
             outputs?: number | null;
         };
