@@ -96,3 +96,20 @@ test('プロジェクトに保存すると, 学習のスクリプトが読む場
   await expect(save.getByRole('status')).toContainText('に保存しました')
   expect(asked).toContain('上書きしますか')
 })
+
+test('記録の無いプロジェクトでも, 保存先を確かめると config のデータセットの場所が入る', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const dialog = await openDialog(page)
+  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
+  await save.getByLabel('プロジェクトか問題の設定').fill(project)
+  await save.getByRole('button', { name: '保存先を確かめる' }).click()
+  await expect(save.getByRole('group', { name: '保存先' })).toContainText('models/model.yaml')
+
+  // 打つ前のデータセットの欄に, config の data.dataset (プロジェクトから) が入る
+  const field = dialog
+    .getByRole('region', { name: 'データセットから入力と出力を作る' })
+    .getByLabel('データセットのディレクトリ')
+  await expect(field).toHaveValue(`${project}/outputs/dataset`)
+})

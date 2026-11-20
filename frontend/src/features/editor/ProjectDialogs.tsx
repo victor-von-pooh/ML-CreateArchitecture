@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 import { api, ApiError, type DatasetInputs, type ProjectTarget } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
@@ -76,7 +76,7 @@ function DatasetSection({
 }: {
   /** 選べない理由 (部分モデルを編集している間. 選べる場合は null) */
   disabled: string | null
-  /** プロジェクトの記録のデータセットの場所 (この欄に打つ前なら入れる) */
+  /** 学習のスクリプトが読むデータセットの場所 (問題の設定の記録か, 無ければ config の data.dataset. この欄に打つ前なら入れる) */
   suggested: string | null
   /** 読んだ結果を定義に入れ, 知らせる文を返す */
   onApply: (info: DatasetInputs) => string[]
@@ -85,10 +85,20 @@ function DatasetSection({
   // この欄に打ったか (打った後は記録の場所で書き換えない)
   const [touched, setTouched] = useState(false)
   const [seen, setSeen] = useState(suggested)
+  // 欄に入れた記録の場所 (覚えるのは描画の後)
+  const [applied, setApplied] = useState<string | null>(null)
   if (suggested !== seen) {
     setSeen(suggested)
-    if (suggested && !touched) setPath(suggested)
+    // 打つ前の欄だけを記録の場所にする (打った場所は, 読んだときに覚える)
+    if (suggested && !touched) {
+      setPath(suggested)
+      setApplied(suggested)
+    }
   }
+  // 欄に入れた記録の場所を, 次に開いたときにも出すように覚える
+  useEffect(() => {
+    if (applied) remember(DATASET_KEY, applied)
+  }, [applied])
   const [result, setResult] = useState<string[] | null>(null)
   const titleId = useId()
   const disabledId = useId()
@@ -199,7 +209,6 @@ function ProjectSaveSection({
     mutationFn: (text: string) => api.projectTarget(text),
     onSuccess: (value, text) => {
       remember(PROJECT_KEY, text)
-      if (value.dataset) remember(DATASET_KEY, value.dataset)
       setTarget({ path: text, value })
       setWritten(null)
       onTarget(value)
@@ -305,7 +314,7 @@ export function ProjectDialog({
   onSaved: (path: string) => void
   onClose: () => void
 }) {
-  // プロジェクトの記録のデータセットの場所
+  // 学習のスクリプトが読むデータセットの場所 (記録か config の data.dataset)
   const [suggested, setSuggested] = useState<string | null>(null)
   return (
     <Dialog title="データセットとプロジェクト" onClose={onClose}>
