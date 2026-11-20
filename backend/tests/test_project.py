@@ -660,3 +660,67 @@ def test_project_dir_without_dataset(
     )
     assert response.status_code == 200, response.text
     assert response.json()["dataset"] is None
+
+
+def test_problem_record_guards(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    記録のプロジェクトが学習のプロジェクトでない場合と, 消したプロジェ
+    クトの場合に書かないこと, 記録の無いプロジェクトでは config の
+    model.spec に書くことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        モジュールの差し替え
+
+    Returns
+    ----------
+    None
+    """
+    # config の無い場所を指す記録 (手で書いた問題の設定など) は 422
+    other = (tmp_path / "home").resolve()
+    (other / ".config").mkdir(parents=True)
+    victim = other / ".config" / "x.yaml"
+    victim.write_text("keep: true\n")
+    problem = tmp_path / "store" / "p.yaml"
+    problem.parent.mkdir()
+    problem.write_text("name: p\n")
+    record = {
+        "model": {"project_model_spec": str(victim)},
+        "data": {},
+        "project": {"path": str(other)}
+    }
+    monkeypatch.setitem(sys.modules, "ml_quest", StubQuest(record))
+    response = client.put(
+        "/api/project/model",
+        json={"path": str(problem), "spec": SPEC, "overwrite": True}
+    )
+    assert response.status_code == 422
+    assert victim.read_text() == "keep: true\n"
+
+    # 消したプロジェクトの場所を作り直さない
+    gone = (tmp_path / "gone").resolve()
+    record["model"] = {"project_model_spec": str(gone / "models" / "m.yaml")}
+    record["project"] = {"path": str(gone)}
+    response = client.put(
+        "/api/project/model", json={"path": str(problem), "spec": SPEC}
+    )
+    assert response.status_code == 422 and not gone.exists()
+
+    # 記録の無いプロジェクトは config の model.spec に書く
+    project = make_project_dir(tmp_path / "proj").resolve()
+    config = project / "configs" / "default" / "train.yaml"
+    config.write_text(
+        "data:\n  dataset: outputs/dataset\n"
+        "model:\n  spec: models/other.yaml\n"
+    )
+    response = client.post(
+        "/api/project/target", json={"path": str(project)}
+    )
+    assert response.json()["path"] == str(project / "models" / "other.yaml")
