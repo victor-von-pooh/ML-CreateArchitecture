@@ -44,6 +44,7 @@
 - **パラメータの状態**: 凍結, 評価の形のまま, 零初期化, 重みの共有, 外部の重みの読み込み (ML-ModelControl の定義の版 2)
 - **学習済みの重みのライセンス**: 重みを読む部品のノードで, ライセンスと商用で使えるかを確かめる
 - **自作の部品**: 研究で書いた `nn.Module` を, 起動の設定に書いたモジュールから部品の一覧に加える
+- **データセットとプロジェクト**: ML-Fathom (ML-EDA) で書き出したデータセットから入力の名前と形, 出力の大きさを入れ, ML-Pathfinder (ML-Quest) で書き出した学習のプロジェクトの, 学習のスクリプトが読む場所に定義を保存する
 - **書き出し**: 定義の YAML と, 同じ計算をする Python のコード (ML-ModelControl を入れていない環境でも動く) をコピーかダウンロード
 - 元に戻す・やり直す, 整列, 下書き, キーボードの操作, ライトとダークの表示
 
@@ -59,20 +60,20 @@
 ```bash
 git clone --recursive https://github.com/victor-von-pooh/ML-CreateArchitecture.git
 cd ML-CreateArchitecture
-make setup   # submodule, Python と Node.js の依存
+make setup   # submodule, Python と Node.js の依存 (データセットとプロジェクトにつなぐ ML-EDA と ML-Quest も)
 make serve   # 画面をビルドして http://127.0.0.1:8766 で起動 (使う間は端末を開いたままにする. Ctrl+C で止める)
 ```
 
 起動すると, 画面のビルドのログの後に `ML-CreateArchitecture を開く: http://127.0.0.1:8766/api/auth?token=...` の行が出るので, その URL をブラウザで開く (トークンは起動ごとに変わる). 毎回同じトークンにする場合は, 環境変数 `ML_CREATEARCHITECTURE_TOKEN` で指定する. ポートは `make serve PORT=8800` のように変えられる.
 
-外部のライブラリの部品を使う場合は, `make setup` に `EXTRAS` を付けてバックエンドに入れる (入れていないライブラリの部品は, 一覧に「使えない」と理由が出る). 全て入れると数 GB になり時間がかかる. `EXTRAS` を付けずに `make setup` をやり直すと, 入れたライブラリは外れる.
+外部のライブラリの部品を使う場合は, `make setup` に `EXTRAS` を付けてバックエンドに入れる (入れていないライブラリの部品は, 一覧に「使えない」と理由が出る). 全て入れると数 GB になり時間がかかる. `EXTRAS` を付けると既定の `project` が置き換わるので, 一緒に書く. `EXTRAS` から外したライブラリは, `make setup` をやり直すと外れる.
 
 ```bash
-make setup EXTRAS=all                       # 全て
-make setup EXTRAS="torchvision timm"        # 一部だけ
+make setup EXTRAS="project all"                       # 全て
+make setup EXTRAS="project torchvision timm"          # 一部だけ
 ```
 
-`EXTRAS` に書ける名前は `geometric` (PyTorch Geometric), `huggingface`, `torchvision`, `timm`, `torchaudio`, `einops`, `kornia`, `monai`, `smp` (segmentation_models_pytorch), `all`.
+`EXTRAS` に書ける名前は `project` (ML-EDA と ML-Quest. 既定), `geometric` (PyTorch Geometric), `huggingface`, `torchvision`, `timm`, `torchaudio`, `einops`, `kornia`, `monai`, `smp` (segmentation_models_pytorch), `all` (外部のライブラリの全て).
 
 新規の画面には入力 `x` (形 `[4, 16]`) がある. `x` を選び, `/` を押して `nn.Linear` と打って Enter を押すと, `x` につながった `linear1` が置かれる. 右の詳細で `in_features` を `16`, `out_features` を `4` にし, 上の「出力」を押すと「パラメータ数 68」「誤り 0 件」になる. 名前を書いて「保存」(Ctrl+S) で保存する.
 
@@ -85,12 +86,12 @@ from ml_modelcontrol import build_model
 model = build_model(Path("~/.ml-createarchitecture/models/first_mlp.yaml").expanduser())
 ```
 
-ML-Found で学習する手順は, [ML-ModelControl](https://github.com/victor-von-pooh/ML-ModelControl) の README を参照.
+ML-Pathfinder で書き出した学習のプロジェクトには, 上の「データセットとプロジェクト」で, データセットから入力と出力を作り, プロジェクトに保存できる (操作ガイドの 9 章). ML-Found で学習する手順は, [ML-ModelControl](https://github.com/victor-von-pooh/ML-ModelControl) の README を参照.
 
 ## 文書
 
-- [操作ガイド](docs/GUIDE.md): 画面の順の操作ガイド (分岐と合流, 誤りの直し方, 部分モデル, 下書き, 自作の部品, 操作の一覧). 最後の章が「困ったとき」
-- [設計](docs/DESIGN.md): 今の設計と決まり (ML-ModelControl との約束, 画面, API, 用語, 置き場, 安全)
+- [操作ガイド](docs/GUIDE.md): 画面の順の操作ガイド (分岐と合流, 誤りの直し方, 部分モデル, 下書き, データセットとプロジェクト, 自作の部品, 操作の一覧). 最後の章が「困ったとき」
+- [設計](docs/DESIGN.md): 今の設計と決まり (ML-ModelControl, ML-EDA, ML-Quest との約束, 画面, API, 用語, 置き場, 安全)
 - [TODO](TODO.md): まだやっていないこと (優先度の順)
 
 ## 開発

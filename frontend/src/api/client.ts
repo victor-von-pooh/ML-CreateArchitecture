@@ -14,6 +14,9 @@ export type PretrainedInfo = Schemas['PretrainedInfo']
 export type WeightsResult = Schemas['WeightsResult']
 export type WeightsReport = Schemas['WeightsReport']
 export type ModulesInfo = Schemas['ModulesInfo']
+export type DatasetInputs = Schemas['DatasetInputs']
+export type ProjectTarget = Schemas['ProjectTarget']
+export type ProjectSaved = Schemas['ProjectSaved']
 
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
@@ -87,6 +90,24 @@ export const api = {
   getModel: (name: string) => request<ModelFile>(`/api/models/${encodeURIComponent(name)}`),
   deleteModel: (name: string) =>
     request<void>(`/api/models/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  /** データセットのディレクトリから, 入力と出す値の数を読む (ML-EDA) */
+  datasetInputs: (path: string) =>
+    request<DatasetInputs>('/api/dataset/inputs', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  /** プロジェクトのディレクトリか問題の設定から, 定義の保存先を求める */
+  projectTarget: (path: string) =>
+    request<ProjectTarget>('/api/project/target', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  /** 定義をプロジェクトの保存先に書く (既にある場合は overwrite が要る. 無ければ 409) */
+  saveProjectModel: (path: string, spec: Spec, overwrite: boolean) =>
+    request<ProjectSaved>('/api/project/model', {
+      method: 'PUT',
+      body: JSON.stringify({ path, spec, overwrite }),
+    }),
   saveModel: (name: string, spec: Spec) =>
     request<ModelSummary>(`/api/models/${encodeURIComponent(name)}`, {
       method: 'PUT',

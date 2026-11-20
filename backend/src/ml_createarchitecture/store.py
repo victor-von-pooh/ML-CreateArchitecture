@@ -21,6 +21,75 @@ class ModelNotFoundError(ModelError):
     pass
 
 
+def spec_text(spec: dict[str, Any]) -> str:
+    """
+    定義を, 版を確かめて保存する形の YAML にする関数
+
+    Parameters
+    ----------
+    spec: dict[str, Any]
+        モデルの定義
+
+    Returns
+    ----------
+    text: str
+        dump_spec が書ける最も低い版の YAML
+
+    Raises
+    ----------
+    ModelError
+        版を読めない場合
+    """
+    # 読める定義であることを確かめてから変換
+    try:
+        text: str = dump_spec(load_spec(spec))
+    except ValueError as error:
+        raise ModelError(str(error)) from error
+
+    return text
+
+
+def write_atomic(path: Path, text: str) -> str:
+    """
+    ファイルを一時ファイルに書いてから置き換える関数
+
+    途中で止まっても壊れたファイルが残らないように, 書き手ごとに別の一時
+    ファイルに書く
+
+    Parameters
+    ----------
+    path: Path
+        書くファイル (親のディレクトリはあること)
+    text: str
+        中身
+
+    Returns
+    ----------
+    updated_at: str
+        書いた後の更新時刻 (ISO 8601 の秒まで)
+
+    Raises
+    ----------
+    OSError
+        書き込めない場合
+    """
+    # 同じディレクトリの一時ファイルに書いて置き換え (失敗したら一時を消す)
+    handle, temp = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as file:
+            file.write(text)
+        Path(temp).replace(path)
+    except OSError:
+        Path(temp).unlink(missing_ok=True)
+        raise
+    updated = datetime.fromtimestamp(path.stat().st_mtime)
+    updated_at = updated.isoformat(timespec="seconds")
+
+    return updated_at
+
+
 class ModelStore:
     def __init__(self, root: Path):
         # 定義のファイルを置くディレクトリを保存 (書き込むときに作成)
@@ -139,26 +208,15 @@ class ModelStore:
         """
         # 版を確かめてから YAML に変換
         path = self.path_for(name)
-        try:
-            text: str = dump_spec(load_spec(spec))
-        except ValueError as error:
-            raise ModelError(str(error)) from error
+        text = spec_text(spec)
 
         # 書き手ごとに別の一時ファイルに書いてから置き換え
         try:
             self.root.mkdir(parents=True, exist_ok=True)
-            handle, temp = tempfile.mkstemp(
-                dir=self.root, prefix=f".{name}.", suffix=".tmp"
-            )
-            with os.fdopen(handle, "w", encoding="utf-8") as file:
-                file.write(text)
-            Path(temp).replace(path)
-            updated = datetime.fromtimestamp(path.stat().st_mtime)
+            updated = write_atomic(path, text)
         except OSError as error:
             raise ModelError(f"定義 {name} を保存できません: {error}") from error
-        summary = {
-            "name": name, "updated_at": updated.isoformat(timespec="seconds")
-        }
+        summary = {"name": name, "updated_at": updated}
 
         return summary
 

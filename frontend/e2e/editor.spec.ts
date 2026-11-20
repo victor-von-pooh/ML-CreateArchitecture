@@ -251,7 +251,7 @@ test('狭い画面では上の操作をアイコンにし, ミニマップを出
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/')
   // 文字は読み上げの名前として残り, 上の操作は 1 行 (高さが 1 行分)
-  for (const name of ['整列', '入力', '出力', 'YAML', 'Python']) {
+  for (const name of ['整列', '入力', '出力', 'YAML', 'Python', 'データセットとプロジェクト']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
   }
   expect((await page.locator('header').boundingBox())!.height).toBeLessThan(60)

@@ -9,8 +9,10 @@ DEV_TOKEN := $(or $(DEV_TOKEN),$(shell python3 -c 'import secrets; print(secrets
 
 .PHONY: setup dev-backend dev-frontend build serve api check
 
-# 依存のインストール (外部のライブラリの部品も使う場合は make setup EXTRAS=all)
-EXTRAS ?=
+# 依存のインストール. 既定でデータセットとプロジェクトにつなぐ ML-EDA と
+# ML-Quest (project) を入れる. 外部のライブラリの部品も使う場合は
+# make setup EXTRAS="project all" (project を外すと, その操作は使えない)
+EXTRAS ?= project
 setup:
 	git submodule update --init
 	cd backend && uv sync $(foreach extra,$(EXTRAS),--extra $(extra))

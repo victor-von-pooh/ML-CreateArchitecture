@@ -36,6 +36,7 @@ import {
   subgraphCheckTarget,
   writeSubgraph,
 } from './lib/subgraph'
+import { applyDatasetInputs, datasetSummary } from './lib/dataset'
 import { useDebounced } from './lib/debounce'
 import { clearDraft, readDraft, tabId, writeDraft, type Draft } from './lib/draft'
 import { useHistory } from './lib/history'
@@ -703,6 +704,23 @@ function Editor() {
           }}
           onUndo={previous ? undoSpec : undefined}
           onRedo={following ? redoSpec : undefined}
+          onDataset={(info) => {
+            // 本体の定義に 1 回の変更として入れ, 部品の一覧の上にも知らせる
+            const current = latest.current
+            const applied = applyDatasetInputs(current, info, unitsFor(current))
+            setHistory(applied.spec)
+            // 置いた head と出力も見えるように表示の範囲を合わせる
+            window.requestAnimationFrame(
+              () => void flow.fitView({ duration: 200, maxZoom: 1, padding: 0.1 }),
+            )
+            const lines = [datasetSummary(info), ...applied.notes]
+            notify(lines.join('. '))
+            return lines
+          }}
+          onProjectSaved={(path) => {
+            setSavedNotice(`${path} に保存しました`)
+            window.setTimeout(() => setSavedNotice(''), 3000)
+          }}
         />
         {draft && (
           <section
