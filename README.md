@@ -2,16 +2,57 @@
 
 [ML-ModelControl](https://github.com/victor-von-pooh/ML-ModelControl) の部品を GUI で並べてつなぎ, PyTorch のモデルを組み立てるローカルの Web アプリ.
 
-部品 (`nn.Linear` のような層, 足し算や連結のような演算, PyTorch Geometric の層, Hugging Face, torchvision, timm などのモデル) を一覧から選んで置き, 線でつなぎ, 引数をフォームで決める. 形とパラメータ数を確かめながら, モデルの定義 (YAML) を作って保存する.
+「機械学習を全て GUI 上で行う」うちの「モデルの作成・選定」の段階の画面. 作った定義 (YAML) は ML-ModelControl でそのまま `nn.Module` になり, ML-Found で学習できる.
 
-画面の順に試しながら覚える手順書は [docs/GUIDE.md](docs/GUIDE.md), 設計の方針は [docs/DESIGN.md](docs/DESIGN.md) を参照.
+![VAE の雛形: 符号化器の出力を平均と対数分散に分け, 再パラメータ化のノード z を選んだ所. 右の詳細に入る形と出る形, 口の説明 (平均, 対数分散), 引数, パラメータの状態が出る](docs/images/vae.png)
 
-## 必要なもの
+<table>
+  <tr>
+    <td><img src="docs/images/cnn.png" alt="CNN の例: 畳み込みのノードを選ぶと, 入る形と出る形, パラメータ数, 説明と範囲付きの引数のフォームが出る"></td>
+    <td><img src="docs/images/guide/open.png" alt="開く: 保存した定義と, 同梱の例と受け持ちごとの雛形 (学習の step で行うことまで書いた説明付き)"></td>
+  </tr>
+  <tr>
+    <td>CNN の例. ノードごとに推定した出力の形が出て, 右の詳細で引数を説明と範囲付きのフォームで決める</td>
+    <td>「開く」の一覧. 保存した定義と, 同梱の例 (CNN, LSTM, Transformer, GCN, BERT など) と受け持ちごとの雛形 (VAE, GAN, 拡散, 対照, 2 塔, 方策と価値)</td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/guide/error.png" alt="形の誤り: 全結合の in_features が前のノードの出力と合わず, PyTorch のエラーと直し方が出る"></td>
+    <td><img src="docs/images/param_state.png" alt="パラメータの状態: 凍結, 零初期化, 外部の重みのファイルとキーの付け替えを欄で書き, 読んだ重みの数を確かめる"></td>
+  </tr>
+  <tr>
+    <td>形の誤り. 入ってきた値の形と, どの引数をどう直すかが出る</td>
+    <td>パラメータの状態. 凍結, 零初期化, 外部の重み (キーの付け替え付き) を書き, 「重みを読んで確かめる」で読めた / 形の違う / 新しい / 使わない重みの数を見る</td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/images/license.png" width="70%" alt="学習済みの重みのライセンス: Hugging Face の BERT のノードで, 配布元から読んだライセンスと商用で使えるかが出る"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">学習済みの重みのライセンス. 配布元から読んだライセンス, 商用で使えるか, 読んだ版, 推論の一式に重みを写せるかが出る</td>
+  </tr>
+</table>
+
+画面の例は ML-ModelControl に同梱の例 (`vae`, `cnn_classifier`, `bert_classifier`) と, 全結合の層 1 つを置いた定義 (外部の重みは小さな見本のファイル). 外部のライブラリは入れずに (`make setup` のまま) 起動したので, BERT の例は「transformers が入っていません」の誤りも出ている. ライセンスは Hugging Face のモデルの説明から読んだもの.
+
+## できること
+
+- **組み立て**: 部品 (`nn.Linear` のような層, 足し算や連結のような演算, PyTorch Geometric, Hugging Face, torchvision, timm などのモデル) を一覧から選んで置き, 線でつなぎ, 引数をフォームで決める
+- **確かめる**: 編集するたびに定義を確かめ, ノードごとの出力の形とパラメータ数を推定する. 誤りは理由と直し方付きで出る
+- **例と雛形**: 同梱の例と受け持ちごとの雛形から始める
+- **部分モデル**: 保存した定義や例を 1 つの部品 (`sub.<名前>`) として重ね, 中身を編集する
+- **パラメータの状態**: 凍結, 評価の形のまま, 零初期化, 重みの共有, 外部の重みの読み込み (ML-ModelControl の定義の版 2)
+- **学習済みの重みのライセンス**: 重みを読む部品のノードで, ライセンスと商用で使えるかを確かめる
+- **自作の部品**: 研究で書いた `nn.Module` を, 起動の設定に書いたモジュールから部品の一覧に加える
+- **書き出し**: 定義の YAML と, 同じ計算をする Python のコード (ML-ModelControl を入れていない環境でも動く) をコピーかダウンロード
+- 元に戻す・やり直す, 整列, 下書き, キーボードの操作, ライトとダークの表示
+
+## 使い方
+
+### 必要なもの
 
 - [uv](https://docs.astral.sh/uv/) (Python は uv が用意する. 3.10 以上). ML-ModelControl の依存の PyTorch も入るので, 最初の `make setup` は時間がかかる
 - Node.js 24 以上と [pnpm](https://pnpm.io/) 11 以上 (`corepack enable` で `package.json` の版が入る)
 
-## 導入と起動
+### 導入と起動
 
 ```bash
 git clone --recursive https://github.com/victor-von-pooh/ML-CreateArchitecture.git
@@ -22,7 +63,7 @@ make serve   # 画面をビルドして http://127.0.0.1:8766 で起動 (使う�
 
 起動すると, 画面のビルドのログの後に `ML-CreateArchitecture を開く: http://127.0.0.1:8766/api/auth?token=...` の行が出るので, その URL をブラウザで開く (トークンは起動ごとに変わる). 毎回同じトークンにする場合は, 環境変数 `ML_CREATEARCHITECTURE_TOKEN` で指定する. ポートは `make serve PORT=8800` のように変えられる.
 
-外部のライブラリ (PyTorch Geometric, Hugging Face, torchvision, timm, torchaudio, einops, Kornia, MONAI, segmentation_models_pytorch) の部品を使う場合は, `make setup` に `EXTRAS` を付けてバックエンドに入れる (入れていないライブラリの部品は, 一覧に「使えない」と理由が出る). 全て入れると数 GB になり時間がかかる. `EXTRAS` を付けずに `make setup` をやり直すと, 入れたライブラリは外れる.
+外部のライブラリの部品を使う場合は, `make setup` に `EXTRAS` を付けてバックエンドに入れる (入れていないライブラリの部品は, 一覧に「使えない」と理由が出る). 全て入れると数 GB になり時間がかかる. `EXTRAS` を付けずに `make setup` をやり直すと, 入れたライブラリは外れる.
 
 ```bash
 make setup EXTRAS=all                       # 全て
@@ -31,91 +72,15 @@ make setup EXTRAS="torchvision timm"        # 一部だけ
 
 `EXTRAS` に書ける名前は `geometric` (PyTorch Geometric), `huggingface`, `torchvision`, `timm`, `torchaudio`, `einops`, `kornia`, `monai`, `smp` (segmentation_models_pytorch), `all`.
 
-torchvision と timm のモデル (`tv.Model`, `timm.Model`) の名前は, 右の詳細の引数 `name` (timm は `model_name`) の欄に打つと候補が出る.
+### 最初のモデル
 
-## 使い方
+新規の画面には入力 `x` (形 `[4, 16]`) がある. `x` を選び, `/` を押して `nn.Linear` と打って Enter を押すと, `x` につながった `linear1` が置かれる. 右の詳細で `in_features` を `16`, `out_features` を `4` にし, 上の「出力」を押すと「パラメータ数 68」「誤り 0 件」になる. 名前を書いて「保存」(Ctrl+S) で保存する.
 
-### 最初のモデル (全結合の層 1 つ)
-
-新規の画面には, 入力 `x` (形 `[4, 16]`) が最初からある.
-
-1. キャンバスの入力 `x` を押して選ぶ
-2. `/` を押して左の一覧の検索欄に移り (欄が畳まれていれば開く), `nn.Linear` と打って Enter を押す (一覧の `nn.Linear` を押してもよい). `x` の右に `linear1` が置かれ, `x` から `linear1` の口 `input` へ線が引かれる (何も選ばずに置いた場合は, `x` の右の点から `linear1` の左の点へドラッグして線を引く)
-3. 右の詳細で `in_features` に `16`, `out_features` に `4` を入れる (`*` は必須の引数. 説明と範囲が欄の下に出る)
-4. 上の「出力」(アイコンだけの場合は, 四角から外へ出る矢印. マウスを重ねると名前が出る) を押す. つながっていないノードが `linear1` だけなので, 出力は `linear1` につながる
-5. 上の欄が「パラメータ数 68」「誤り 0 件」になり, ノードに出力の形 `[4, 4]` が出る
-6. 上の名前の欄に名前 (英数字, `_`, `-`) を書いて「保存」(Ctrl+S でもよい). 少しの間「<名前> に保存しました」と出る
-
-「開く」から例 (全結合, 残差, CNN, LSTM, Transformer, GCN, BERT の分類 (Hugging Face の BERT と, 部品から組んだ小さな BERT), 部分モデルを重ねたもの. 受け持ちごとの雛形として VAE, GAN, 拡散, 対照, 2 塔, 方策と価値も) を開いて, 組み立て方を見るのもよい.
-
-### 画面
-
-- **左**: 部品の一覧 (出どころごと. 名前と説明で検索). 使えない部品 (ライブラリが無いなど) は理由が出る. 「別の定義を部品にする」で加えた部分モデルは一番上の「部分モデル」に出る
-- **中央**: キャンバス. 左の点が入力の口 (`?` は省略できる口, `…` は複数つなげる口), 右の点が出力の口. ノードに推定した出力の形が出る. 部分モデルの中身を編集している間は, 上に階層 (`本体 › sub.<名前>`) が出る
-- **右**: 選んだものの詳細. 名前, 入る形と出る形, パラメータ数, 誤り, 入力のつなぎ先 (選択の欄. キーボードだけでもつなげる), 引数, 一覧に無い引数 (einops の式の大きさ `h=2` など). 何も選んでいないときは全体の情報と誤りの一覧
-- **上**: 新規, 開く (保存した定義と例. ごみ箱で消せる), 保存, 元に戻す・やり直す, 整列, 入力, 出力, YAML (保存する形), Python (同じ計算をするコード. ML-ModelControl を入れていない環境でも動く. 外部のライブラリの部品はそのライブラリが要る), 明るさの切り替え. YAML と Python はコピーとファイルのダウンロードができる. 幅の狭い画面では一部がアイコンだけになる (マウスを重ねると名前が出る)
-
-左右の欄は, キャンバスの左上と右上のボタンで畳める. 幅 1200 px 未満の画面では畳んだ状態で始まる.
-
-モデルの入力の形 (`[4, 16]` のようにバッチの次元も含めて書く) と型 (単語の番号や `edge_index` は `int64`) は, 形の推定にだけ使う. 作ったモデルの入力の大きさを固定するものではない.
-
-### 操作
-
-キーの Ctrl は, Mac では Cmd.
-
-| 操作 | 方法 |
-| --- | --- |
-| 部品を置く | 一覧の部品を押す (見えている範囲の真ん中に置く) か, キャンバスにドラッグする (落とした位置に置く) |
-| 部品を探す | `/` で左の検索欄に移る. Enter で, 名前が合う使える部品を置き, 詳細の引数の最初の欄に移る |
-| 線を引く | 出力の点から入力の点へドラッグ, または詳細の「入力のつなぎ先」で選ぶ. 入力かノードを選んだまま部品を押すか Enter で置くと, つなぎ方が 1 通りに決まる場合はそこから線を引く (ドラッグで置いた場合は引かない). 出力を加えると, つながっていないノードが 1 つだけならそれにつなぐ |
-| 消す | 線かノードを選んで Delete か Backspace (または詳細の「ノードを消す」) |
-| 元に戻す・やり直す | Ctrl+Z で戻し, Ctrl+Shift+Z (か Ctrl+Y) でやり直す. 引数の欄の中では, 打ちかけの文字がある間は文字の取り消し, 反映した後は定義を戻す. 定義を開くか新規にすると履歴は消える |
-| 複製 | 詳細の「複製」か Ctrl+D. Ctrl+C と Ctrl+V でも写して貼れる (つなぎ先は写さない) |
-| 並べ直す | 上の「整列」(つながりの順に左から右へ) |
-| 保存 | 上の「保存」か Ctrl+S. 開いたものと違う名前で既にある定義に保存する場合は確かめる |
-| 別の定義を部品にする | 左の「別の定義を部品にする」で保存した定義か例を選ぶと, 一覧の「部分モデル」に `sub.<名前>` の部品として出る (定義の入力が入力の口, 出力が出力の口). 定義の中に写すので, 元の定義を後で変えても変わらない |
-| 部分モデルを写し直す | 元の定義を直した後に, 一覧の部分モデルの写し直しのボタンを押すと, 元の定義の今の中身に置き換わる |
-| 部分モデルを消す | 一覧の部分モデルのごみ箱 (使っているノードが無いものだけ) |
-| 部分モデルの中身を編集する | 部分モデルのノードをダブルクリックするか, 詳細の「部分モデルの中身を編集」. 変更は, その部分モデルを使う全てのノードに反映される. Esc で 1 つ上の階層に戻る (上の階層の名前を押してもよい) |
-| 部分モデルを 1 つのノードだけ変える | 部分モデルのノードの詳細の「このノードだけの部分モデルにする」(2 つ以上のノードが使う部分モデルの場合に出る. 写して別の部分モデルにし, 他のノードはそのまま) |
-
-### 自作の部品を使う
-
-研究で書いた自作の部品 (`nn.Module` のクラス) は, 部品を宣言したモジュールの名前を環境変数 `ML_CREATEARCHITECTURE_MODULES` (カンマで区切って複数) に書いて起動すると, 部品の一覧の「自作 (モジュールの名前)」に出る. モジュールはバックエンドの Python から import できる場所 (`PYTHONPATH` か, バックエンドの環境に入れたパッケージ) に置く.
-
-```python
-# my_lab/units.py
-import torch
-from torch import nn
-
-
-class Scale(nn.Module):
-    """入力を決めた倍にする部品"""
-
-    def __init__(self, factor: float = 2.0):
-        super().__init__()
-        self.factor = factor
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x * self.factor
-
-
-# 部品の宣言 (クラスか, ML-ModelControl の register_unit の引数の辞書)
-UNITS = [{"cls": Scale, "name": "lab.Scale"}]
-```
-
-```bash
-ML_CREATEARCHITECTURE_MODULES=my_lab.units PYTHONPATH=<my_lab を置いたディレクトリの絶対パス> make serve
-```
-
-起動のログに `自作の部品を読み込みました: my_lab.units → lab.Scale` と出る. 読み込めないモジュールがあると, 理由を出して起動しない. `make serve` はバックエンドのディレクトリで起動するので, `PYTHONPATH` は絶対パスで書く. 開発用のサーバー (`make dev-backend`) でも同じ環境変数で読み込むが, 自作の部品のファイルを直しても作り直されないので起動し直す. 宣言の書き方 (`UNITS` のほかに `register_units(register)` の関数も書ける) は ML-ModelControl の README を参照.
-
-- **書いたモジュールは, 起動のときに任意のコードとして動く**. 自分や仲間が書いた, 信頼できるコードだけを書く
-- 読み込むのは, この環境変数に書いたモジュールだけ. 定義のファイルに書かれた部品の名前や, 画面と API からは何も読み込まない. 登録されていない部品を使う定義を開くと, 登録されていないという誤りと, 起動の設定 (環境変数の名前) に足す案内と, 今読み込んでいるモジュールが出る
+画面の順に試しながら覚える手順 (分岐と合流, 誤りの直し方, 部分モデル, 下書き, 自作の部品, 操作の一覧, 困ったとき) は [docs/GUIDE.md](docs/GUIDE.md), 設計の方針と API は [docs/DESIGN.md](docs/DESIGN.md) を参照.
 
 ### 保存した定義を使う
 
-保存した定義は `~/.ml-createarchitecture/models/<名前>.yaml` に置かれる (環境変数 `ML_CREATEARCHITECTURE_HOME` で変えられる). [ML-ModelControl](https://github.com/victor-von-pooh/ML-ModelControl) の `build_model` でそのまま `nn.Module` にできる. ML-ModelControl はこのアプリのバックエンドに入っているので, 試すだけなら `cd backend && uv run python` で使える (自分の環境では `pip install "ml-modelcontrol @ git+https://github.com/victor-von-pooh/ML-ModelControl.git"`).
+保存した定義は `~/.ml-createarchitecture/models/<名前>.yaml` に置かれる (環境変数 `ML_CREATEARCHITECTURE_HOME` で変えられる). [ML-ModelControl](https://github.com/victor-von-pooh/ML-ModelControl) の `build_model` で `nn.Module` にできる.
 
 ```python
 from pathlib import Path
