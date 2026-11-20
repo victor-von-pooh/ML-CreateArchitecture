@@ -515,3 +515,109 @@ def test_problem_real(client: TestClient, tmp_path: Path) -> None:
         "/api/project/model", json={"path": str(project), "spec": SPEC}
     )
     assert response.status_code == 200 and expected.is_file()
+
+
+def test_dataset_inputs_odd_values(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    数の目的の列の名前は文字列にし, 形の崩れた値は 422 にすることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        モジュールの差し替え
+
+    Returns
+    ----------
+    None
+    """
+    # 目的の列の名前が数, クラスがリストでない結果
+    result: dict[str, Any] = {
+        "inputs": [{"name": "x", "shape": [None, 2], "dtype": "float32"}],
+        "task": "regression", "target": 0, "classes": "a",
+        "outputs": 1
+    }
+    monkeypatch.setitem(
+        sys.modules, "ml_eda", SimpleNamespace(model_inputs=StubInputs(result))
+    )
+    dataset = write_dataset(tmp_path / "ds", 1)
+    response = client.post(
+        "/api/dataset/inputs", json={"path": str(dataset)}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["target"] == "0"
+    assert response.json()["classes"] is None
+
+    # 形が数でない場合は 422
+    result["inputs"] = [{"name": "x", "shape": ["a"], "dtype": "float32"}]
+    response = client.post(
+        "/api/dataset/inputs", json={"path": str(dataset)}
+    )
+    assert response.status_code == 422
+
+
+class StubInputs:
+    def __init__(self, result: dict[str, Any]):
+        # 返す結果を保存
+        self.result = result
+
+    def __call__(self, path: Any) -> dict[str, Any]:
+        """
+        決まった結果を返す関数
+
+        Parameters
+        ----------
+        path: Any
+            データセットのディレクトリ (使わない)
+
+        Returns
+        ----------
+        result: dict[str, Any]
+            保存した結果
+        """
+        result = self.result
+
+        return result
+
+
+def test_project_symlink_and_mode(client: TestClient, tmp_path: Path) -> None:
+    """
+    プロジェクトの外を指す models のリンクを断り, 書いたファイルが普通の
+    権限になることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 外を指すリンクの models は 422
+    project = make_project_dir(tmp_path / "proj")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (project / "models").symlink_to(outside, target_is_directory=True)
+    response = client.post(
+        "/api/project/target", json={"path": str(project)}
+    )
+    assert response.status_code == 422
+    assert "外" in response.json()["detail"]
+
+    # 普通のプロジェクトでは, 本人以外も読める権限で書く
+    other = make_project_dir(tmp_path / "proj2")
+    response = client.put(
+        "/api/project/model", json={"path": str(other), "spec": SPEC}
+    )
+    assert response.status_code == 200
+    mode = (other / "models" / "model.yaml").stat().st_mode & 0o777
+    assert mode & 0o044

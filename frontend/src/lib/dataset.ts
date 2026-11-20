@@ -60,12 +60,21 @@ export function applyDatasetInputs(
 ): DatasetApplied {
   const notes: string[] = []
   let next = spec
+  // ノードと同じ名前の入力は作らない (つなぎ先が入力を指すように変わるため)
+  const clashes = info.inputs.filter((item) => item.name in spec.nodes)
+  if (clashes.length > 0) {
+    const listed = clashes.map((item) => item.name).join(', ')
+    notes.push(
+      `ノード ${listed} がデータセットの入力と同じ名前なので, 何も変えていません. ノードの名前を変えてから入れ直してください`,
+    )
+    return { spec, notes }
+  }
   const names = info.inputs.map((item) => item.name)
 
   // 1 つずつで名前が違えば, 名前を変える (つなぎ先も書き換える)
   const current = Object.keys(next.inputs)
   const only = info.inputs.length === 1 ? info.inputs[0]! : null
-  if (only && current.length === 1 && current[0] !== only.name && !(only.name in next.nodes)) {
+  if (only && current.length === 1 && current[0] !== only.name) {
     next = renameItem(next, current[0]!, only.name)
     notes.push(`入力 ${current[0]} の名前を ${only.name} にしました`)
   }
@@ -118,7 +127,7 @@ export function applyDatasetInputs(
   const outputNames = Object.keys(next.outputs)
   if (Object.keys(next.nodes).length === 0 && outputNames.length === 0) {
     // 部品の無い定義は, 2 次元の入力に全結合の head を置いて出力 out につなぐ
-    if (first.shape.length === 2 && units.get(HEAD_UNIT)?.available) {
+    if (first.shape.length === 2 && units.get(HEAD_UNIT)?.available && !('head' in next.inputs)) {
       const at = next.inputs[first.name]?.ui
       const x = (at?.x ?? 40) + 280
       const y = at?.y ?? 160

@@ -12,6 +12,32 @@ from ml_modelcontrol import dump_spec, load_spec
 NAME_PATTERN = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_-]{0,63}")
 
 
+def file_mode() -> int:
+    """
+    普通に作るファイルの権限を, 今の umask から求める関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    mode: int
+        0o666 から umask を除いた権限
+    """
+    # umask は読むと変わるので, すぐに戻す (起動のときの 1 回だけ)
+    umask = os.umask(0o022)
+    os.umask(umask)
+    mode = 0o666 & ~umask
+
+    return mode
+
+
+# 書いたファイルの権限 (起動のときに 1 度だけ求める. umask を読む間に他の
+# スレッドが作るファイルの権限を変えないため)
+FILE_MODE = file_mode()
+
+
 class ModelError(ValueError):
     pass
 
@@ -80,6 +106,9 @@ def write_atomic(path: Path, text: str) -> str:
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as file:
             file.write(text)
+        # 一時ファイルは本人だけが読める形で作られるので, 普通のファイルと
+        # 同じ権限 (起動のときの umask に従う) に直す
+        os.chmod(temp, FILE_MODE)
         Path(temp).replace(path)
     except OSError:
         Path(temp).unlink(missing_ok=True)

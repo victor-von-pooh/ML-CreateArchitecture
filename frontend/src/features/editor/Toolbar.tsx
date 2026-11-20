@@ -573,7 +573,7 @@ export function Toolbar({
       )}
       {dialog === 'project' && (
         <ProjectDialog
-          spec={whole}
+          spec={{ ...whole, name }}
           editing={editing}
           onApply={onDataset}
           onSaved={onProjectSaved}

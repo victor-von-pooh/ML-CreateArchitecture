@@ -1460,7 +1460,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "ml-eda", marker = "extra == 'project'", git = "https://github.com/victor-von-pooh/ML-EDA.git?branch=feat%2Fmodel-inputs" },
+    { name = "ml-eda", marker = "extra == 'project'", git = "https://github.com/victor-von-pooh/ML-EDA.git" },
     { name = "ml-modelcontrol", editable = "../ML-ModelControl" },
     { name = "ml-modelcontrol", extras = ["all"], marker = "extra == 'all'", editable = "../ML-ModelControl" },
     { name = "ml-modelcontrol", extras = ["einops"], marker = "extra == 'einops'", editable = "../ML-ModelControl" },
@@ -1494,7 +1494,7 @@ dev = [
 [[package]]
 name = "ml-eda"
 version = "0.1.0"
-source = { git = "https://github.com/victor-von-pooh/ML-EDA.git?branch=feat%2Fmodel-inputs#b96abed82d570f12465e7d0a6f3bcce024465b1d" }
+source = { git = "https://github.com/victor-von-pooh/ML-EDA.git#f8bf9bdddeb38845e61bb7697897d1b03e6c4aaf" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },

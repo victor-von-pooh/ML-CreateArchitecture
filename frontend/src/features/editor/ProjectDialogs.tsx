@@ -91,12 +91,11 @@ function DatasetSection({
   }
   const [result, setResult] = useState<string[] | null>(null)
   const titleId = useId()
+  const disabledId = useId()
+  // 定義に入れるのは mutate に渡した onSuccess (読んでいる間にダイアログを
+  // 閉じた場合は入れない)
   const read = useMutation({
     mutationFn: (target: string) => api.datasetInputs(target),
-    onSuccess: (info) => {
-      remember(DATASET_KEY, info.path)
-      setResult(onApply(info))
-    },
   })
   return (
     <section aria-labelledby={titleId} className="space-y-3">
@@ -109,7 +108,12 @@ function DatasetSection({
           event.preventDefault()
           if (path.trim() && !read.isPending && !disabled) {
             setResult(null)
-            read.mutate(path.trim())
+            read.mutate(path.trim(), {
+              onSuccess: (info) => {
+                remember(DATASET_KEY, info.path)
+                setResult(onApply(info))
+              },
+            })
           }
         }}
       >
@@ -127,19 +131,27 @@ function DatasetSection({
           type="submit"
           variant="primary"
           disabled={!path.trim() || read.isPending || disabled !== null}
+          aria-describedby={disabled ? disabledId : undefined}
         >
           {read.isPending ? '読んでいます…' : '入力と出力を作る'}
         </Button>
-        {disabled && <p className="text-xs text-warning-text">{disabled}</p>}
+        {disabled && (
+          <p id={disabledId} className="text-xs text-warning-text">
+            {disabled}
+          </p>
+        )}
       </form>
       {read.error && <ErrorBox error={read.error} />}
-      {result && (
-        <ul role="status" className="list-disc space-y-1 pl-5 text-sm">
-          {result.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-      )}
+      {/* 読み上げの欄は先に置いておき, 結果を入れる */}
+      <div role="status" className="text-sm">
+        {result && (
+          <ul className="list-disc space-y-1 pl-5">
+            {result.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        )}
+      </div>
     </section>
   )
 }
@@ -175,6 +187,13 @@ function ProjectSaveSection({
   // 書いたファイル (確かめ直すか保存し直すまで出す)
   const [written, setWritten] = useState<string | null>(null)
   const titleId = useId()
+  // 確かめた場所の保存先を, 既にある扱いにする
+  const markExists = (text: string) =>
+    setTarget((current) =>
+      current && current.path === text
+        ? { ...current, value: { ...current.value, exists: true } }
+        : current,
+    )
   const checked = target !== null && target.path === path.trim() ? target.value : null
   const resolve = useMutation({
     mutationFn: (text: string) => api.projectTarget(text),
@@ -189,22 +208,19 @@ function ProjectSaveSection({
   const save = useMutation({
     mutationFn: ({ text, overwrite }: { text: string; overwrite: boolean }) =>
       api.saveProjectModel(text, spec, overwrite),
-    onSuccess: (saved) => {
+    onSuccess: (saved, { text }) => {
       onSaved(saved.path)
+      // 書いた後は既にある扱い (続けて保存すると上書きを確かめる). 保存の
+      // 間に別の場所を確かめた場合は, その場所には付けない
+      markExists(text)
       setWritten(saved.path)
-      // 書いた後は既にある扱い (続けて保存すると上書きを確かめる)
-      setTarget((current) =>
-        current ? { ...current, value: { ...current.value, exists: true } } : current,
-      )
     },
     onError: (error, { text, overwrite }) => {
-      // 確かめた後に別の所で書かれた場合も, 上書きしてよいかを聞く
-      if (
-        error instanceof ApiError &&
-        error.status === 409 &&
-        !overwrite &&
-        window.confirm(`${error.message}. 上書きしますか?`)
-      ) {
+      // 確かめた後に別の所で書かれた場合も, 既にある扱いにして上書きして
+      // よいかを聞く
+      if (!(error instanceof ApiError) || error.status !== 409 || overwrite) return
+      markExists(text)
+      if (window.confirm(`${error.message}. 上書きしますか?`)) {
         save.mutate({ text, overwrite: true })
       }
     },
@@ -260,7 +276,7 @@ function ProjectSaveSection({
       {save.error && !(save.error instanceof ApiError && save.error.status === 409) && (
         <ErrorBox error={save.error} />
       )}
-      <p role="status" className="text-sm empty:hidden">
+      <p role="status" className="text-sm">
         {written ? `${written} に保存しました` : ''}
       </p>
     </section>

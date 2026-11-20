@@ -123,3 +123,16 @@ describe('datasetSummary', () => {
     )
   })
 })
+
+describe('applyDatasetInputs (名前の重なり)', () => {
+  it('ノードと同じ名前の入力は作らず, 何も変えない', () => {
+    const before: Spec = {
+      ...emptySpec(),
+      nodes: { features: { unit: 'nn.ReLU', inputs: 'x' } },
+      outputs: { y: 'features' },
+    }
+    const { spec, notes } = applyDatasetInputs(before, table, units)
+    expect(spec).toBe(before)
+    expect(notes[0]).toContain('ノード features')
+  })
+})

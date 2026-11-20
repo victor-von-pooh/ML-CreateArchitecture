@@ -53,7 +53,7 @@ dev = [
 [tool.uv.sources]
 ml-modelcontrol = { path = "../ML-ModelControl", editable = true }
 # 任意の依存 project のライブラリ (main の版を uv.lock で決める)
-ml-eda = { git = "https://github.com/victor-von-pooh/ML-EDA.git", branch = "feat/model-inputs" }
+ml-eda = { git = "https://github.com/victor-von-pooh/ML-EDA.git" }
 ml-quest = { git = "https://github.com/victor-von-pooh/ML-Quest.git" }
 # Linux (CI) では CUDA の無い軽い PyTorch を使う
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]

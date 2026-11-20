@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 import yaml
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from ml_createarchitecture.store import ModelError, spec_text, write_atomic
 
@@ -37,8 +37,9 @@ PROBLEM_FILE = "problem.yaml"
 # 書けるモデルの定義の拡張子
 SPEC_SUFFIXES = (".yaml", ".yml")
 
-# 問題の設定を読めないときの例外 (ML-Quest の形の崩れも含む)
-PROBLEM_ERRORS = (
+# 他の段階のファイルを読めないときの例外 (ライブラリの中の形の崩れも
+# 含む)
+READ_ERRORS = (
     OSError, ValueError, TypeError, KeyError, AttributeError,
     yaml.YAMLError
 )
@@ -236,13 +237,12 @@ def read_dataset_inputs(body: PathBody) -> DatasetInputs:
             f"{path} は書き出したデータセットではありません "
             f"(dataset.yaml がありません): {error}"
         ) from error
-    except (OSError, ValueError, TypeError, KeyError,
-            yaml.YAMLError) as error:
+    except READ_ERRORS as error:
         raise HTTPException(
             422, f"データセットを読めません: {error}"
         ) from error
 
-    # 入力の名前, 形の例, 型と, 出す値の数
+    # 入力の名前, 形の例, 型と, 出す値の数 (形の崩れた値は 422)
     if not isinstance(info, dict) or not isinstance(info.get("inputs"), list):
         raise HTTPException(422, "データセットの入力を読めません")
     inputs = [
@@ -256,13 +256,65 @@ def read_dataset_inputs(body: PathBody) -> DatasetInputs:
     if not inputs:
         raise HTTPException(422, "データセットに入力がありません")
     outputs = info.get("outputs")
-    result = DatasetInputs(
-        path=str(path), inputs=inputs, task=info.get("task"),
-        target=info.get("target"), classes=info.get("classes"),
-        outputs=outputs if isinstance(outputs, int) and outputs > 0 else None
-    )
+    classes = info.get("classes")
+    try:
+        result = DatasetInputs(
+            path=str(path), inputs=inputs, task=optional_text(info, "task"),
+            target=optional_text(info, "target"),
+            classes=list(classes) if isinstance(classes, list) else None,
+            outputs=outputs if isinstance(outputs, int)
+            and not isinstance(outputs, bool) and outputs > 0 else None
+        )
+    except ValidationError as error:
+        raise HTTPException(
+            422, f"データセットの入力を読めません: {error}"
+        ) from error
 
     return result
+
+
+def optional_text(record: dict[str, Any], key: str) -> Optional[str]:
+    """
+    辞書の値を, 文字列か None にする関数
+
+    Parameters
+    ----------
+    record: dict[str, Any]
+        辞書
+    key: str
+        キー
+
+    Returns
+    ----------
+    text: Optional[str]
+        値の文字列 (無い場合は None. 数の列の名前なども文字列に)
+    """
+    value = record.get(key)
+    text = None if value is None else str(value)
+
+    return text
+
+
+def section(record: Any, key: str) -> dict[str, Any]:
+    """
+    受け渡しの値の段階ごとの辞書を取り出す関数
+
+    Parameters
+    ----------
+    record: Any
+        ML-Quest の handoff の結果
+    key: str
+        段階の名前
+
+    Returns
+    ----------
+    part: dict[str, Any]
+        段階の値 (無いか辞書でない場合は空)
+    """
+    value = record.get(key) if isinstance(record, dict) else None
+    part: dict[str, Any] = value if isinstance(value, dict) else {}
+
+    return part
 
 
 def from_problem(problem_path: Path) -> Optional[ProjectTarget]:
@@ -291,15 +343,15 @@ def from_problem(problem_path: Path) -> Optional[ProjectTarget]:
     try:
         problem = quest.load_problem(problem_path)
         stages = quest.handoff(problem)
-    except PROBLEM_ERRORS as error:
+    except READ_ERRORS as error:
         raise HTTPException(
             422, f"問題の設定を読めません: {error}"
         ) from error
 
     # 記録 (骨組みを書き出したときの保存先, プロジェクト, データセット)
-    model = stages.get("model") or {}
-    data = stages.get("data") or {}
-    project = stages.get("project") or {}
+    model = section(stages, "model")
+    data = section(stages, "data")
+    project = section(stages, "project")
     spec_path = model.get("project_model_spec")
     if not spec_path:
         target = None
@@ -357,9 +409,10 @@ def resolve_target(text: str) -> ProjectTarget:
         if found is None:
             raise HTTPException(
                 422,
-                f"{path.name} にプロジェクトの記録 (project.model_spec) が"
-                "ありません. ML-Pathfinder でプロジェクトを書き出してから選ん"
-                "でください"
+                f"{path.name} にプロジェクトの記録 (model.project_model_spec)"
+                " がありません. ML-Pathfinder でプロジェクトを書き出してから"
+                "選んでください (書き出した後なら, ML-Quest が古いので "
+                f"{SETUP_HINT} で入れ直す)"
             )
         target = check_target(found)
         return target
@@ -378,7 +431,12 @@ def resolve_target(text: str) -> ProjectTarget:
                 "ディレクトリ) ではありません. プロジェクトのディレクトリか"
                 "問題の設定のファイルを選んでください"
             )
-        spec_path = path / DEFAULT_SPEC
+        # リンクをたどった先もプロジェクトの中に限る
+        spec_path = (path / DEFAULT_SPEC).resolve()
+        if not spec_path.is_relative_to(path):
+            raise HTTPException(
+                422, f"保存先 {spec_path} がプロジェクト {path} の外にあります"
+            )
         found = ProjectTarget(
             path=str(spec_path), source="project", exists=spec_path.exists(),
             project=str(path)
@@ -479,7 +537,7 @@ def save_project_model(body: ProjectSaveBody) -> ProjectSaved:
         updated_at = write_atomic(path, text)
     except OSError as error:
         raise HTTPException(
-            422, f"{path} に書けません: {error}"
+            500, f"{path} に書けません: {error}"
         ) from error
     saved = ProjectSaved(path=str(path), updated_at=updated_at)
 
