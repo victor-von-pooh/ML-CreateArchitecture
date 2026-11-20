@@ -476,7 +476,7 @@ def config_dataset(project: Path) -> Optional[str]:
     if not isinstance(value, str) or not value.strip():
         dataset = None
         return dataset
-    dataset = str((project / Path(value).expanduser()).resolve())
+    dataset = str((project / value).resolve())
 
     return dataset
 
