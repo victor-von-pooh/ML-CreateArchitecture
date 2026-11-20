@@ -24,14 +24,16 @@
     <td>パラメータの状態. 凍結, 零初期化, 外部の重み (キーの付け替え付き) を書き, 「重みを読んで確かめる」で読めた / 形の違う / 新しい / 使わない重みの数を見る</td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><img src="docs/images/license.png" width="70%" alt="学習済みの重みのライセンス: Hugging Face の BERT のノードで, 配布元から読んだライセンスと商用で使えるかが出る"></td>
+    <td><img src="docs/images/license.png" alt="学習済みの重みのライセンス (商用で使える): Hugging Face の bert-base-uncased のノードで, 配布元から読んだ apache-2.0 と読んだ版が出る"></td>
+    <td><img src="docs/images/license_alert.png" alt="学習済みの重みのライセンス (警告): 同じノードのモデルを cc-by-nc-4.0 のものに替えると, 商用で使えないという警告が出る"></td>
   </tr>
   <tr>
-    <td colspan="2" align="center">学習済みの重みのライセンス. 配布元から読んだライセンス, 商用で使えるか, 読んだ版, 推論の一式に重みを写せるかが出る</td>
+    <td>学習済みの重みのライセンス. 配布元から読んだライセンス, 商用で使えるか, 読んだ版, 推論の一式に重みを写せるかが出る</td>
+    <td>商用で使えないライセンス (ここでは cc-by-nc-4.0) の重みは, 警告の色で出る</td>
   </tr>
 </table>
 
-画面の例は ML-ModelControl に同梱の例 (`vae`, `cnn_classifier`, `bert_classifier`) と, 全結合の層 1 つを置いた定義 (外部の重みは小さな見本のファイル). 外部のライブラリは入れずに (`make setup` のまま) 起動したので, BERT の例は「transformers が入っていません」の誤りも出ている. ライセンスは Hugging Face のモデルの説明から読んだもの.
+画面の例は ML-ModelControl に同梱の例 (`vae`, `cnn_classifier`, `bert_classifier`) と, 全結合の層 1 つを置いた定義 (外部の重みは小さな見本のファイル). ライセンスの 2 枚は `make setup EXTRAS=huggingface` で起動し, `bert_classifier` の `bert` のノードを選んだ所 (警告の方は `model_name` を cc-by-nc-4.0 の公開モデルに替えた所). ライセンスは Hugging Face のモデルの説明から読んだもの. 他の図は外部のライブラリを入れずに (`make setup` のまま) 起動した.
 
 ## できること
 
