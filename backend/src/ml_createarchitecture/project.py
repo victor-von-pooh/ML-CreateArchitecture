@@ -373,9 +373,13 @@ def missing_record(problem_path: Path) -> str:
         プロジェクトを書き出していないか, 書き出したプロジェクトに定義の
         置き場の記録が無いか
     """
-    # プロジェクトの場所の記録の有無で分ける (読めることは確かめ済み)
+    # プロジェクトの場所の記録の有無で分ける (読み直しの間に読めなくなった
+    # 場合は, 記録の無い文に)
     quest = load_library("ml_quest", "handoff")
-    stages = quest.handoff(quest.load_problem(problem_path))
+    try:
+        stages = quest.handoff(quest.load_problem(problem_path))
+    except READ_ERRORS:
+        stages = {}
     project_path = section(stages, "project").get("path")
     if project_path:
         reason = (

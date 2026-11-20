@@ -223,6 +223,24 @@ describe('applyDatasetInputs (ファイルの組)', () => {
     )
   })
 
+  it('点群で最後が点ごとの全結合なら, 点の数を値の数に入れず知らせる', () => {
+    const before: Spec = {
+      ...emptySpec(),
+      inputs: { observed: { shape: [4, 512, 3] } },
+      nodes: {
+        dec: {
+          unit: 'nn.Linear',
+          params: { in_features: 3, out_features: 3 },
+          inputs: 'observed',
+        },
+      },
+      outputs: { cloud: 'dec' },
+    }
+    const { spec, notes } = applyDatasetInputs(before, clouds, units)
+    expect(spec.nodes.dec!.params).toEqual({ in_features: 3, out_features: 3 })
+    expect(notes.at(-1)).toContain('正解の点の数 1024')
+  })
+
   it('正解の種類と項目の名前を知らせる', () => {
     expect(datasetSummary(masks)).toBe(
       'データセットから入れました: 入力 image [4, 1, ?, ?], 正解 mask (mask), クラス 3, 出す値 3',

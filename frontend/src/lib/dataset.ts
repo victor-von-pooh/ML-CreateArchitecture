@@ -232,10 +232,14 @@ export function applyDatasetInputs(
   }
   const source = outputNames.length === 1 ? parseRef(next.outputs[outputNames[0]!]!).name : null
   const last = source ? next.nodes[source] : undefined
-  // 最後の部品の出す数の引数 (全結合は out_features, 畳み込みは out_channels)
-  const param = ['out_features', 'out_channels'].find(
-    (name) => source && last && hasParam(units, last.unit, name),
-  )
+  // 最後の部品の出す数の引数 (全結合は out_features, 畳み込みは out_channels).
+  // 点群の outputs は値の数でなく点の数なので, 形を変える部品 (Reshape) だけで合わせる
+  const cloud = info.target_kind === 'point_cloud'
+  const param = cloud
+    ? undefined
+    : ['out_features', 'out_channels'].find(
+        (name) => source && last && hasParam(units, last.unit, name),
+      )
   const reshaped = source && !param ? fitReshape(next, units, source, outputs) : null
   if (source && last && param) {
     if (last.params?.[param] !== outputs) {
@@ -252,7 +256,11 @@ export function applyDatasetInputs(
     next = reshaped.spec
     notes.push(reshaped.note)
   } else {
-    notes.push(`出力の大きさ ${outputs} は, 最後の部品の引数に手で入れてください`)
+    notes.push(
+      cloud
+        ? `正解の点の数 ${outputs} は, 最後に点の数と 3 の形にする部品 (op.Reshape) を置いて手で合わせてください`
+        : `出力の大きさ ${outputs} は, 最後の部品の引数に手で入れてください`,
+    )
   }
   return { spec: next, notes }
 }
