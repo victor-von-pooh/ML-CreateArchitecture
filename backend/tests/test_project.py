@@ -264,7 +264,10 @@ def make_project_dir(path: Path) -> Path:
     """
     config = path / "configs" / "default" / "train.yaml"
     config.parent.mkdir(parents=True)
-    config.write_text("model:\n  spec: models/model.yaml\n")
+    config.write_text(
+        "data:\n  dataset: outputs/dataset\n"
+        "model:\n  spec: models/model.yaml\n"
+    )
 
     return path
 
@@ -295,6 +298,9 @@ def test_project_dir_save(client: TestClient, tmp_path: Path) -> None:
     expected = project.resolve() / "models" / "model.yaml"
     assert target["path"] == str(expected)
     assert target["source"] == "project" and target["exists"] is False
+
+    # データセットの候補は config の data.dataset (プロジェクトから)
+    assert target["dataset"] == str(project.resolve() / "outputs" / "dataset")
 
     # 保存 (models/ を作る) すると定義として読める
     body = {"path": str(project), "spec": SPEC}
@@ -621,3 +627,36 @@ def test_project_symlink_and_mode(client: TestClient, tmp_path: Path) -> None:
     assert response.status_code == 200
     mode = (other / "models" / "model.yaml").stat().st_mode & 0o777
     assert mode & 0o044
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["model:\n  spec: models/model.yaml\n", "data: [1, 2\n", "data: 3\n"]
+)
+def test_project_dir_without_dataset(
+    client: TestClient, tmp_path: Path, text: str
+) -> None:
+    """
+    config に data.dataset が無いか読めない記録の無いプロジェクトでは,
+    データセットの候補を出さずに保存先を返すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    text: str
+        config の中身
+
+    Returns
+    ----------
+    None
+    """
+    project = make_project_dir(tmp_path / "proj")
+    (project / "configs" / "default" / "train.yaml").write_text(text)
+    response = client.post(
+        "/api/project/target", json={"path": str(project)}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["dataset"] is None

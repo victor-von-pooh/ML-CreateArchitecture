@@ -439,11 +439,46 @@ def resolve_target(text: str) -> ProjectTarget:
             )
         found = ProjectTarget(
             path=str(spec_path), source="project", exists=spec_path.exists(),
-            project=str(path)
+            project=str(path), dataset=config_dataset(path)
         )
     target = check_target(found)
 
     return target
+
+
+def config_dataset(project: Path) -> Optional[str]:
+    """
+    骨組みの config の data.dataset を, プロジェクトのディレクトリからの
+    絶対パスにして返す関数
+
+    問題の設定の記録の無いプロジェクトでも, 学習のスクリプトが読む
+    データセットの場所を, 入力と出力を作る欄の候補に出すため
+
+    Parameters
+    ----------
+    project: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    dataset: Optional[str]
+        データセットの場所 (config を読めないか, 書いていなければ None)
+    """
+    # 候補に出すだけなので, 読めない config は黙って候補無し
+    try:
+        config = yaml.safe_load(
+            (project / PROJECT_CONFIG).read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        dataset = None
+        return dataset
+    value = section(config, "data").get("dataset")
+    if not isinstance(value, str) or not value.strip():
+        dataset = None
+        return dataset
+    dataset = str((project / Path(value).expanduser()).resolve())
+
+    return dataset
 
 
 def check_target(target: ProjectTarget) -> ProjectTarget:

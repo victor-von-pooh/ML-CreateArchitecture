@@ -87,7 +87,12 @@ function DatasetSection({
   const [seen, setSeen] = useState(suggested)
   if (suggested !== seen) {
     setSeen(suggested)
-    if (suggested && !touched) setPath(suggested)
+    // 打つ前の欄だけを記録の場所にし, 次に開いたときも同じ場所を出す
+    // (打った場所は, 読んだときに覚える)
+    if (suggested && !touched) {
+      setPath(suggested)
+      remember(DATASET_KEY, suggested)
+    }
   }
   const [result, setResult] = useState<string[] | null>(null)
   const titleId = useId()
@@ -199,7 +204,6 @@ function ProjectSaveSection({
     mutationFn: (text: string) => api.projectTarget(text),
     onSuccess: (value, text) => {
       remember(PROJECT_KEY, text)
-      if (value.dataset) remember(DATASET_KEY, value.dataset)
       setTarget({ path: text, value })
       setWritten(null)
       onTarget(value)
