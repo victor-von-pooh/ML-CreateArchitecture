@@ -364,6 +364,13 @@ def from_problem(problem_path: Path) -> Optional[ProjectTarget]:
             "問題の設定にプロジェクトの場所 (project.path) の記録がありません"
         )
     root = absolute_path(str(project_path))
+    if not (root / PROJECT_CONFIG).is_file():
+        raise HTTPException(
+            422,
+            f"問題の設定が記録したプロジェクト {root} に {PROJECT_CONFIG} が"
+            "ありません. プロジェクトを移したか消した場合は, ML-Pathfinder で"
+            "書き出し直してください"
+        )
     if not path.is_relative_to(root):
         raise HTTPException(
             422,
@@ -431,8 +438,9 @@ def resolve_target(text: str) -> ProjectTarget:
                 "ディレクトリ) ではありません. プロジェクトのディレクトリか"
                 "問題の設定のファイルを選んでください"
             )
-        # リンクをたどった先もプロジェクトの中に限る
-        spec_path = (path / DEFAULT_SPEC).resolve()
+        # config の model.spec (無ければ骨組みの既定). リンクをたどった先も
+        # プロジェクトの中に限る
+        spec_path = (path / config_spec(path)).resolve()
         if not spec_path.is_relative_to(path):
             raise HTTPException(
                 422, f"保存先 {spec_path} がプロジェクト {path} の外にあります"
@@ -479,6 +487,38 @@ def config_dataset(project: Path) -> Optional[str]:
     dataset = str((project / value).resolve())
 
     return dataset
+
+
+def config_spec(project: Path) -> Path:
+    """
+    骨組みの config の model.spec を返す関数
+
+    学習のスクリプトが読むモデルの定義の場所に保存するため. 書いていない
+    か読めない場合は骨組みの既定
+
+    Parameters
+    ----------
+    project: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    spec: Path
+        プロジェクトからのモデルの定義の場所
+    """
+    # 読めない config と書いていない場合は既定の models/model.yaml
+    try:
+        config = yaml.safe_load(
+            (project / PROJECT_CONFIG).read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        spec = DEFAULT_SPEC
+        return spec
+    value = section(config, "model").get("spec")
+    spec = (Path(value) if isinstance(value, str) and value.strip()
+            else DEFAULT_SPEC)
+
+    return spec
 
 
 def check_target(target: ProjectTarget) -> ProjectTarget:
@@ -566,9 +606,14 @@ def save_project_model(body: ProjectSaveBody) -> ProjectSaved:
     except ModelError as error:
         raise HTTPException(422, str(error)) from error
 
-    # 保存先のディレクトリ (骨組みの models/) が無ければ作ってから書き込み
+    # 保存先のディレクトリ (骨組みの models/) は 1 段だけ作る. 消した
+    # プロジェクトの場所を作り直して書かないため
+    if not path.parent.parent.is_dir():
+        raise HTTPException(
+            422, f"保存先のディレクトリ {path.parent.parent} がありません"
+        )
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(exist_ok=True)
         updated_at = write_atomic(path, text)
     except OSError as error:
         raise HTTPException(

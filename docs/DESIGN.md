@@ -64,9 +64,10 @@ ML-Dashboard と同じ構成と道具 (uv, pnpm, Ruff, mypy, Prettier, oxlint, O
         - 出力の大きさ (`outputs`. 分類はクラスの数, 回帰は 1, 予測は先の期の数か 1): 部品の無い定義で入力が 2 次元なら, `nn.Linear` の `head` を置いて出力 `out` につなぐ. 出力が 1 つで, そのつなぎ元のノードが `out_features` の引数を持てば, それを出す値の数にする. それ以外 (出力が複数, 最後が `out_features` を持たない部品, タスクを決めていない) は変えずに, 手で入れる値を知らせる
         - 入れた結果 (入力の形, タスク, 目的の列, クラスの数, 出す値の数, 変えたノードと残したもの) は, 欄の下と部品の一覧の上に知らせる
     - 「プロジェクトに保存」: 学習のプロジェクトのディレクトリか, 問題の設定のファイル (`problem.yaml` か, ML-Pathfinder の置き場の問題の設定) の場所を書き, 「保存先を確かめる」で保存先を出してから保存する. 保存先は次の順に決める
-        - 問題の設定のファイルか, プロジェクトの中の `problem.yaml`: ML-Quest の `handoff` の `model.project_model_spec` (ML-Quest が骨組みを書き出したときの記録). プロジェクトの場所 (`project.path`) の中だけに書く
-        - 記録の無いプロジェクト (`configs/default/train.yaml` を持つディレクトリ): ML-Quest の骨組みの config の `model.spec` の既定の `models/model.yaml` (リンクをたどった先もプロジェクトの中に限る)
+        - 問題の設定のファイルか, プロジェクトの中の `problem.yaml`: ML-Quest の `handoff` の `model.project_model_spec` (ML-Quest が骨組みを書き出したときの記録). 記録のプロジェクトの場所 (`project.path`) が学習のプロジェクト (`configs/default/train.yaml` を持つ) で, その中の場合だけ書く (手で書いた記録や, 移したか消したプロジェクトの記録で, よその YAML を書き換えないため)
+        - 記録の無いプロジェクト (`configs/default/train.yaml` を持つディレクトリ): config の `model.spec` (書いていなければ骨組みの既定の `models/model.yaml`. 学習のスクリプトが読む場所に書くため. リンクをたどった先もプロジェクトの中に限る)
         - プロジェクトの中の `problem.yaml` を読めない場合 (ML-Quest が無い, 知らない版, 直すところがある) は, 既定の場所に替えずに理由を出して止まる (記録と違う場所に黙って書かないため)
+        - 保存先のディレクトリは 1 段 (`models/`) だけ作る. それより上が無い場合は書かない
         - 既にファイルがある場合は, 上書きしてよいかを確かめてから書く. 保存するのは定義全体 (置き場への保存と同じく `dump_spec` が書ける最も低い版). 置き場の定義とは別のファイルなので, 置き場の保存していない変更の印 (`*`) は変えない. 保存すると欄の下と画面の右下に「<保存先> に保存しました」と出す
         - 最後に確かめたプロジェクトの場所とデータセットの場所は, ブラウザ (`localStorage`) に覚えて次の欄に入れる
 - **自作の部品 (起動の設定のモジュール)**: 研究の自作の部品は, バックエンドを起動する環境の `ML_CREATEARCHITECTURE_MODULES` (モジュールの名前をカンマで区切って並べる. 例: `my_lab.units,my_lab.blocks`) に書いたモジュールだけを, 起動のときに ML-ModelControl の `register_units_from` で読み込む (宣言の書き方は ML-ModelControl の docs/DESIGN.md の「自作の部品のモジュール」). このリポジトリの他の起動の設定 (`ML_CREATEARCHITECTURE_HOME`, `ML_CREATEARCHITECTURE_TOKEN`, `ML_MODELCONTROL_WEIGHTS_DIRS`) と同じく環境変数にし, 設定のファイルは作らない
