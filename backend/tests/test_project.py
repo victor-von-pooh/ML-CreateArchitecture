@@ -7,10 +7,12 @@ import numpy as np
 import pandas as pd
 import pytest
 import yaml
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from ml_modelcontrol import load_spec
 
 from ml_createarchitecture.app import create_app
+from ml_createarchitecture.project import make_parents
 
 # 全結合だけの小さなモデルの定義
 SPEC = {
@@ -724,3 +726,200 @@ def test_problem_record_guards(
         "/api/project/target", json={"path": str(project)}
     )
     assert response.json()["path"] == str(project / "models" / "other.yaml")
+
+
+@pytest.mark.parametrize(
+    "spec", [
+        "configs/default/train.yaml", "configs/other.yaml",
+        "Configs/new/model.yaml"
+    ]
+)
+def test_project_refuses_configs(
+    client: TestClient, tmp_path: Path, spec: str
+) -> None:
+    """
+    config の model.spec が学習の設定のディレクトリ (configs/) を指す
+    場合に, 確かめも保存も断ることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    spec: str
+        config の model.spec
+
+    Returns
+    ----------
+    None
+    """
+    # config そのものも, configs/ の下の別のファイルも 422 で書かない
+    project = make_project_dir(tmp_path / "proj").resolve()
+    config = project / "configs" / "default" / "train.yaml"
+    text = f"data:\n  dataset: outputs/dataset\nmodel:\n  spec: {spec}\n"
+    config.write_text(text)
+    response = client.post(
+        "/api/project/target", json={"path": str(project)}
+    )
+    assert response.status_code == 422
+    assert "configs/" in response.json()["detail"]
+    response = client.put(
+        "/api/project/model",
+        json={"path": str(project), "spec": SPEC, "overwrite": True}
+    )
+    assert response.status_code == 422
+    assert config.read_text() == text
+    assert sorted(path.name for path in project.iterdir()) == ["configs"]
+
+
+def test_project_deep_spec(client: TestClient, tmp_path: Path) -> None:
+    """
+    2 段以上の深さの保存先では, プロジェクトの中の無いディレクトリだけを
+    作り, 外には作らないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # models/a/b/ を順に作って書く
+    project = make_project_dir(tmp_path / "proj").resolve()
+    config = project / "configs" / "default" / "train.yaml"
+    config.write_text("model:\n  spec: models/a/b/model.yaml\n")
+    response = client.put(
+        "/api/project/model", json={"path": str(project), "spec": SPEC}
+    )
+    assert response.status_code == 200, response.text
+    expected = project / "models" / "a" / "b" / "model.yaml"
+    assert response.json()["path"] == str(expected)
+    assert load_spec(expected)["nodes"]["fc"]["unit"] == "nn.Linear"
+
+    # プロジェクトの外の場所と, 無いプロジェクトには作らない
+    outside = tmp_path / "outside" / "x" / "m.yaml"
+    with pytest.raises(HTTPException) as caught:
+        make_parents(outside, str(project))
+    assert caught.value.status_code == 422
+    gone = tmp_path / "gone"
+    with pytest.raises(HTTPException):
+        make_parents(gone / "models" / "m.yaml", str(gone))
+    assert not (tmp_path / "outside").exists() and not gone.exists()
+
+
+def save_problem(
+    quest: Any, home: Path, name: str, problem: dict[str, Any]
+) -> Path:
+    """
+    問題の設定を, ML-Pathfinder の置き場の形で保存する関数
+
+    Parameters
+    ----------
+    quest: Any
+        ML-Quest のモジュール
+    home: Path
+        ML-Pathfinder の置き場
+    name: str
+        問題の設定の識別子 (ディレクトリの名前)
+    problem: dict[str, Any]
+        問題の設定
+
+    Returns
+    ----------
+    path: Path
+        保存した problem.yaml
+    """
+    path = home / "problems" / name / "problem.yaml"
+    quest.save_problem(problem, path)
+
+    return path
+
+
+def test_list_problems(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    ML-Pathfinder の置き場の問題の設定を並べ, プロジェクトを書き出した
+    ものだけを使えるとし, 他は理由を付けることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        環境変数の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    # 置き場が無ければ空
+    quest = pytest.importorskip("ml_quest")
+    home = tmp_path / "pathfinder"
+    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
+    response = client.get("/api/problems")
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "root": str(home.resolve() / "problems"), "problems": [],
+        "error": None
+    }
+
+    # 書き出したもの, 書き出していないもの, 読めないもの, 問題の設定で
+    # ないもの
+    problem = quest.example_problem(next(iter(quest.EXAMPLES)))
+    project = tmp_path / "proj"
+    quest.make_project(problem, project)
+    recorded = save_problem(
+        quest, home, "a", quest.record_project(problem, project)
+    )
+    save_problem(quest, home, "b", problem)
+    broken = home / "problems" / "c" / "problem.yaml"
+    broken.parent.mkdir()
+    broken.write_text("name: [\n")
+    other = home / "problems" / "d" / "problem.yaml"
+    other.parent.mkdir()
+    other.write_text("format_version: 2\n")
+    (home / "problems" / "e").mkdir()
+    response = client.get("/api/problems")
+    assert response.status_code == 200, response.text
+    entries = {
+        Path(entry["path"]).parent.name: entry
+        for entry in response.json()["problems"]
+    }
+    assert sorted(entries) == ["a", "b", "c", "d"]
+
+    # 書き出したものは保存先, プロジェクト, データセットの場所を持ち,
+    # 「プロジェクトに保存」で確かめるのと同じ保存先
+    first = entries["a"]
+    assert first["usable"] is True and first["reason"] is None
+    assert first["name"] == problem["name"] and first["created_at"]
+    assert first["project"] == str(project.resolve())
+    assert first["dataset"] == str(project.resolve() / "outputs" / "dataset")
+    response = client.post(
+        "/api/project/target", json={"path": str(recorded)}
+    )
+    assert response.json()["path"] == first["target"]
+    assert first["target"].endswith("models/model.yaml")
+
+    # 他は使えず, 理由が付く
+    assert entries["b"]["usable"] is False
+    assert "書き出していません" in entries["b"]["reason"]
+    assert "読めません" in entries["c"]["reason"]
+    assert "問題の設定のファイルではありません" in entries["d"]["reason"]
+    assert entries["d"]["name"] == "d"
+
+    # 記録のプロジェクトを消すと, 使えなくなり理由が付く
+    (project / "configs" / "default" / "train.yaml").unlink()
+    response = client.get("/api/problems")
+    first = next(
+        entry for entry in response.json()["problems"]
+        if entry["path"] == str(recorded)
+    )
+    assert first["usable"] is False and "ML-Pathfinder" in first["reason"]

@@ -113,3 +113,42 @@ test('記録の無いプロジェクトでも, 保存先を確かめると confi
     .getByLabel('データセットのディレクトリ')
   await expect(field).toHaveValue(`${project}/outputs/dataset`)
 })
+
+test('問題の設定を一覧から選ぶと, 記録のデータセットと保存先が入り, そのまま保存できる', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const dialog = await openDialog(page)
+  const list = dialog.getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+
+  // プロジェクトを書き出していない問題の設定は, 理由を付けて選べない
+  const draft = list.getByRole('button', { name: /e2e の下書き/ })
+  await expect(draft).toBeDisabled()
+  await expect(draft).toContainText('プロジェクトを書き出していません')
+
+  // 打った後のデータセットの欄も, 選んだ記録の場所に変わる
+  const data = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
+  const field = data.getByLabel('データセットのディレクトリ')
+  await field.fill('/somewhere/else')
+  const recorded = list.getByRole('button', { name: /e2e の売上/ })
+  await recorded.click()
+  await expect(recorded).toHaveAttribute('aria-pressed', 'true')
+
+  // 保存先は記録の場所 (場所を打たずに決まる)
+  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
+  await expect(save.getByLabel('プロジェクトか問題の設定')).toHaveValue(
+    /problems\/recorded\/problem\.yaml$/,
+  )
+  const target = save.getByRole('group', { name: '保存先' })
+  await expect(target).toContainText(modelFile)
+  await expect(target).toContainText('問題の設定 e2e の売上 の記録の保存先')
+  await expect(field).toHaveValue(dataset)
+
+  // そのまま入力と出力を作り, 保存できる (既にあれば上書きを確かめる)
+  await data.getByRole('button', { name: '入力と出力を作る' }).click()
+  await expect(data.getByRole('status')).toContainText('出す値 3')
+  page.on('dialog', (confirm) => void confirm.accept())
+  await target.getByRole('button', { name: 'この場所に保存' }).click()
+  await expect(save.getByRole('status')).toContainText(`${modelFile} に保存しました`)
+  expect(readFileSync(modelFile, 'utf-8')).toContain('out_features: 3')
+})

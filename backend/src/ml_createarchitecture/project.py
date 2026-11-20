@@ -6,6 +6,7 @@
 依存 project で入る
 """
 
+import datetime as dt
 import importlib
 from pathlib import Path
 from types import ModuleType
@@ -15,6 +16,7 @@ import yaml
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
+from ml_createarchitecture.settings import get_problems_dir
 from ml_createarchitecture.store import ModelError, spec_text, write_atomic
 
 router = APIRouter(prefix="/api")
@@ -31,8 +33,12 @@ EXAMPLE_SIZE = 4
 PROJECT_CONFIG = Path("configs/default/train.yaml")
 DEFAULT_SPEC = Path("models/model.yaml")
 
-# プロジェクトのディレクトリの問題の設定
+# プロジェクトのディレクトリの問題の設定 (ML-Pathfinder の置き場でも同じ
+# 名前)
 PROBLEM_FILE = "problem.yaml"
+
+# 学習の設定を置くプロジェクトのディレクトリ (モデルの定義は書かない)
+CONFIG_DIR = "configs"
 
 # 書けるモデルの定義の拡張子
 SPEC_SUFFIXES = (".yaml", ".yml")
@@ -76,6 +82,30 @@ class ProjectTarget(BaseModel):
     problem: Optional[str] = Field(
         default=None, description="問題の設定の名前"
     )
+
+
+class ProblemEntry(BaseModel):
+    # ML-Pathfinder の置き場の問題の設定の 1 件と, そのプロジェクトの記録
+    path: str = Field(description="problem.yaml の場所")
+    name: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    usable: bool = Field(description="保存先を決められるか")
+    reason: Optional[str] = Field(
+        default=None, description="使えない理由"
+    )
+    project: Optional[str] = None
+    dataset: Optional[str] = None
+    target: Optional[str] = Field(
+        default=None, description="モデルの定義の保存先"
+    )
+
+
+class ProblemList(BaseModel):
+    # 置き場の problems, 問題の設定 (更新の新しい順), 置き場を読めない理由
+    root: str
+    problems: list[ProblemEntry]
+    error: Optional[str] = None
 
 
 class ProjectSaveBody(BaseModel):
@@ -538,8 +568,8 @@ def check_target(target: ProjectTarget) -> ProjectTarget:
     Raises
     ----------
     HTTPException
-        拡張子が YAML でない場合と, ディレクトリなどファイルでないものが
-        ある場合は 422
+        拡張子が YAML でない場合, 学習の設定のディレクトリ (configs/) の中
+        の場合と, ディレクトリなどファイルでないものがある場合は 422
     """
     # YAML のファイルだけに書く
     path = Path(target.path)
@@ -547,12 +577,215 @@ def check_target(target: ProjectTarget) -> ProjectTarget:
         raise HTTPException(
             422, f"保存先 {path} は YAML のファイル (.yaml) ではありません"
         )
+
+    # 学習の設定 (configs/ の下) は書き換えない. 大文字と小文字を区別しない
+    # ファイルシステムでも同じ場所を断るため, 名前は大小を無視して比べる
+    if target.project is not None and path.is_relative_to(target.project):
+        parts = path.relative_to(target.project).parts
+        if parts and parts[0].casefold() == CONFIG_DIR:
+            raise HTTPException(
+                422,
+                f"保存先 {path} は学習の設定のディレクトリ ({CONFIG_DIR}/) "
+                "の中です. モデルの定義は models/ などに置いてください"
+            )
     if path.exists() and not path.is_file():
         raise HTTPException(
             422, f"保存先 {path} はファイルではありません"
         )
 
     return target
+
+
+def make_parents(path: Path, project: Optional[str]) -> None:
+    """
+    保存先までの無いディレクトリを, プロジェクトの中だけ作る関数
+
+    消したプロジェクトの場所を作り直したり, プロジェクトの外にディレクトリ
+    を作ったりしないため
+
+    Parameters
+    ----------
+    path: Path
+        保存先
+    project: Optional[str]
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+
+    Raises
+    ----------
+    HTTPException
+        プロジェクトが無い場合と, 保存先がプロジェクトの外の場合は 422
+    OSError
+        ディレクトリを作れない場合
+    """
+    # プロジェクトそのものは作らない
+    root = Path(project) if project is not None else None
+    if root is None or not root.is_dir():
+        raise HTTPException(
+            422, f"保存先のプロジェクトのディレクトリ {root} がありません"
+        )
+    if not path.parent.is_relative_to(root):
+        raise HTTPException(
+            422, f"保存先 {path} がプロジェクト {root} の外にあります"
+        )
+
+    # プロジェクトの直下から順に, 無いものだけ作る
+    missing = [
+        parent for parent in path.parents
+        if parent.is_relative_to(root) and parent != root
+        and not parent.is_dir()
+    ]
+    for parent in reversed(missing):
+        parent.mkdir(exist_ok=True)
+
+    # 作った後のリンクの先もプロジェクトの中に限る
+    if not path.parent.resolve().is_relative_to(root):
+        raise HTTPException(
+            422, f"保存先 {path} がプロジェクト {root} の外にあります"
+        )
+
+
+def modified_at(path: Path) -> Optional[str]:
+    """
+    ファイルの更新時刻を ISO 8601 の文字にする関数
+
+    Parameters
+    ----------
+    path: Path
+        ファイル
+
+    Returns
+    ----------
+    stamp: Optional[str]
+        手元の時刻帯の更新時刻 (読めなければ None)
+    """
+    # 一覧の並べ替えと表示の時刻 (ML-Fathom の一覧と同じ)
+    try:
+        moment = dt.datetime.fromtimestamp(path.stat().st_mtime)
+    except OSError:
+        stamp = None
+        return stamp
+    stamp = moment.astimezone().isoformat(timespec="seconds")
+
+    return stamp
+
+
+def problem_entry(path: Path) -> ProblemEntry:
+    """
+    ML-Pathfinder の置き場の問題の設定を, 一覧の 1 件にする関数
+
+    Parameters
+    ----------
+    path: Path
+        problem.yaml
+
+    Returns
+    ----------
+    entry: ProblemEntry
+        場所, 名前, 時刻, 使えるか (使えない理由), プロジェクトとデータ
+        セットの場所, 保存先
+    """
+    # 読めないものも理由を付けて並べる (名前はディレクトリの名前)
+    entry = ProblemEntry(
+        path=str(path), name=path.parent.name,
+        updated_at=modified_at(path), usable=False
+    )
+    quest = load_library("ml_quest", "handoff")
+    try:
+        problem = quest.load_problem(path)
+    except READ_ERRORS as error:
+        entry.reason = f"問題の設定を読めません: {error}"
+        return entry
+    name = problem.get("name") if isinstance(problem, dict) else None
+    created = problem.get("created_at") if isinstance(problem, dict) else None
+    if not isinstance(name, str) or not created:
+        entry.reason = f"{path.name} は問題の設定のファイルではありません"
+        return entry
+    entry.name = name
+    entry.created_at = str(created)
+
+    # 保存先は「プロジェクトに保存」で確かめるときと同じ決め方
+    try:
+        found = from_problem(path)
+        if found is None:
+            entry.reason = (
+                "プロジェクトを書き出していません (ML-Pathfinder で書き出して"
+                "ください)"
+            )
+            return entry
+        target = check_target(found)
+    except HTTPException as error:
+        entry.reason = str(error.detail)
+        return entry
+    entry.usable = True
+    entry.project = target.project
+    entry.dataset = target.dataset
+    entry.target = target.path
+
+    return entry
+
+
+def updated_of(entry: ProblemEntry) -> str:
+    """
+    一覧の 1 件の更新時刻を, 並べ替えの鍵にする関数
+
+    Parameters
+    ----------
+    entry: ProblemEntry
+        一覧の 1 件
+
+    Returns
+    ----------
+    key: str
+        更新時刻の文字 (無ければ空)
+    """
+    # 時刻の無いものは後ろ
+    key = entry.updated_at or ""
+
+    return key
+
+
+@router.get("/problems")
+def list_problems() -> ProblemList:
+    """
+    ML-Pathfinder の置き場にある問題の設定の一覧を返す関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    result: ProblemList
+        置き場の problems, 問題の設定 (更新の新しい順), 置き場を読めない
+        場合の理由
+
+    Raises
+    ----------
+    HTTPException
+        ML-Quest が無い場合は 501
+    """
+    # problems/<識別子>/problem.yaml (置き場が無ければ空. ML-Fathom と同じ)
+    load_library("ml_quest", "handoff")
+    root = get_problems_dir()
+    files: list[Path] = []
+    error = None
+    try:
+        if root.is_dir():
+            files = [
+                child / PROBLEM_FILE for child in sorted(root.iterdir())
+                if (child / PROBLEM_FILE).is_file()
+            ]
+    except OSError as reason:
+        error = f"{root} を読めません: {reason}"
+    problems = [problem_entry(file) for file in files]
+    problems.sort(key=updated_of, reverse=True)
+    result = ProblemList(root=str(root), problems=problems, error=error)
+
+    return result
 
 
 @router.post("/project/target")
@@ -606,14 +839,9 @@ def save_project_model(body: ProjectSaveBody) -> ProjectSaved:
     except ModelError as error:
         raise HTTPException(422, str(error)) from error
 
-    # 保存先のディレクトリ (骨組みの models/) は 1 段だけ作る. 消した
-    # プロジェクトの場所を作り直して書かないため
-    if not path.parent.parent.is_dir():
-        raise HTTPException(
-            422, f"保存先のディレクトリ {path.parent.parent} がありません"
-        )
+    # 保存先までの無いディレクトリは, プロジェクトの中だけ作る
     try:
-        path.parent.mkdir(exist_ok=True)
+        make_parents(path, target.project)
         updated_at = write_atomic(path, text)
     except OSError as error:
         raise HTTPException(

@@ -17,6 +17,8 @@ export type ModulesInfo = Schemas['ModulesInfo']
 export type DatasetInputs = Schemas['DatasetInputs']
 export type ProjectTarget = Schemas['ProjectTarget']
 export type ProjectSaved = Schemas['ProjectSaved']
+export type ProblemEntry = Schemas['ProblemEntry']
+export type ProblemList = Schemas['ProblemList']
 
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
@@ -96,6 +98,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
+  /** ML-Pathfinder の置き場の問題の設定 (更新の新しい順. 使えないものは理由付き) */
+  listProblems: () => request<ProblemList>('/api/problems'),
   /** プロジェクトのディレクトリか問題の設定から, 定義の保存先を求める */
   projectTarget: (path: string) =>
     request<ProjectTarget>('/api/project/target', {

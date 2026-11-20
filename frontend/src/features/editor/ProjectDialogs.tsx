@@ -1,9 +1,11 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import clsx from 'clsx'
+import { ClipboardList } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 
 import { api, ApiError, type DatasetInputs, type ProjectTarget } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
-import { Button, ErrorBox } from '../../components/ui'
+import { Button, ErrorBox, Spinner } from '../../components/ui'
 import type { Spec } from '../../lib/graph'
 
 // 最後に確かめたプロジェクトとデータセットの場所を覚えるブラウザの保存場所
@@ -64,6 +66,94 @@ function PathField({
   )
 }
 
+/** データセットの欄に入れる場所 (chosen は一覧から問題の設定を選んだ場合) */
+type Suggestion = { path: string | null; chosen: boolean }
+
+/**
+ * ML-Pathfinder の置き場にある問題の設定の一覧. 押すとその問題の設定を選ぶ.
+ * 使えないもの (プロジェクトを書き出していないなど) も理由を付けて並べる
+ */
+function StoredProblems({
+  picked,
+  onPick,
+}: {
+  /** 選んだ問題の設定の場所 */
+  picked: string | null
+  onPick: (path: string) => void
+}) {
+  const problems = useQuery({ queryKey: ['problems'], queryFn: api.listProblems })
+  const list = problems.data
+  const titleId = useId()
+  const reasonId = useId()
+  return (
+    <section aria-labelledby={titleId} className="space-y-2">
+      <h3 id={titleId} className="text-sm font-semibold">
+        問題の設定から選ぶ
+      </h3>
+      <p className="text-[11px] text-ink-3">
+        ML-Pathfinder でプロジェクトを書き出した問題の設定を選ぶと,
+        その記録のデータセットと保存先を下の欄に入れます
+      </p>
+      {problems.isPending && <Spinner />}
+      {problems.error && <ErrorBox error={problems.error} />}
+      {list?.error && <p className="text-xs text-critical-text">{list.error}</p>}
+      {list && list.problems.length === 0 && !list.error && (
+        <p className="text-xs text-ink-3">
+          置き場 (<span className="font-mono break-all">{list.root}</span>)
+          に問題の設定がありません. 下の欄に場所を書いて選べます
+        </p>
+      )}
+      {list && list.problems.length > 0 && (
+        <ul
+          aria-label="ML-Pathfinder に保存した問題の設定"
+          className="max-h-48 overflow-auto rounded-lg border border-line"
+        >
+          {list.problems.map((item, index) => (
+            <li key={item.path}>
+              <button
+                type="button"
+                onClick={() => onPick(item.path)}
+                // 使えないものは理由を出して選べなくする
+                disabled={!item.usable}
+                aria-pressed={picked === item.path}
+                aria-describedby={item.reason ? `${reasonId}-${index}` : undefined}
+                className={clsx(
+                  'flex w-full items-start gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-70',
+                  picked === item.path && 'bg-accent-soft',
+                )}
+              >
+                <ClipboardList size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{item.name}</span>
+                  <span
+                    className="block truncate font-mono text-xs text-ink-3"
+                    title={item.project ?? item.path}
+                  >
+                    {item.project ?? item.path}
+                  </span>
+                  {item.reason && (
+                    <span id={`${reasonId}-${index}`} className="block text-xs text-warning-text">
+                      {item.reason}
+                    </span>
+                  )}
+                  {item.usable && !item.dataset && (
+                    <span className="block text-xs text-ink-2">
+                      データセットの記録がありません (保存先だけ入れます)
+                    </span>
+                  )}
+                </span>
+                <span className="shrink-0 text-xs text-ink-3">
+                  {item.updated_at?.slice(0, 16).replace('T', ' ')}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 /**
  * データセットのディレクトリを書き, ML-EDA で読んだ入力と出す値の数を定義に入れる
  *
@@ -76,8 +166,8 @@ function DatasetSection({
 }: {
   /** 選べない理由 (部分モデルを編集している間. 選べる場合は null) */
   disabled: string | null
-  /** 学習のスクリプトが読むデータセットの場所 (問題の設定の記録か, 無ければ config の data.dataset. この欄に打つ前なら入れる) */
-  suggested: string | null
+  /** 学習のスクリプトが読むデータセットの場所 (問題の設定の記録か, 無ければ config の data.dataset. この欄に打つ前か, 一覧から問題の設定を選んだ場合に入れる) */
+  suggested: Suggestion | null
   /** 読んだ結果を定義に入れ, 知らせる文を返す */
   onApply: (info: DatasetInputs) => string[]
 }) {
@@ -89,10 +179,12 @@ function DatasetSection({
   const [applied, setApplied] = useState<string | null>(null)
   if (suggested !== seen) {
     setSeen(suggested)
-    // 打つ前の欄だけを記録の場所にする (打った場所は, 読んだときに覚える)
-    if (suggested && !touched) {
-      setPath(suggested)
-      setApplied(suggested)
+    // 打つ前の欄だけを記録の場所にする (打った場所は, 読んだときに覚える).
+    // 一覧から選んだ場合は, 打った後でも選んだ記録の場所にする
+    if (suggested?.path && (!touched || suggested.chosen)) {
+      setPath(suggested.path)
+      setApplied(suggested.path)
+      setTouched(false)
     }
   }
   // 欄に入れた記録の場所を, 次に開いたときにも出すように覚える
@@ -181,15 +273,18 @@ function targetSource(target: ProjectTarget): string {
  */
 function ProjectSaveSection({
   spec,
+  choice,
   onSaved,
   onTarget,
 }: {
   /** 保存する定義全体 */
   spec: Spec
+  /** 一覧から選んだ問題の設定 (選ぶたびに新しい値. 欄に入れて保存先を確かめる) */
+  choice: { path: string } | null
   /** 書いた (書いたファイルの場所) */
   onSaved: (path: string) => void
-  /** 保存先を確かめた (記録のデータセットの場所をデータセットの欄に入れるため) */
-  onTarget: (target: ProjectTarget) => void
+  /** 保存先を確かめた (記録のデータセットの場所をデータセットの欄に入れるため. chosen は一覧から選んだ場合) */
+  onTarget: (target: ProjectTarget, text: string, chosen: boolean) => void
 }) {
   const [path, setPath] = useState(() => remembered(PROJECT_KEY))
   // 確かめた保存先 (場所を書き換えたら確かめ直す)
@@ -206,14 +301,25 @@ function ProjectSaveSection({
     )
   const checked = target !== null && target.path === path.trim() ? target.value : null
   const resolve = useMutation({
-    mutationFn: (text: string) => api.projectTarget(text),
-    onSuccess: (value, text) => {
+    mutationFn: ({ text }: { text: string; chosen: boolean }) => api.projectTarget(text),
+    onSuccess: (value, { text, chosen }) => {
       remember(PROJECT_KEY, text)
       setTarget({ path: text, value })
       setWritten(null)
-      onTarget(value)
+      onTarget(value, text, chosen)
     },
   })
+  // 一覧から選んだ問題の設定を欄に入れ, そのまま保存先を確かめる (欄は
+  // 描画の中で, 確かめる要求は描画の後)
+  const [seenChoice, setSeenChoice] = useState(choice)
+  if (choice !== seenChoice) {
+    setSeenChoice(choice)
+    if (choice) setPath(choice.path)
+  }
+  const { mutate: resolveTarget } = resolve
+  useEffect(() => {
+    if (choice) resolveTarget({ text: choice.path, chosen: true })
+  }, [choice, resolveTarget])
   const save = useMutation({
     mutationFn: ({ text, overwrite }: { text: string; overwrite: boolean }) =>
       api.saveProjectModel(text, spec, overwrite),
@@ -251,7 +357,9 @@ function ProjectSaveSection({
         className="space-y-3"
         onSubmit={(event) => {
           event.preventDefault()
-          if (path.trim() && !resolve.isPending) resolve.mutate(path.trim())
+          if (path.trim() && !resolve.isPending) {
+            resolve.mutate({ text: path.trim(), chosen: false })
+          }
         }}
       >
         <PathField
@@ -293,9 +401,10 @@ function ProjectSaveSection({
 }
 
 /**
- * データセットから入力と出力を作る欄と, プロジェクトに保存する欄を並べたダイアログ
+ * 問題の設定の一覧, データセットから入力と出力を作る欄, プロジェクトに保存する欄を並べたダイアログ
  *
- * プロジェクトの保存先を確かめると, その記録のデータセットの場所をデータセットの欄に入れる
+ * プロジェクトの保存先を確かめると, その記録のデータセットの場所をデータセットの欄に入れる.
+ * 一覧から問題の設定を選ぶと, 保存先を確かめ, データセットの欄も記録の場所にする
  */
 export function ProjectDialog({
   spec,
@@ -315,10 +424,15 @@ export function ProjectDialog({
   onClose: () => void
 }) {
   // 学習のスクリプトが読むデータセットの場所 (記録か config の data.dataset)
-  const [suggested, setSuggested] = useState<string | null>(null)
+  const [suggested, setSuggested] = useState<Suggestion | null>(null)
+  // 一覧から選んだ問題の設定と, 最後に保存先を確かめた場所
+  const [choice, setChoice] = useState<{ path: string } | null>(null)
+  const [checked, setChecked] = useState<string | null>(null)
   return (
     <Dialog title="データセットとプロジェクト" onClose={onClose}>
       <div className="space-y-6">
+        <StoredProblems picked={checked} onPick={(path) => setChoice({ path })} />
+        <hr className="border-line" />
         <DatasetSection
           disabled={
             editing === null
@@ -331,8 +445,12 @@ export function ProjectDialog({
         <hr className="border-line" />
         <ProjectSaveSection
           spec={spec}
+          choice={choice}
           onSaved={onSaved}
-          onTarget={(target) => setSuggested(target.dataset ?? null)}
+          onTarget={(target, text, chosen) => {
+            setChecked(text)
+            setSuggested({ path: target.dataset ?? null, chosen })
+          }}
         />
       </div>
     </Dialog>

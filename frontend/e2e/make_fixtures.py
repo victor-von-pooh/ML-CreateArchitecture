@@ -1,6 +1,7 @@
 """
-画面の通しのテスト用に, 書き出したデータセットと学習のプロジェクトを作る
-スクリプト (ML-EDA と ML-Quest で作る. 追加の依存 project が要る)
+画面の通しのテスト用に, 書き出したデータセット, 学習のプロジェクトと,
+ML-Pathfinder の置き場の問題の設定を作るスクリプト (ML-EDA と ML-Quest で
+作る. 追加の依存 project が要る)
 """
 
 import sys
@@ -60,7 +61,38 @@ def make_project(path: Path) -> None:
     ml_quest.make_project(problem, path)
 
 
+def make_store(path: Path, project: Path, dataset: Path) -> None:
+    """
+    ML-Pathfinder の置き場に, プロジェクトを書き出した問題の設定と, まだ
+    書き出していない問題の設定を保存する関数
+
+    Parameters
+    ----------
+    path: Path
+        ML-Pathfinder の置き場
+    project: Path
+        書き出したプロジェクトのディレクトリ
+    dataset: Path
+        記録に書くデータセットのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 書き出した方は, 記録のデータセットを作ったデータセットにする (入力と
+    # 出力を作れるように)
+    problem = ml_quest.example_problem(next(iter(ml_quest.EXAMPLES)))
+    recorded = ml_quest.record_project(
+        {**problem, "name": "e2e の売上"}, project
+    )
+    recorded["project"]["dataset"] = str(dataset.resolve())
+    ml_quest.save_problem(recorded, path / "problems" / "recorded")
+    draft = {**problem, "name": "e2e の下書き"}
+    ml_quest.save_problem(draft, path / "problems" / "draft")
+
+
 if __name__ == "__main__":
     work = Path(sys.argv[1])
     make_dataset(work / "dataset")
     make_project(work / "project")
+    make_store(work / "pathfinder", work / "project", work / "dataset")

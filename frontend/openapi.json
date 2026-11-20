@@ -456,6 +456,25 @@
         }
       }
     },
+    "/api/problems": {
+      "get": {
+        "summary": "List Problems",
+        "description": "ML-Pathfinder の置き場にある問題の設定の一覧を返す関数\n\nParameters\n----------\nNone\n\nReturns\n----------\nresult: ProblemList\n    置き場の problems, 問題の設定 (更新の新しい順), 置き場を読めない\n    場合の理由\n\nRaises\n----------\nHTTPException\n    ML-Quest が無い場合は 501",
+        "operationId": "list_problems",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/project/target": {
       "post": {
         "summary": "Project Target",
@@ -1092,6 +1111,131 @@
           "source"
         ],
         "title": "PretrainedInfo"
+      },
+      "ProblemEntry": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "problem.yaml の場所"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "usable": {
+            "type": "boolean",
+            "title": "Usable",
+            "description": "保存先を決められるか"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "使えない理由"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          },
+          "dataset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target",
+            "description": "モデルの定義の保存先"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "name",
+          "usable"
+        ],
+        "title": "ProblemEntry"
+      },
+      "ProblemList": {
+        "properties": {
+          "root": {
+            "type": "string",
+            "title": "Root"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemEntry"
+            },
+            "type": "array",
+            "title": "Problems"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "root",
+          "problems"
+        ],
+        "title": "ProblemList"
       },
       "ProjectSaveBody": {
         "properties": {

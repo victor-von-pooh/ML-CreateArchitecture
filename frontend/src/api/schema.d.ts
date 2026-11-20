@@ -382,6 +382,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/problems": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Problems
+         * @description ML-Pathfinder の置き場にある問題の設定の一覧を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     None
+         *
+         *     Returns
+         *     ----------
+         *     result: ProblemList
+         *         置き場の problems, 問題の設定 (更新の新しい順), 置き場を読めない
+         *         場合の理由
+         *
+         *     Raises
+         *     ----------
+         *     HTTPException
+         *         ML-Quest が無い場合は 501
+         */
+        get: operations["list_problems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/project/target": {
         parameters: {
             query?: never;
@@ -674,6 +709,48 @@ export interface components {
             source: string;
             /** Url */
             url?: string | null;
+        };
+        /** ProblemEntry */
+        ProblemEntry: {
+            /**
+             * Path
+             * @description problem.yaml の場所
+             */
+            path: string;
+            /** Name */
+            name: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Usable
+             * @description 保存先を決められるか
+             */
+            usable: boolean;
+            /**
+             * Reason
+             * @description 使えない理由
+             */
+            reason?: string | null;
+            /** Project */
+            project?: string | null;
+            /** Dataset */
+            dataset?: string | null;
+            /**
+             * Target
+             * @description モデルの定義の保存先
+             */
+            target?: string | null;
+        };
+        /** ProblemList */
+        ProblemList: {
+            /** Root */
+            root: string;
+            /** Problems */
+            problems: components["schemas"]["ProblemEntry"][];
+            /** Error */
+            error?: string | null;
         };
         /** ProjectSaveBody */
         ProjectSaveBody: {
@@ -1218,6 +1295,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_problems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemList"];
                 };
             };
         };
