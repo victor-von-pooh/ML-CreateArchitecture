@@ -46,7 +46,7 @@ torchvision と timm のモデル (`tv.Model`, `timm.Model`) の名前は, 右�
 5. 上の欄が「パラメータ数 68」「誤り 0 件」になり, ノードに出力の形 `[4, 4]` が出る
 6. 上の名前の欄に名前 (英数字, `_`, `-`) を書いて「保存」(Ctrl+S でもよい). 少しの間「<名前> に保存しました」と出る
 
-「開く」から例 (全結合, 残差, CNN, LSTM, Transformer, GCN, BERT の分類, 部分モデルを重ねたもの. 受け持ちごとの雛形として VAE, GAN, 拡散, 対照, 2 塔, 方策と価値も) を開いて, 組み立て方を見るのもよい.
+「開く」から例 (全結合, 残差, CNN, LSTM, Transformer, GCN, BERT の分類 (Hugging Face の BERT と, 部品から組んだ小さな BERT), 部分モデルを重ねたもの. 受け持ちごとの雛形として VAE, GAN, 拡散, 対照, 2 塔, 方策と価値も) を開いて, 組み立て方を見るのもよい.
 
 ### 画面
 
@@ -142,7 +142,8 @@ cd frontend && pnpm e2e   # 画面の通しのテスト (アプリを起動し�
 | `backend/` | API (Python, FastAPI). ML-ModelControl の確認, 形の推定, 書き出しを呼び, 定義のファイルを保存する |
 | `frontend/` | 画面 (TypeScript, React, Vite, React Flow) |
 | `ML-ModelControl/` | submodule |
-| `docs/DESIGN.md` | 設計の方針と段階 |
+| `docs/GUIDE.md` | 操作ガイド (画面の順に試しながら覚える) |
+| `docs/DESIGN.md` | 設計の方針とまだのこと |
 
 ## ライセンス
 
