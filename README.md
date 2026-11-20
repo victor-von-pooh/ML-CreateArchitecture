@@ -89,8 +89,8 @@ ML-Found で学習する手順は, [ML-ModelControl](https://github.com/victor-v
 
 ## 文書
 
-- [操作ガイド](docs/GUIDE.md): 画面の順に試しながら覚える手順 (分岐と合流, 誤りの直し方, 部分モデル, 下書き, 自作の部品, 操作の一覧, 困ったとき)
-- [設計](docs/DESIGN.md): 役割, ML-ModelControl との約束, 画面, API, 置き場
+- [操作ガイド](docs/GUIDE.md): 画面の順の操作ガイド (分岐と合流, 誤りの直し方, 部分モデル, 下書き, 自作の部品, 操作の一覧). 最後の章が「困ったとき」
+- [設計](docs/DESIGN.md): 今の設計と決まり (ML-ModelControl との約束, 画面, API, 用語, 置き場, 安全)
 - [TODO](TODO.md): まだやっていないこと (優先度の順)
 
 ## 開発
@@ -108,7 +108,7 @@ cd frontend && pnpm e2e   # 画面の通しのテスト (アプリを起動し�
 | --- | --- |
 | `backend/` | API (Python, FastAPI). ML-ModelControl の確認, 形の推定, 書き出しを呼び, 定義のファイルを保存する |
 | `frontend/` | 画面 (TypeScript, React, Vite, React Flow) |
-| `ML-ModelControl/` | submodule |
+| `ML-ModelControl/` | submodule (モデルの定義のライブラリ) |
 | `docs/` | 操作ガイド, 設計, README の画面の例 (`images/`) |
 
 ## ライセンス
