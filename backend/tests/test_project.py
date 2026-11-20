@@ -70,7 +70,7 @@ def stub_inputs(path: Any) -> dict[str, Any]:
     result: dict[str, Any]
         model_inputs と同じ形の結果
     """
-    # 版 2 と説明の無い場合は ML-EDA と同じ例外
+    # 知らない版と説明の無い場合は ML-EDA と同じ例外
     description = Path(path) / "dataset.yaml"
     if not description.is_file():
         raise FileNotFoundError(str(description))
@@ -139,17 +139,19 @@ def test_dataset_inputs_stub(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["inputs"] == [
-        {"name": "x", "shape": [4, 7], "dtype": "float32"}
+        {"name": "x", "shape": [4, 7], "dtype": "float32",
+         "dataset_shape": [None, 7]}
     ]
+    assert body["target_kind"] is None
     assert body["outputs"] == 3 and body["task"] == "classification"
     assert body["classes"] == ["a", "b", "c"]
     assert body["path"] == str(dataset.resolve())
 
-    # 版 2 は ML-EDA の誤りの文で 422, 説明が無い場合は 404
-    other = write_dataset(tmp_path / "ds2", 2)
+    # 知らない版は ML-EDA の誤りの文で 422, 説明が無い場合は 404
+    other = write_dataset(tmp_path / "ds9", 9)
     response = client.post("/api/dataset/inputs", json={"path": str(other)})
     assert response.status_code == 422
-    assert "format_version 2" in response.json()["detail"]
+    assert "format_version 9" in response.json()["detail"]
     empty = tmp_path / "empty"
     empty.mkdir()
     response = client.post("/api/dataset/inputs", json={"path": str(empty)})
@@ -248,6 +250,60 @@ def test_dataset_inputs_real(client: TestClient, tmp_path: Path) -> None:
     body = response.json()
     assert [item["shape"] for item in body["inputs"]] == [[4, 3]]
     assert body["outputs"] == 3 and body["target"] == "label"
+
+
+def test_dataset_inputs_items(client: TestClient, tmp_path: Path) -> None:
+    """
+    本物の ML-EDA で書き出した画像と領域のデータセット (版 3) から,
+    入力の形とクラスの数を読むことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # ファイルの組の model_inputs のある ML-EDA だけ
+    ml_eda = pytest.importorskip("ml_eda")
+    if not hasattr(ml_eda.pipeline, "items_model_inputs"):
+        pytest.skip("ML-EDA の model_inputs がファイルの組を読みません")
+
+    # 32 x 32 にそろえた画像と, 値 0, 1, 2 の領域の説明 (版 3. model_inputs
+    # は説明だけを読む)
+    dataset = tmp_path / "ds"
+    dataset.mkdir()
+    (dataset / "dataset.yaml").write_text(yaml.safe_dump({
+        "format_version": 3, "role": "predict",
+        "target": {"kind": "mask", "entries": ["mask"]},
+        "entries": {
+            "image": {"kind": "image", "role": "input",
+                      "shape": [32, 32, 3], "dtype": "uint8",
+                      "steps": [{"op": "resize", "width": 32,
+                                 "height": 32}]},
+            "mask": {"kind": "mask", "role": "target", "shape": [32, 32],
+                     "dtype": "uint8", "values": [0, 1, 2],
+                     "classes": [{"value": 1, "name": "circle"},
+                                 {"value": 2, "name": "square"}]},
+        },
+    }))
+
+    # 入力は (バッチ, チャンネル, 高さ, 幅), 出す値は背景を含むクラスの数
+    response = client.post(
+        "/api/dataset/inputs", json={"path": str(tmp_path / "ds")}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["inputs"] == [{
+        "name": "image", "shape": [4, 3, 32, 32], "dtype": "float32",
+        "dataset_shape": [None, 3, 32, 32]
+    }]
+    assert body["target_kind"] == "mask" and body["task"] is None
+    assert body["outputs"] == 3 and len(body["classes"]) == 3
 
 
 def make_project_dir(path: Path) -> Path:
@@ -483,7 +539,7 @@ def test_problem_record(
         "/api/project/target", json={"path": str(problem)}
     )
     assert response.status_code == 422
-    assert "ML-Pathfinder" in response.json()["detail"]
+    assert "書き出してありますが" in response.json()["detail"]
     response = client.post(
         "/api/project/target", json={"path": str(project)}
     )
@@ -880,6 +936,9 @@ def test_list_problems(
         quest, home, "a", quest.record_project(problem, project)
     )
     save_problem(quest, home, "b", problem)
+    no_spec = quest.record_project(problem, project)
+    no_spec["project"]["model_spec"] = None
+    save_problem(quest, home, "f", no_spec)
     broken = home / "problems" / "c" / "problem.yaml"
     broken.parent.mkdir()
     broken.write_text("name: [\n")
@@ -893,7 +952,7 @@ def test_list_problems(
         Path(entry["path"]).parent.name: entry
         for entry in response.json()["problems"]
     }
-    assert sorted(entries) == ["a", "b", "c", "d"]
+    assert sorted(entries) == ["a", "b", "c", "d", "f"]
 
     # 書き出したものは保存先, プロジェクト, データセットの場所を持ち,
     # 「プロジェクトに保存」で確かめるのと同じ保存先
@@ -911,6 +970,23 @@ def test_list_problems(
     # 他は使えず, 理由が付く
     assert entries["b"]["usable"] is False
     assert "書き出していません" in entries["b"]["reason"]
+
+    # 書き出してあり, 定義の置き場の記録だけが無いものは, その理由
+    assert entries["f"]["usable"] is False
+    assert "書き出していません" not in entries["f"]["reason"]
+    assert "書き出してありますが" in entries["f"]["reason"]
+    assert str(project.resolve()) in entries["f"]["reason"]
+    response = client.post(
+        "/api/project/target",
+        json={"path": entries["f"]["path"]}
+    )
+    assert response.status_code == 422
+    assert "書き出してありますが" in response.json()["detail"]
+    response = client.post(
+        "/api/project/target", json={"path": entries["b"]["path"]}
+    )
+    assert response.status_code == 422
+    assert "書き出していません" in response.json()["detail"]
     assert "読めません" in entries["c"]["reason"]
     assert "問題の設定のファイルではありません" in entries["d"]["reason"]
     assert entries["d"]["name"] == "d"

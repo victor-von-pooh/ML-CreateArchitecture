@@ -6,6 +6,8 @@ import { expect, test, type Page } from '@playwright/test'
 // e2e/serve.sh が ML-EDA と ML-Quest で作った, 書き出したデータセット (3 列の
 // 3 クラスの分類) と学習のプロジェクトの骨組み
 const dataset = fileURLToPath(new URL('.work/dataset', import.meta.url))
+// 灰色の画像と背景を含む 3 クラスの領域のファイルの組 (版 3. 高さと幅は決まらない)
+const masks = fileURLToPath(new URL('.work/masks', import.meta.url))
 const project = fileURLToPath(new URL('.work/project', import.meta.url))
 const modelFile = `${project}/models/model.yaml`
 
@@ -39,6 +41,34 @@ test('データセットから入力と出力を作ると, 誤り無しで形が
   // 元に戻すで, 入れる前 (部品の無い定義) に戻る
   await page.getByRole('button', { name: '元に戻す' }).click()
   await expect(page.locator('[data-id="head"]')).toHaveCount(0)
+})
+
+test('同梱の U-Net の例を, ファイルの組のデータセットのチャンネルとクラスの数に合わせる', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く', exact: true }).click()
+  await page.getByRole('button', { name: 'unet_segmentation', exact: true }).click()
+  await expect(page.locator('[data-id="head"]')).toContainText('[4, 2, 32, 32]', {
+    timeout: 20_000,
+  })
+
+  const dialog = await openDialog(page)
+  const section = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
+  await section.getByLabel('データセットのディレクトリ').fill(masks)
+  await section.getByRole('button', { name: '入力と出力を作る' }).click()
+
+  // チャンネルは 1, 決まらない高さと幅は例の 32 のまま, クラスは背景を含む 3
+  const result = section.getByRole('status')
+  await expect(result).toContainText('入力 image [4, 1, ?, ?]')
+  await expect(result).toContainText('正解 mask (mask), クラス 3, 出す値 3')
+  await expect(result).toContainText('enc1a の in_channels を 1 にしました')
+  await expect(result).toContainText('head の out_channels を 3 にしました')
+  await dialog.getByRole('button', { name: '閉じる' }).click()
+  await expect(page.locator('[data-id="head"]')).toContainText('[4, 3, 32, 32]', {
+    timeout: 20_000,
+  })
+  await expect(page.locator('header')).toContainText('誤り 0 件')
 })
 
 test('データセットでない場所は, 理由を出して定義を変えない', async ({ page }) => {
@@ -125,6 +155,11 @@ test('問題の設定を一覧から選ぶと, 記録のデータセットと保
   const draft = list.getByRole('button', { name: /e2e の下書き/ })
   await expect(draft).toBeDisabled()
   await expect(draft).toContainText('プロジェクトを書き出していません')
+
+  // 書き出してあり, 定義の置き場の記録だけが無いものは, その理由で選べない
+  const noSpec = list.getByRole('button', { name: /e2e の定義の記録なし/ })
+  await expect(noSpec).toBeDisabled()
+  await expect(noSpec).toContainText('書き出してありますが')
 
   // 打った後のデータセットの欄も, 選んだ記録の場所に変わる
   const data = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })

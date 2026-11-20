@@ -11,6 +11,7 @@ import ml_eda
 import ml_quest
 import numpy as np
 import pandas as pd
+import yaml
 
 
 def make_dataset(path: Path) -> None:
@@ -40,6 +41,42 @@ def make_dataset(path: Path) -> None:
         "split": {"method": "stratified", "valid": 0.2, "test": 0.2}
     }
     ml_eda.export_dataset(ml_eda.load_data(source), recipe, path)
+
+
+def make_masks(path: Path) -> None:
+    """
+    灰色の画像と 3 つの値の領域の, ファイルの組のデータセット (版 3) の
+    説明を書く関数 (model_inputs は説明だけを読むので分割のファイルは
+    書かない)
+
+    Parameters
+    ----------
+    path: Path
+        書き出すディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 大きさの混ざる画像 (高さと幅は決まらない) と, 背景 0 の名前の無い領域
+    path.mkdir(parents=True)
+    info = {
+        "format_version": 3, "role": "predict",
+        "target": {"kind": "mask", "entries": ["mask"]},
+        "entries": {
+            "image": {"kind": "image", "role": "input",
+                      "shape": [None, None, 1], "dtype": "uint8",
+                      "steps": ["grayscale"]},
+            "mask": {"kind": "mask", "role": "target",
+                     "shape": [None, None], "dtype": "uint8",
+                     "values": [0, 1, 2],
+                     "classes": [{"value": 1, "name": "circle"},
+                                 {"value": 2, "name": "square"}]},
+        },
+    }
+    (path / "dataset.yaml").write_text(
+        yaml.safe_dump(info, allow_unicode=True), encoding="utf-8"
+    )
 
 
 def make_project(path: Path) -> None:
@@ -90,9 +127,17 @@ def make_store(path: Path, project: Path, dataset: Path) -> None:
     draft = {**problem, "name": "e2e の下書き"}
     ml_quest.save_problem(draft, path / "problems" / "draft")
 
+    # 書き出してあり, モデルの定義の置き場の記録だけが無いもの
+    no_spec = ml_quest.record_project(
+        {**problem, "name": "e2e の定義の記録なし"}, project
+    )
+    no_spec["project"]["model_spec"] = None
+    ml_quest.save_problem(no_spec, path / "problems" / "no_spec")
+
 
 if __name__ == "__main__":
     work = Path(sys.argv[1])
     make_dataset(work / "dataset")
+    make_masks(work / "masks")
     make_project(work / "project")
     make_store(work / "pathfinder", work / "project", work / "dataset")

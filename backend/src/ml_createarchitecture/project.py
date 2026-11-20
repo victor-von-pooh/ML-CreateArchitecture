@@ -56,10 +56,15 @@ class PathBody(BaseModel):
 
 
 class DatasetInput(BaseModel):
-    # モデルの入力の名前, 形の例 (バッチの次元を含む), 型
+    # モデルの入力の名前, 形の例 (バッチの次元を含む), 型と, データセットの
+    # 形 (決まらない次元は null)
     name: str
     shape: list[int]
     dtype: str
+    dataset_shape: list[Optional[int]] = Field(
+        default_factory=list,
+        description="model_inputs の形 (決まらない次元は null)"
+    )
 
 
 class DatasetInputs(BaseModel):
@@ -69,6 +74,10 @@ class DatasetInputs(BaseModel):
     task: Optional[str] = None
     target: Optional[str] = None
     classes: Optional[list[Any]] = None
+    target_kind: Optional[str] = Field(
+        default=None,
+        description="ファイルの組の正解の種類 (mask, point_cloud など)"
+    )
     outputs: Optional[int] = None
 
 
@@ -245,14 +254,14 @@ def read_dataset_inputs(body: PathBody) -> DatasetInputs:
     Returns
     ----------
     result: DatasetInputs
-        入力 (形はバッチの次元を例の大きさにしたもの), タスク, 目的の列,
-        クラス, 出す値の数
+        入力 (形はバッチの次元を例の大きさにしたものと, データセットの
+        形), タスク, 目的の列, クラス, 正解の種類, 出す値の数
 
     Raises
     ----------
     HTTPException
         ML-EDA が無い場合は 501, ディレクトリか説明が無い場合は 404,
-        読めない場合 (版 2, 知らない版など) は 422
+        読めない場合 (知らない版, 知らない項目の組など) は 422
     """
     # 説明の版と読み方は ML-EDA に任せる
     path = absolute_path(body.path)
@@ -278,7 +287,8 @@ def read_dataset_inputs(body: PathBody) -> DatasetInputs:
     inputs = [
         DatasetInput(
             name=str(item["name"]), shape=example_shape(item.get("shape")),
-            dtype=str(item.get("dtype") or "float32")
+            dtype=str(item.get("dtype") or "float32"),
+            dataset_shape=list(item["shape"])
         )
         for item in info["inputs"] if isinstance(item, dict)
         and "name" in item
@@ -292,6 +302,7 @@ def read_dataset_inputs(body: PathBody) -> DatasetInputs:
             path=str(path), inputs=inputs, task=optional_text(info, "task"),
             target=optional_text(info, "target"),
             classes=list(classes) if isinstance(classes, list) else None,
+            target_kind=optional_text(info, "target_kind"),
             outputs=outputs if isinstance(outputs, int)
             and not isinstance(outputs, bool) and outputs > 0 else None
         )
@@ -345,6 +356,42 @@ def section(record: Any, key: str) -> dict[str, Any]:
     part: dict[str, Any] = value if isinstance(value, dict) else {}
 
     return part
+
+
+def missing_record(problem_path: Path) -> str:
+    """
+    問題の設定にモデルの定義の保存先の記録が無い理由を返す関数
+
+    Parameters
+    ----------
+    problem_path: Path
+        問題の設定のファイル (from_problem が None を返したもの)
+
+    Returns
+    ----------
+    reason: str
+        プロジェクトを書き出していないか, 書き出したプロジェクトに定義の
+        置き場の記録が無いか
+    """
+    # プロジェクトの場所の記録の有無で分ける (読めることは確かめ済み)
+    quest = load_library("ml_quest", "handoff")
+    stages = quest.handoff(quest.load_problem(problem_path))
+    project_path = section(stages, "project").get("path")
+    if project_path:
+        reason = (
+            f"プロジェクト {project_path} は書き出してありますが, モデルの"
+            "定義の置き場の記録 (model.project_model_spec) がありません. "
+            "プロジェクトのディレクトリを選ぶと, config の model.spec (無けれ"
+            f"ば骨組みの既定の {DEFAULT_SPEC}) に保存します"
+        )
+        return reason
+    reason = (
+        "プロジェクトを書き出していません (ML-Pathfinder で書き出して"
+        "ください. 書き出した後なら, ML-Quest が古いので "
+        f"{SETUP_HINT} で入れ直す)"
+    )
+
+    return reason
 
 
 def from_problem(problem_path: Path) -> Optional[ProjectTarget]:
@@ -445,11 +492,7 @@ def resolve_target(text: str) -> ProjectTarget:
         found = from_problem(path)
         if found is None:
             raise HTTPException(
-                422,
-                f"{path.name} にプロジェクトの記録 (model.project_model_spec)"
-                " がありません. ML-Pathfinder でプロジェクトを書き出してから"
-                "選んでください (書き出した後なら, ML-Quest が古いので "
-                f"{SETUP_HINT} で入れ直す)"
+                422, f"{path.name} を選べません: {missing_record(path)}"
             )
         target = check_target(found)
         return target
@@ -711,10 +754,7 @@ def problem_entry(path: Path) -> ProblemEntry:
     try:
         found = from_problem(path)
         if found is None:
-            entry.reason = (
-                "プロジェクトを書き出していません (ML-Pathfinder で書き出して"
-                "ください)"
-            )
+            entry.reason = missing_record(path)
             return entry
         target = check_target(found)
     except HTTPException as error:

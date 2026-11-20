@@ -32,6 +32,8 @@ function unit(name: string, params: string[]): UnitSpec {
 const units = new Map([
   ['nn.Linear', unit('nn.Linear', ['in_features', 'out_features'])],
   ['nn.ReLU', unit('nn.ReLU', [])],
+  ['nn.Conv2d', unit('nn.Conv2d', ['in_channels', 'out_channels', 'kernel_size'])],
+  ['op.Reshape', unit('op.Reshape', ['shape'])],
 ])
 
 /** 7 列の表の 3 クラスの分類 */
@@ -134,5 +136,96 @@ describe('applyDatasetInputs (名前の重なり)', () => {
     const { spec, notes } = applyDatasetInputs(before, table, units)
     expect(spec).toBe(before)
     expect(notes[0]).toContain('ノード features')
+  })
+})
+
+/** 画像と領域のファイルの組 (大きさの混ざる灰色の画像. 背景を含む 3 クラス) */
+const masks: DatasetInfo = {
+  path: '/data/masks',
+  inputs: [
+    { name: 'image', shape: [4, 1, 4, 4], dtype: 'float32', dataset_shape: [null, 1, null, null] },
+  ],
+  task: null,
+  target: 'mask',
+  classes: ['background', 'circle', 'square'],
+  target_kind: 'mask',
+  outputs: 3,
+}
+
+/** 撮影と点群のファイルの組 (入力 512 点, 出す点 1024) */
+const clouds: DatasetInfo = {
+  path: '/data/clouds',
+  inputs: [
+    { name: 'capture', shape: [4, 512, 3], dtype: 'float32', dataset_shape: [null, 512, 3] },
+  ],
+  task: null,
+  target: 'cloud',
+  classes: null,
+  target_kind: 'point_cloud',
+  outputs: 1024,
+}
+
+describe('applyDatasetInputs (ファイルの組)', () => {
+  it('畳み込みの in_channels と head の out_channels を合わせ, 決まらない大きさは定義のまま', () => {
+    const before: Spec = {
+      ...emptySpec(),
+      inputs: { image: { shape: [4, 3, 32, 32] } },
+      nodes: {
+        enc: {
+          unit: 'nn.Conv2d',
+          params: { in_channels: 3, out_channels: 16, kernel_size: 3 },
+          inputs: 'image',
+        },
+        head: {
+          unit: 'nn.Conv2d',
+          params: { in_channels: 16, out_channels: 2, kernel_size: 1 },
+          inputs: 'enc',
+        },
+      },
+      outputs: { logits: 'head' },
+    }
+    const { spec, notes } = applyDatasetInputs(before, masks, units)
+    expect(spec.inputs.image!.shape).toEqual([4, 1, 32, 32])
+    expect(spec.nodes.enc!.params).toEqual({ in_channels: 1, out_channels: 16, kernel_size: 3 })
+    expect(spec.nodes.head!.params).toEqual({ in_channels: 16, out_channels: 3, kernel_size: 1 })
+    expect(notes.join('\n')).toContain('定義の値のまま')
+    expect(notes.at(-1)).toBe('head の out_channels を 3 にしました')
+  })
+
+  it('最後の op.Reshape の点の数と, その前の out_features を出す点の数にする', () => {
+    const before: Spec = {
+      ...emptySpec(),
+      inputs: { observed: { shape: [4, 256, 3] } },
+      nodes: {
+        encode: {
+          unit: 'nn.Linear',
+          params: { in_features: 3, out_features: 8 },
+          inputs: 'observed',
+        },
+        decode: {
+          unit: 'nn.Linear',
+          params: { in_features: 8, out_features: 768 },
+          inputs: 'encode',
+        },
+        cloud: { unit: 'op.Reshape', params: { shape: [256, 3] }, inputs: 'decode' },
+      },
+      outputs: { cloud: 'cloud' },
+    }
+    const { spec, notes } = applyDatasetInputs(before, clouds, units)
+    expect(Object.keys(spec.inputs)).toEqual(['capture'])
+    expect(spec.inputs.capture!.shape).toEqual([4, 512, 3])
+    expect(spec.nodes.encode!.inputs).toBe('capture')
+    expect(spec.nodes.encode!.params).toEqual({ in_features: 3, out_features: 8 })
+    expect(spec.nodes.decode!.params).toEqual({ in_features: 8, out_features: 3072 })
+    expect(spec.nodes.cloud!.params).toEqual({ shape: [1024, 3] })
+    expect(notes.at(-1)).toBe(
+      'decode の out_features を 3072, cloud の shape を [1024, 3] にしました',
+    )
+  })
+
+  it('正解の種類と項目の名前を知らせる', () => {
+    expect(datasetSummary(masks)).toBe(
+      'データセットから入れました: 入力 image [4, 1, ?, ?], 正解 mask (mask), クラス 3, 出す値 3',
+    )
   })
 })
