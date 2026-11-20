@@ -261,7 +261,7 @@ print(model(torch.randn(4, 16)).shape)   # torch.Size([4, 3])
 ```
 
 - 自分の環境 (学習のプロジェクトなど) では, `pip install "ml-modelcontrol @ git+https://github.com/victor-von-pooh/ML-ModelControl.git"` で入れる
-- ML-Found で学習する手順は, ML-ModelControl の README の [ML-Found で学習する](https://github.com/victor-von-pooh/ML-ModelControl#ml-found-で学習する) にある
+- ML-Found で学習する手順は, [ML-ModelControl](https://github.com/victor-von-pooh/ML-ModelControl) の README にある
 - ML-ModelControl も入れたくない場合は, 上の「Python」のコードをそのまま使う
 
 ## 10. 自作の部品を使う
