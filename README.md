@@ -74,13 +74,7 @@ make setup EXTRAS="torchvision timm"        # 一部だけ
 
 `EXTRAS` に書ける名前は `geometric` (PyTorch Geometric), `huggingface`, `torchvision`, `timm`, `torchaudio`, `einops`, `kornia`, `monai`, `smp` (segmentation_models_pytorch), `all`.
 
-### 最初のモデル
-
 新規の画面には入力 `x` (形 `[4, 16]`) がある. `x` を選び, `/` を押して `nn.Linear` と打って Enter を押すと, `x` につながった `linear1` が置かれる. 右の詳細で `in_features` を `16`, `out_features` を `4` にし, 上の「出力」を押すと「パラメータ数 68」「誤り 0 件」になる. 名前を書いて「保存」(Ctrl+S) で保存する.
-
-画面の順に試しながら覚える手順 (分岐と合流, 誤りの直し方, 部分モデル, 下書き, 自作の部品, 操作の一覧, 困ったとき) は [docs/GUIDE.md](docs/GUIDE.md), 設計の方針と API は [docs/DESIGN.md](docs/DESIGN.md) を参照.
-
-### 保存した定義を使う
 
 保存した定義は `~/.ml-createarchitecture/models/<名前>.yaml` に置かれる (環境変数 `ML_CREATEARCHITECTURE_HOME` で変えられる). [ML-ModelControl](https://github.com/victor-von-pooh/ML-ModelControl) の `build_model` で `nn.Module` にできる.
 
@@ -91,7 +85,13 @@ from ml_modelcontrol import build_model
 model = build_model(Path("~/.ml-createarchitecture/models/first_mlp.yaml").expanduser())
 ```
 
-ML-Found で学習する場合は, ML-ModelControl の README の [ML-Found で学習する](https://github.com/victor-von-pooh/ML-ModelControl#ml-found-で学習する) を参照.
+ML-Found で学習する手順は, [ML-ModelControl](https://github.com/victor-von-pooh/ML-ModelControl) の README を参照.
+
+## 文書
+
+- [操作ガイド](docs/GUIDE.md): 画面の順の操作ガイド (分岐と合流, 誤りの直し方, 部分モデル, 下書き, 自作の部品, 操作の一覧). 最後の章が「困ったとき」
+- [設計](docs/DESIGN.md): 今の設計と決まり (ML-ModelControl との約束, 画面, API, 用語, 置き場, 安全)
+- [TODO](TODO.md): まだやっていないこと (優先度の順)
 
 ## 開発
 
@@ -108,9 +108,8 @@ cd frontend && pnpm e2e   # 画面の通しのテスト (アプリを起動し�
 | --- | --- |
 | `backend/` | API (Python, FastAPI). ML-ModelControl の確認, 形の推定, 書き出しを呼び, 定義のファイルを保存する |
 | `frontend/` | 画面 (TypeScript, React, Vite, React Flow) |
-| `ML-ModelControl/` | submodule |
-| `docs/GUIDE.md` | 操作ガイド (画面の順に試しながら覚える) |
-| `docs/DESIGN.md` | 設計の方針とまだのこと |
+| `ML-ModelControl/` | submodule (モデルの定義のライブラリ) |
+| `docs/` | 操作ガイド, 設計, README の画面の例 (`images/`) |
 
 ## ライセンス
 
