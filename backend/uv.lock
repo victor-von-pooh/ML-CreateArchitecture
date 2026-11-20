@@ -1494,7 +1494,7 @@ dev = [
 [[package]]
 name = "ml-eda"
 version = "0.1.0"
-source = { git = "https://github.com/victor-von-pooh/ML-EDA.git#4f9fb0d9756de22196d67290880415625121f136" }
+source = { git = "https://github.com/victor-von-pooh/ML-EDA.git#05b1cf53d329143265decc463a1eab87c3fea8e9" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
@@ -1585,7 +1585,7 @@ provides-extras = ["geometric", "huggingface", "torchvision", "timm", "torchaudi
 [[package]]
 name = "ml-quest"
 version = "0.1.0"
-source = { git = "https://github.com/victor-von-pooh/ML-Quest.git#21cb7329b3408abfcf96b3a4fdf5ee8972969840" }
+source = { git = "https://github.com/victor-von-pooh/ML-Quest.git#82bbca05423370c09cb6452efa96f36f3cc258e4" }
 dependencies = [
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
