@@ -14,10 +14,11 @@ ML-CreateArchitecture の使い方を, 実際にモデルを作る順に説明�
 7. [部分モデル (別の定義を部品にする)](#7-部分モデル-別の定義を部品にする)
 8. [保存と下書き](#8-保存と下書き)
 9. [作った定義を使う](#9-作った定義を使う)
-10. [操作の一覧](#10-操作の一覧)
-11. [困ったとき](#11-困ったとき)
+10. [自作の部品を使う](#10-自作の部品を使う)
+11. [操作の一覧](#11-操作の一覧)
+12. [困ったとき](#12-困ったとき)
 
-画面の図は, 幅 1600 px のブラウザで撮った. 幅の狭い画面では, 上の操作の一部がアイコンだけになる (2 章の表). 左の一覧の部品の数は, 入れた外部のライブラリ (README の `EXTRAS`) で変わるので, 図と手元で違うことがある.
+画面の図は, 幅 1600 px のブラウザで, 外部のライブラリを入れずに (`make setup` のまま) 起動したもの. 幅の狭い画面では, 上の操作の一部がアイコンだけになる (2 章の表). 左の一覧の部品の数は, 入れた外部のライブラリ (README の `EXTRAS`) で変わる.
 
 ## 準備
 
@@ -49,7 +50,7 @@ make serve
 > **トークンを毎回同じにする**
 > `ML_CREATEARCHITECTURE_TOKEN=好きな文字列 make serve` で起動すると, `http://127.0.0.1:8766/api/auth?token=好きな文字列` を開けば入れる.
 
-![起動した直後の画面](images/guide/home.jpg)
+![起動した直後の画面](images/guide/home.png)
 
 ## 2. 画面の見方
 
@@ -90,7 +91,7 @@ make serve
 - [ ] 上の右が「パラメータ数 68」「誤り 0 件」になり, `linear1` と `out1` に形 `[4, 4]` が出ることを見る
 - [ ] 上の名前の欄を `first_mlp` にして, 「保存」を押す (Ctrl+S でもよい). 右下に「first_mlp に保存しました」と出る
 
-![最初のモデル](images/guide/first.jpg)
+![最初のモデル](images/guide/first.png)
 
 **見どころ**: パラメータ数 68 は, 重み 16 × 4 = 64 とバイアス 4 の合計. 何かを変えると数秒で確認と形の推定がやり直され, 上の数と各ノードの形が更新される. 保存していない変更がある間は, 「保存」のボタンに `*` が付く.
 
@@ -117,7 +118,7 @@ x ─┬─ linear1 ─ relu1 ─┐
 - [ ] 上の「出力」を押し, 上の「整列」を押す (つながりの順に左から右へ並ぶ)
 - [ ] 「パラメータ数 323」「誤り 0 件」になることを見て, `my_residual` という名前で保存する
 
-![残差のつなぎ方のモデル. add1 の入力のつなぎ先に relu1 と x が並ぶ](images/guide/residual.jpg)
+![残差のつなぎ方のモデル. add1 の入力のつなぎ先に relu1 と x が並ぶ](images/guide/residual.png)
 
 **見どころ**: `add1` の詳細の「入る形」に, `xs ← relu1: [4, 16]` と `xs ← x: [4, 16]` の 2 つが並ぶ. 足し算は同じ形どうしでないとできないので, `linear1` の `out_features` を 16 以外にすると, `add1` で誤りになる. つなぎ先の横の矢印で順番を入れ替え, ごみ箱で外せる.
 
@@ -138,8 +139,8 @@ x ─┬─ linear1 ─ relu1 ─┐
 
 <table>
   <tr>
-    <td><img src="images/guide/error.jpg" alt="linear2 の形の誤り"></td>
-    <td><img src="images/guide/overview.jpg" alt="何も選んでいないときの誤りの一覧"></td>
+    <td><img src="images/guide/error.png" alt="linear2 の形の誤り"></td>
+    <td><img src="images/guide/overview.png" alt="何も選んでいないときの誤りの一覧"></td>
   </tr>
   <tr>
     <td>ノードを選ぶと, 入ってきた値の形と直し方が出る</td>
@@ -153,7 +154,7 @@ x ─┬─ linear1 ─ relu1 ─┐
 
 「開く」には, 自分で保存した定義と, 同梱の例 (全結合, 残差, CNN, LSTM, Transformer のエンコーダー, GCN, BERT の分類 (Hugging Face の BERT と, 部品から組んだ小さな BERT), 部分モデルを重ねたもの) が並ぶ. 分類のほかに, 受け持ちごとの雛形 (VAE, GAN の生成器と識別器, 拡散モデルの雑音の予測器, 対照学習の符号化器, 推薦と検索の 2 塔, 強化学習の方策と価値) もある. 雛形の説明には, 学習の step で行うこと (損失の足し方など) も書いてある. 例は作り方の見本として開ける (開いたものを直して, 別の名前で保存してもよい).
 
-![開くの一覧](images/guide/open.jpg)
+![開くの一覧](images/guide/open.png)
 
 ### やってみる 4: CNN を開き, 定義とコードを見る (5 分)
 
@@ -164,9 +165,9 @@ x ─┬─ linear1 ─ relu1 ─┐
 
 <table>
   <tr>
-    <td><img src="images/guide/cnn.jpg" alt="CNN の例"></td>
-    <td><img src="images/guide/yaml.jpg" alt="YAML"></td>
-    <td><img src="images/guide/python.jpg" alt="Python のコード"></td>
+    <td><img src="images/guide/cnn.png" alt="CNN の例"></td>
+    <td><img src="images/guide/yaml.png" alt="YAML"></td>
+    <td><img src="images/guide/python.png" alt="Python のコード"></td>
   </tr>
   <tr>
     <td>CNN の例 (拡大した所). ノードごとに出力の形が出る</td>
@@ -194,8 +195,8 @@ x ─┬─ linear1 ─ relu1 ─┐
 
 <table>
   <tr>
-    <td><img src="images/guide/stacked.jpg" alt="部分モデルを重ねた例"></td>
-    <td><img src="images/guide/stacked_inside.jpg" alt="部分モデルの中身を編集"></td>
+    <td><img src="images/guide/stacked.png" alt="部分モデルを重ねた例"></td>
+    <td><img src="images/guide/stacked_inside.png" alt="部分モデルの中身を編集"></td>
   </tr>
   <tr>
     <td>部分モデルのノードの詳細 (「部分モデルの中身」を開いた所)</td>
@@ -214,8 +215,8 @@ x ─┬─ linear1 ─ relu1 ─┐
 
 <table>
   <tr>
-    <td><img src="images/guide/subgraph_dialog.jpg" alt="別の定義を部品にする"></td>
-    <td><img src="images/guide/subgraph_use.jpg" alt="自分の定義を部品として置いた"></td>
+    <td><img src="images/guide/subgraph_dialog.png" alt="別の定義を部品にする"></td>
+    <td><img src="images/guide/subgraph_use.png" alt="自分の定義を部品として置いた"></td>
   </tr>
   <tr>
     <td>保存した定義と例から選ぶ</td>
@@ -236,7 +237,7 @@ x ─┬─ linear1 ─ relu1 ─┐
 - [ ] 上に「保存していない定義 model (日時) の下書きがあります」と出ることを見る
 - [ ] 「下書きを開く」を押し, `sub.first_mlp` を置いた定義に戻ることを見る. 要らなければ「下書きを捨てる」
 
-![下書きの知らせ](images/guide/draft.jpg)
+![下書きの知らせ](images/guide/draft.png)
 
 ## 9. 作った定義を使う
 
@@ -263,7 +264,41 @@ print(model(torch.randn(4, 16)).shape)   # torch.Size([4, 3])
 - ML-Found で学習する手順は, ML-ModelControl の README の [ML-Found で学習する](https://github.com/victor-von-pooh/ML-ModelControl#ml-found-で学習する) にある
 - ML-ModelControl も入れたくない場合は, 上の「Python」のコードをそのまま使う
 
-## 10. 操作の一覧
+## 10. 自作の部品を使う
+
+研究で書いた自作の部品 (`nn.Module` のクラス) は, 部品を宣言したモジュールの名前を環境変数 `ML_CREATEARCHITECTURE_MODULES` (カンマで区切って複数) に書いて起動すると, 部品の一覧の「自作 (モジュールの名前)」に出る. モジュールはバックエンドの Python から import できる場所 (`PYTHONPATH` か, バックエンドの環境に入れたパッケージ) に置く.
+
+```python
+# my_lab/units.py
+import torch
+from torch import nn
+
+
+class Scale(nn.Module):
+    """入力を決めた倍にする部品"""
+
+    def __init__(self, factor: float = 2.0):
+        super().__init__()
+        self.factor = factor
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * self.factor
+
+
+# 部品の宣言 (クラスか, ML-ModelControl の register_unit の引数の辞書)
+UNITS = [{"cls": Scale, "name": "lab.Scale"}]
+```
+
+```bash
+ML_CREATEARCHITECTURE_MODULES=my_lab.units PYTHONPATH=<my_lab を置いたディレクトリの絶対パス> make serve
+```
+
+起動のログに `自作の部品を読み込みました: my_lab.units → lab.Scale` と出る. 読み込めないモジュールがあると, 理由を出して起動しない. `make serve` はバックエンドのディレクトリで起動するので, `PYTHONPATH` は絶対パスで書く. 開発用のサーバー (`make dev-backend`) でも同じ環境変数で読み込むが, 自作の部品のファイルを直しても作り直されないので起動し直す. 宣言の書き方 (`UNITS` のほかに `register_units(register)` の関数も書ける) は ML-ModelControl の README を参照.
+
+- **書いたモジュールは, 起動のときに任意のコードとして動く**. 自分や仲間が書いた, 信頼できるコードだけを書く
+- 読み込むのは, この環境変数に書いたモジュールだけ. 定義のファイルに書かれた部品の名前や, 画面と API からは何も読み込まない. 登録されていない部品を使う定義を開くと, 登録されていないという誤りと, 起動の設定 (環境変数の名前) に足す案内と, 今読み込んでいるモジュールが出る
+
+## 11. 操作の一覧
 
 キーの Ctrl は, Mac では Cmd.
 
@@ -279,10 +314,15 @@ print(model(torch.randn(4, 16)).shape)   # torch.Size([4, 3])
 | 並べ直す | 上の「整列」 |
 | 入力と出力を加える | 上の「入力」と「出力」. 入力は詳細で形 (バッチの次元も含む) と型 (単語の番号や `edge_index` は `int64`) を決める |
 | 保存 | 上の「保存」か Ctrl+S |
+| 別の定義を部品にする | 左の「別の定義を部品にする」で保存した定義か例を選ぶ. 一覧の「部分モデル」に `sub.<名前>` として出る |
+| 部分モデルを写し直す | 元の定義を直した後に, 一覧の部分モデルの写し直しのボタン. 元の定義の今の中身に置き換わる |
+| 部分モデルを消す | 一覧の部分モデルのごみ箱 (使っているノードが無いものだけ) |
 | 部分モデルの中身を編集 | 部分モデルのノードをダブルクリック. Esc で 1 つ上に戻る |
+| 部分モデルを 1 つのノードだけ変える | 詳細の「このノードだけの部分モデルにする」(2 つ以上のノードが使う部分モデルの場合に出る) |
+| torchvision と timm のモデルの名前 | 詳細の引数 `name` (timm は `model_name`) の欄に打つと候補が出る |
 | 選んだノードに戻る | 詳細の欄の中で Esc |
 
-## 11. 困ったとき
+## 12. 困ったとき
 
 | 症状 | 対処 |
 | --- | --- |
