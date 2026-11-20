@@ -191,9 +191,9 @@ export function Palette({
   )
 }
 
-/** 使えない理由の入れ方を, このアプリの入れ方 (make setup EXTRAS=...) にする */
+/** 使えない理由の入れ方を, このアプリの入れ方 (make setup EXTRAS=... に既定の project を添える) にする */
 function appReason(reason: string): string {
-  return reason.replace(/pip install -e "\.\[(\w+)\]"/g, 'make setup EXTRAS=$1')
+  return reason.replace(/pip install -e "\.\[(\w+)\]"/g, 'make setup EXTRAS="project $1"')
 }
 
 /** 部品の説明 (学習済みの重みを読める部品は, ライセンスを詳細で確かめる案内を足す) */

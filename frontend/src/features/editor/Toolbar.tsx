@@ -4,6 +4,7 @@ import {
   Code2,
   FileText,
   FolderOpen,
+  FolderOutput,
   LogIn,
   LogOut,
   Moon,
@@ -16,13 +17,14 @@ import {
 } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 
-import { api, type CheckResult } from '../../api/client'
+import { api, type CheckResult, type DatasetInputs } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
 import { Button, ErrorBox, ExampleButton, Spinner } from '../../components/ui'
 import { failedNodes, formatCount } from '../../lib/format'
 import { danglingNodes, emptySpec, freshName, type Spec, type UnitSpec } from '../../lib/graph'
 import { subgraphCheckTarget } from '../../lib/subgraph'
 import { useTheme } from '../../lib/themeContext'
+import { ProjectDialog } from './ProjectDialogs'
 
 /** 文字の内容を表示し, コピーできる枠 */
 function TextView({ text, fileName }: { text: string; fileName?: string }) {
@@ -179,6 +181,8 @@ export function Toolbar({
   initialName,
   onNameChange,
   onSavingChange,
+  onDataset,
+  onProjectSaved,
 }: {
   /** 保存した知らせ (保存すると上の操作を作り直すので, 外で持つ) */
   savedNotice: string
@@ -218,12 +222,16 @@ export function Toolbar({
   onNameChange?: (name: string) => void
   /** 保存しているか (保存の間は下書きを戻す操作を止めるため) */
   onSavingChange?: (saving: boolean) => void
+  /** データセットから読んだ入力と出す値の数を本体の定義に入れ, 知らせる文を返す */
+  onDataset: (info: DatasetInputs) => string[]
+  /** 定義をプロジェクトに書いた (書いたファイルの場所) */
+  onProjectSaved: (path: string) => void
 }) {
   const queryClient = useQueryClient()
   const nameId = useId()
   const { theme, toggle } = useTheme()
   const [name, setName] = useState(initialName ?? fileName)
-  const [dialog, setDialog] = useState<'open' | 'yaml' | 'python' | null>(null)
+  const [dialog, setDialog] = useState<'open' | 'yaml' | 'python' | 'project' | null>(null)
 
   // 保存した時点の定義を, 保存していない変更の判定に使う
   const save = useMutation({
@@ -459,6 +467,17 @@ export function Toolbar({
       >
         <span className="max-2xl:sr-only">Python</span>
       </Button>
+      {/* 書き出しの操作に並べる. 上の操作を 1 行に収めるため, 文字は幅 1800 px 以上だけ */}
+      <Button
+        variant="ghost"
+        icon={FolderOutput}
+        onClick={() => setDialog('project')}
+        data-return="project"
+        aria-label="データセットとプロジェクト"
+        title="データセットから入力と出力を作る, 学習のプロジェクトに保存する"
+      >
+        <span className="max-[1800px]:sr-only">データセットとプロジェクト</span>
+      </Button>
       <div className="ml-auto flex items-center gap-3 text-xs" aria-live="polite">
         {checking && <span className="text-ink-3">確認中…</span>}
         {/* 大きすぎて形を推定していない場合は, 誤りが無くても知らせる */}
@@ -551,6 +570,15 @@ export function Toolbar({
             </>
           )}
         </Dialog>
+      )}
+      {dialog === 'project' && (
+        <ProjectDialog
+          spec={{ ...whole, name }}
+          editing={editing}
+          onApply={onDataset}
+          onSaved={onProjectSaved}
+          onClose={() => setDialog(null)}
+        />
       )}
       {open.error && dialog !== 'open' && <ErrorBox error={open.error} />}
     </header>

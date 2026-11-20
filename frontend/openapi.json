@@ -416,6 +416,123 @@
           }
         }
       }
+    },
+    "/api/dataset/inputs": {
+      "post": {
+        "summary": "Read Dataset Inputs",
+        "description": "データセットから, モデルの入力と出す値の数を読む関数\n\nParameters\n----------\nbody: PathBody\n    データセットのディレクトリ\n\nReturns\n----------\nresult: DatasetInputs\n    入力 (形はバッチの次元を例の大きさにしたもの), タスク, 目的の列,\n    クラス, 出す値の数\n\nRaises\n----------\nHTTPException\n    ML-EDA が無い場合は 501, ディレクトリか説明が無い場合は 404,\n    読めない場合 (版 2, 知らない版など) は 422",
+        "operationId": "read_dataset_inputs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetInputs"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/project/target": {
+      "post": {
+        "summary": "Project Target",
+        "description": "プロジェクトのモデルの定義の保存先を返す関数\n\nParameters\n----------\nbody: PathBody\n    プロジェクトのディレクトリか問題の設定のファイル\n\nReturns\n----------\ntarget: ProjectTarget\n    保存先, プロジェクトとデータセットの場所, 既にあるか",
+        "operationId": "project_target",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectTarget"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/project/model": {
+      "put": {
+        "summary": "Save Project Model",
+        "description": "定義をプロジェクトの保存先に書く関数\n\nParameters\n----------\nbody: ProjectSaveBody\n    保存先を決める場所, 定義, 上書きするか\n\nReturns\n----------\nsaved: ProjectSaved\n    書いたファイルと更新時刻\n\nRaises\n----------\nHTTPException\n    既にあり上書きしない場合は 409, 定義を読めない場合と書けない場合は\n    422 (他は保存先を決めるときと同じ)",
+        "operationId": "save_project_model",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectSaveBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSaved"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -512,6 +629,98 @@
           "units"
         ],
         "title": "CustomModule"
+      },
+      "DatasetInput": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "shape": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Shape"
+          },
+          "dtype": {
+            "type": "string",
+            "title": "Dtype"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "shape",
+          "dtype"
+        ],
+        "title": "DatasetInput"
+      },
+      "DatasetInputs": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetInput"
+            },
+            "type": "array",
+            "title": "Inputs"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "classes": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classes"
+          },
+          "outputs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outputs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "inputs"
+        ],
+        "title": "DatasetInputs"
       },
       "ExampleSummary": {
         "properties": {
@@ -730,6 +939,20 @@
         ],
         "title": "NodeResult"
       },
+      "PathBody": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "絶対のパス (~ から書ける)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "PathBody"
+      },
       "PretrainedBody": {
         "properties": {
           "unit": {
@@ -869,6 +1092,106 @@
           "source"
         ],
         "title": "PretrainedInfo"
+      },
+      "ProjectSaveBody": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "spec": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Spec"
+          },
+          "overwrite": {
+            "type": "boolean",
+            "title": "Overwrite",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "spec"
+        ],
+        "title": "ProjectSaveBody"
+      },
+      "ProjectSaved": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "updated_at"
+        ],
+        "title": "ProjectSaved"
+      },
+      "ProjectTarget": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "problem (問題の設定の記録) か project"
+          },
+          "exists": {
+            "type": "boolean",
+            "title": "Exists"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          },
+          "dataset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem",
+            "description": "問題の設定の名前"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "source",
+          "exists"
+        ],
+        "title": "ProjectTarget"
       },
       "SpecBody": {
         "properties": {

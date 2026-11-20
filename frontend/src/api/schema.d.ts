@@ -345,6 +345,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dataset/inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Dataset Inputs
+         * @description データセットから, モデルの入力と出す値の数を読む関数
+         *
+         *     Parameters
+         *     ----------
+         *     body: PathBody
+         *         データセットのディレクトリ
+         *
+         *     Returns
+         *     ----------
+         *     result: DatasetInputs
+         *         入力 (形はバッチの次元を例の大きさにしたもの), タスク, 目的の列,
+         *         クラス, 出す値の数
+         *
+         *     Raises
+         *     ----------
+         *     HTTPException
+         *         ML-EDA が無い場合は 501, ディレクトリか説明が無い場合は 404,
+         *         読めない場合 (版 2, 知らない版など) は 422
+         */
+        post: operations["read_dataset_inputs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/project/target": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Project Target
+         * @description プロジェクトのモデルの定義の保存先を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     body: PathBody
+         *         プロジェクトのディレクトリか問題の設定のファイル
+         *
+         *     Returns
+         *     ----------
+         *     target: ProjectTarget
+         *         保存先, プロジェクトとデータセットの場所, 既にあるか
+         */
+        post: operations["project_target"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/project/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Project Model
+         * @description 定義をプロジェクトの保存先に書く関数
+         *
+         *     Parameters
+         *     ----------
+         *     body: ProjectSaveBody
+         *         保存先を決める場所, 定義, 上書きするか
+         *
+         *     Returns
+         *     ----------
+         *     saved: ProjectSaved
+         *         書いたファイルと更新時刻
+         *
+         *     Raises
+         *     ----------
+         *     HTTPException
+         *         既にあり上書きしない場合は 409, 定義を読めない場合と書けない場合は
+         *         422 (他は保存先を決めるときと同じ)
+         */
+        put: operations["save_project_model"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -395,6 +498,30 @@ export interface components {
             name: string;
             /** Units */
             units: string[];
+        };
+        /** DatasetInput */
+        DatasetInput: {
+            /** Name */
+            name: string;
+            /** Shape */
+            shape: number[];
+            /** Dtype */
+            dtype: string;
+        };
+        /** DatasetInputs */
+        DatasetInputs: {
+            /** Path */
+            path: string;
+            /** Inputs */
+            inputs: components["schemas"]["DatasetInput"][];
+            /** Task */
+            task?: string | null;
+            /** Target */
+            target?: string | null;
+            /** Classes */
+            classes?: unknown[] | null;
+            /** Outputs */
+            outputs?: number | null;
         };
         /** ExampleSummary */
         ExampleSummary: {
@@ -487,6 +614,14 @@ export interface components {
             /** Error */
             error?: string | null;
         };
+        /** PathBody */
+        PathBody: {
+            /**
+             * Path
+             * @description 絶対のパス (~ から書ける)
+             */
+            path: string;
+        };
         /** PretrainedBody */
         PretrainedBody: {
             /** Unit */
@@ -539,6 +674,48 @@ export interface components {
             source: string;
             /** Url */
             url?: string | null;
+        };
+        /** ProjectSaveBody */
+        ProjectSaveBody: {
+            /** Path */
+            path: string;
+            /** Spec */
+            spec: {
+                [key: string]: unknown;
+            };
+            /**
+             * Overwrite
+             * @default false
+             */
+            overwrite: boolean;
+        };
+        /** ProjectSaved */
+        ProjectSaved: {
+            /** Path */
+            path: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** ProjectTarget */
+        ProjectTarget: {
+            /** Path */
+            path: string;
+            /**
+             * Source
+             * @description problem (問題の設定の記録) か project
+             */
+            source: string;
+            /** Exists */
+            exists: boolean;
+            /** Project */
+            project?: string | null;
+            /** Dataset */
+            dataset?: string | null;
+            /**
+             * Problem
+             * @description 問題の設定の名前
+             */
+            problem?: string | null;
         };
         /** SpecBody */
         SpecBody: {
@@ -1000,6 +1177,105 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_dataset_inputs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PathBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetInputs"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_target: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PathBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTarget"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_project_model: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectSaveBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSaved"];
+                };
             };
             /** @description Validation Error */
             422: {

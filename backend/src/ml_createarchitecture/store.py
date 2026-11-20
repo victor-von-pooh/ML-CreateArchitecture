@@ -12,6 +12,32 @@ from ml_modelcontrol import dump_spec, load_spec
 NAME_PATTERN = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_-]{0,63}")
 
 
+def file_mode() -> int:
+    """
+    普通に作るファイルの権限を, 今の umask から求める関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    mode: int
+        0o666 から umask を除いた権限
+    """
+    # umask は読むと変わるので, すぐに戻す (起動のときの 1 回だけ)
+    umask = os.umask(0o022)
+    os.umask(umask)
+    mode = 0o666 & ~umask
+
+    return mode
+
+
+# 書いたファイルの権限 (起動のときに 1 度だけ求める. umask を読む間に他の
+# スレッドが作るファイルの権限を変えないため)
+FILE_MODE = file_mode()
+
+
 class ModelError(ValueError):
     pass
 
@@ -19,6 +45,78 @@ class ModelError(ValueError):
 # 定義が無い場合の誤り (消す場合に, 消せない誤りと分けるため)
 class ModelNotFoundError(ModelError):
     pass
+
+
+def spec_text(spec: dict[str, Any]) -> str:
+    """
+    定義を, 版を確かめて保存する形の YAML にする関数
+
+    Parameters
+    ----------
+    spec: dict[str, Any]
+        モデルの定義
+
+    Returns
+    ----------
+    text: str
+        dump_spec が書ける最も低い版の YAML
+
+    Raises
+    ----------
+    ModelError
+        版を読めない場合
+    """
+    # 読める定義であることを確かめてから変換
+    try:
+        text: str = dump_spec(load_spec(spec))
+    except ValueError as error:
+        raise ModelError(str(error)) from error
+
+    return text
+
+
+def write_atomic(path: Path, text: str) -> str:
+    """
+    ファイルを一時ファイルに書いてから置き換える関数
+
+    途中で止まっても壊れたファイルが残らないように, 書き手ごとに別の一時
+    ファイルに書く
+
+    Parameters
+    ----------
+    path: Path
+        書くファイル (親のディレクトリはあること)
+    text: str
+        中身
+
+    Returns
+    ----------
+    updated_at: str
+        書いた後の更新時刻 (ISO 8601 の秒まで)
+
+    Raises
+    ----------
+    OSError
+        書き込めない場合
+    """
+    # 同じディレクトリの一時ファイルに書いて置き換え (失敗したら一時を消す)
+    handle, temp = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as file:
+            file.write(text)
+        # 一時ファイルは本人だけが読める形で作られるので, 普通のファイルと
+        # 同じ権限 (起動のときの umask に従う) に直す
+        os.chmod(temp, FILE_MODE)
+        Path(temp).replace(path)
+    except OSError:
+        Path(temp).unlink(missing_ok=True)
+        raise
+    updated = datetime.fromtimestamp(path.stat().st_mtime)
+    updated_at = updated.isoformat(timespec="seconds")
+
+    return updated_at
 
 
 class ModelStore:
@@ -139,26 +237,15 @@ class ModelStore:
         """
         # 版を確かめてから YAML に変換
         path = self.path_for(name)
-        try:
-            text: str = dump_spec(load_spec(spec))
-        except ValueError as error:
-            raise ModelError(str(error)) from error
+        text = spec_text(spec)
 
         # 書き手ごとに別の一時ファイルに書いてから置き換え
         try:
             self.root.mkdir(parents=True, exist_ok=True)
-            handle, temp = tempfile.mkstemp(
-                dir=self.root, prefix=f".{name}.", suffix=".tmp"
-            )
-            with os.fdopen(handle, "w", encoding="utf-8") as file:
-                file.write(text)
-            Path(temp).replace(path)
-            updated = datetime.fromtimestamp(path.stat().st_mtime)
+            updated = write_atomic(path, text)
         except OSError as error:
             raise ModelError(f"定義 {name} を保存できません: {error}") from error
-        summary = {
-            "name": name, "updated_at": updated.isoformat(timespec="seconds")
-        }
+        summary = {"name": name, "updated_at": updated}
 
         return summary
 
