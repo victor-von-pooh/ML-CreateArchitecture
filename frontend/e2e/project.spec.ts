@@ -127,6 +127,39 @@ test('プロジェクトに保存すると, 学習のスクリプトが読む場
   expect(asked).toContain('上書きしますか')
 })
 
+test('名前を変えてプロジェクトに保存すると, models/ の下に候補を並べ, config と既定の定義は変えない', async ({
+  page,
+}) => {
+  const config = `${project}/configs/default/train.yaml`
+  const configBefore = readFileSync(config, 'utf-8')
+  const modelBefore = readFileSync(modelFile, 'utf-8')
+  await page.goto('/')
+  const dialog = await openDialog(page)
+  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
+  await save.getByLabel('プロジェクトか問題の設定').fill(project)
+  await save.getByLabel('models/ の下の名前').fill('e2e_candidate')
+  await save.getByRole('button', { name: '保存先を確かめる' }).click()
+  const target = save.getByRole('group', { name: '保存先' })
+  await expect(target).toContainText(`${project}/models/e2e_candidate.yaml`)
+  await expect(target).toContainText('モデルの定義の候補')
+  await expect(target).not.toContainText('既にファイルがあります')
+  await target.getByRole('button', { name: 'この場所に保存' }).click()
+  await expect(save.getByRole('status')).toContainText('models/e2e_candidate.yaml に保存しました')
+  expect(readFileSync(`${project}/models/e2e_candidate.yaml`, 'utf-8')).toContain('nodes')
+  expect(readFileSync(modelFile, 'utf-8')).toBe(modelBefore)
+  expect(readFileSync(config, 'utf-8')).toBe(configBefore)
+
+  // 名前を消すと, 既定の保存先に戻る
+  await save.getByLabel('models/ の下の名前').fill('')
+  await save.getByRole('button', { name: '保存先を確かめる' }).click()
+  await expect(save.getByRole('group', { name: '保存先' })).toContainText('models/model.yaml')
+
+  // 規則に合わない名前は, 理由を出して確かめない
+  await save.getByLabel('models/ の下の名前').fill('../outside')
+  await save.getByRole('button', { name: '保存先を確かめる' }).click()
+  await expect(save.getByRole('alert')).toContainText('使えません')
+})
+
 test('記録の無いプロジェクトでも, 保存先を確かめると config のデータセットの場所が入る', async ({
   page,
 }) => {
@@ -186,4 +219,20 @@ test('問題の設定を一覧から選ぶと, 記録のデータセットと保
   await target.getByRole('button', { name: 'この場所に保存' }).click()
   await expect(save.getByRole('status')).toContainText(`${modelFile} に保存しました`)
   expect(readFileSync(modelFile, 'utf-8')).toContain('out_features: 3')
+})
+
+test('名前を書いてから問題の設定を一覧から選ぶと, 記録のプロジェクトの models/ の下の名前が保存先になる', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const dialog = await openDialog(page)
+  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
+  await save.getByLabel('models/ の下の名前').fill('e2e_picked')
+  await dialog
+    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('button', { name: /e2e の売上/ })
+    .click()
+  const target = save.getByRole('group', { name: '保存先' })
+  await expect(target).toContainText(`${project}/models/e2e_picked.yaml`)
+  await expect(target).toContainText('モデルの定義の候補')
 })
