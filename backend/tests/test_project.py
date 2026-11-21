@@ -436,6 +436,97 @@ def test_project_target_errors(client: TestClient, tmp_path: Path) -> None:
     assert response.status_code == 422
 
 
+def test_project_named_target(client: TestClient, tmp_path: Path) -> None:
+    """
+    models/ の下の名前で保存先を選び, config を書き換えず, 規則に合わない
+    名前とリンクを断ることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 名前を書くと models/<名前>.yaml. 空白だけなら既定の保存先
+    project = make_project_dir(tmp_path / "proj")
+    config = project / "configs" / "default" / "train.yaml"
+    before = config.read_text()
+    response = client.post(
+        "/api/project/target", json={"path": str(project), "name": "mlp"}
+    )
+    assert response.status_code == 200, response.text
+    target = response.json()
+    expected = project.resolve() / "models" / "mlp.yaml"
+    assert target["path"] == str(expected)
+    assert target["source"] == "name" and target["exists"] is False
+    assert target["dataset"] == str(project.resolve() / "outputs" / "dataset")
+    response = client.post(
+        "/api/project/target", json={"path": str(project), "name": "  "}
+    )
+    assert response.json()["source"] == "project"
+
+    # 2 つの候補を並べて保存でき, config の model.spec は変わらない
+    for name in ("mlp", "wide"):
+        response = client.put(
+            "/api/project/model",
+            json={"path": str(project), "name": name, "spec": SPEC}
+        )
+        assert response.status_code == 200, response.text
+    assert sorted(item.name for item in (project / "models").iterdir()) == [
+        "mlp.yaml", "wide.yaml"
+    ]
+    assert config.read_text() == before
+
+    # 既にある名前は上書きの許しが要る (409)
+    response = client.put(
+        "/api/project/model",
+        json={"path": str(project), "name": "mlp", "spec": SPEC}
+    )
+    assert response.status_code == 409
+    response = client.post(
+        "/api/project/target", json={"path": str(project), "name": "mlp"}
+    )
+    assert response.json()["exists"] is True
+
+    # 規則に合わない名前 (中のディレクトリ, 外, 拡張子, 隠しファイル) は 422
+    for name in ("a/b", "../x", "x.yaml", ".hidden", "a" * 65):
+        response = client.put(
+            "/api/project/model",
+            json={"path": str(project), "name": name, "spec": SPEC}
+        )
+        assert response.status_code == 422, name
+    assert not (tmp_path / "x.yaml").exists()
+
+    # models/ のファイルがリンクなら 422 (中を指すリンクも)
+    (project / "models" / "link.yaml").symlink_to(
+        project / "models" / "wide.yaml"
+    )
+    response = client.put(
+        "/api/project/model",
+        json={"path": str(project), "name": "link", "spec": SPEC,
+              "overwrite": True}
+    )
+    assert response.status_code == 422
+    assert "リンク" in response.json()["detail"]
+
+    # models/ がリンクなら 422 (外のディレクトリに書かない)
+    other = make_project_dir(tmp_path / "proj2")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (other / "models").symlink_to(outside, target_is_directory=True)
+    response = client.put(
+        "/api/project/model",
+        json={"path": str(other), "name": "mlp", "spec": SPEC}
+    )
+    assert response.status_code == 422
+    assert not list(outside.iterdir())
+
+
 class StubQuest:
     def __init__(self, record: dict[str, Any]):
         # handoff が返す値を保存
@@ -529,6 +620,13 @@ def test_problem_record(
         "/api/project/target", json={"path": str(project)}
     )
     assert response.json()["path"] == str(spec_path)
+
+    # 名前を書くと, 記録のプロジェクトの models/<名前>.yaml
+    response = client.post(
+        "/api/project/target", json={"path": str(problem), "name": "cnn"}
+    )
+    assert response.json()["path"] == str(project / "models" / "cnn.yaml")
+    assert response.json()["problem"] == "sales"
 
     # プロジェクトの外を指す記録は 422
     record["model"]["project_model_spec"] = str(tmp_path / "other.yaml")

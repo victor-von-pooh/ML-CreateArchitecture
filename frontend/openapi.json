@@ -478,13 +478,13 @@
     "/api/project/target": {
       "post": {
         "summary": "Project Target",
-        "description": "プロジェクトのモデルの定義の保存先を返す関数\n\nParameters\n----------\nbody: PathBody\n    プロジェクトのディレクトリか問題の設定のファイル\n\nReturns\n----------\ntarget: ProjectTarget\n    保存先, プロジェクトとデータセットの場所, 既にあるか",
+        "description": "プロジェクトのモデルの定義の保存先を返す関数\n\nParameters\n----------\nbody: TargetBody\n    プロジェクトのディレクトリか問題の設定のファイルと, models/ の下の\n    名前\n\nReturns\n----------\ntarget: ProjectTarget\n    保存先, プロジェクトとデータセットの場所, 既にあるか",
         "operationId": "project_target",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PathBody"
+                "$ref": "#/components/schemas/TargetBody"
               }
             }
           },
@@ -517,7 +517,7 @@
     "/api/project/model": {
       "put": {
         "summary": "Save Project Model",
-        "description": "定義をプロジェクトの保存先に書く関数\n\nParameters\n----------\nbody: ProjectSaveBody\n    保存先を決める場所, 定義, 上書きするか\n\nReturns\n----------\nsaved: ProjectSaved\n    書いたファイルと更新時刻\n\nRaises\n----------\nHTTPException\n    既にあり上書きしない場合は 409, 定義を読めない場合と書けない場合は\n    422 (他は保存先を決めるときと同じ)",
+        "description": "定義をプロジェクトの保存先に書く関数\n\nParameters\n----------\nbody: ProjectSaveBody\n    保存先を決める場所, models/ の下の名前, 定義, 上書きするか\n\nReturns\n----------\nsaved: ProjectSaved\n    書いたファイルと更新時刻\n\nRaises\n----------\nHTTPException\n    既にあり上書きしない場合は 409, 定義を読めない場合と書けない場合は\n    422 (他は保存先を決めるときと同じ)",
         "operationId": "save_project_model",
         "requestBody": {
           "content": {
@@ -1282,6 +1282,17 @@
             "type": "string",
             "title": "Path"
           },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
           "spec": {
             "additionalProperties": true,
             "type": "object",
@@ -1327,7 +1338,7 @@
           "source": {
             "type": "string",
             "title": "Source",
-            "description": "problem (問題の設定の記録) か project"
+            "description": "problem (問題の設定の記録), project (config の model.spec) か name (models/ の下の名前)"
           },
           "exists": {
             "type": "boolean",
@@ -1394,6 +1405,32 @@
           "spec"
         ],
         "title": "SpecBody"
+      },
+      "TargetBody": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "プロジェクトのディレクトリか問題の設定のファイル"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "models/ の下の名前 (拡張子無し. 無いか空なら既定)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "TargetBody"
       },
       "ValidationError": {
         "properties": {

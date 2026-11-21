@@ -17,7 +17,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
 from ml_createarchitecture.settings import get_problems_dir
-from ml_createarchitecture.store import ModelError, spec_text, write_atomic
+from ml_createarchitecture.store import (
+    NAME_PATTERN,
+    ModelError,
+    spec_text,
+    write_atomic,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -32,6 +37,9 @@ EXAMPLE_SIZE = 4
 # (ML-Quest の骨組みの config の model.spec)
 PROJECT_CONFIG = Path("configs/default/train.yaml")
 DEFAULT_SPEC = Path("models/model.yaml")
+
+# 名前で選ぶ保存先のディレクトリ (ML-Dashboard のモデルの定義の候補の場所)
+MODELS_DIR = "models"
 
 # プロジェクトのディレクトリの問題の設定 (ML-Pathfinder の置き場でも同じ
 # 名前)
@@ -53,6 +61,16 @@ READ_ERRORS = (
 
 class PathBody(BaseModel):
     path: str = Field(description="絶対のパス (~ から書ける)")
+
+
+class TargetBody(BaseModel):
+    path: str = Field(
+        description="プロジェクトのディレクトリか問題の設定のファイル"
+    )
+    name: Optional[str] = Field(
+        default=None,
+        description="models/ の下の名前 (拡張子無し. 無いか空なら既定)"
+    )
 
 
 class DatasetInput(BaseModel):
@@ -88,7 +106,10 @@ class DatasetInputs(BaseModel):
 class ProjectTarget(BaseModel):
     # モデルの定義の保存先と, どこから決めたか
     path: str
-    source: str = Field(description="problem (問題の設定の記録) か project")
+    source: str = Field(
+        description="problem (問題の設定の記録), project (config の "
+        "model.spec) か name (models/ の下の名前)"
+    )
     exists: bool
     project: Optional[str] = None
     dataset: Optional[str] = None
@@ -122,8 +143,10 @@ class ProblemList(BaseModel):
 
 
 class ProjectSaveBody(BaseModel):
-    # 保存先を決める場所, 定義, 既にある場合に上書きするか
+    # 保存先を決める場所, models/ の下の名前, 定義, 既にある場合に上書き
+    # するか
     path: str
+    name: Optional[str] = None
     spec: dict[str, Any]
     overwrite: bool = False
 
@@ -497,7 +520,61 @@ def from_problem(problem_path: Path) -> Optional[ProjectTarget]:
     return target
 
 
-def resolve_target(text: str) -> ProjectTarget:
+def named_target(target: ProjectTarget, name: str) -> ProjectTarget:
+    """
+    既定の保存先を, プロジェクトの models/ の下の名前の保存先に替える関数
+
+    モデルの候補を並べるため. config の model.spec は書き換えない (ML-
+    Dashboard が候補ごとに書き換えて学習するため)
+
+    Parameters
+    ----------
+    target: ProjectTarget
+        既定の保存先 (プロジェクトの場所を持つ)
+    name: str
+        models/ の下の名前 (拡張子無し)
+
+    Returns
+    ----------
+    named: ProjectTarget
+        models/<名前>.yaml の保存先
+
+    Raises
+    ----------
+    HTTPException
+        名前が規則に合わない場合, プロジェクトの場所が無い場合と, models/
+        かそのファイルがリンクの場合は 422
+    """
+    # 置き場の名前と同じ規則 (/ を受け取らないので models/ の直下だけ)
+    if not NAME_PATTERN.fullmatch(name):
+        raise HTTPException(
+            422,
+            f"名前 {name!r} は使えません. 英数字, _, - (64 文字まで. 拡張子"
+            "は書かない) にしてください"
+        )
+    if target.project is None:
+        raise HTTPException(
+            422, "保存先のプロジェクトの場所が分かりません"
+        )
+
+    # リンクの先には書かない (models/ の外に出ないため)
+    folder = Path(target.project) / MODELS_DIR
+    path = folder / f"{name}{SPEC_SUFFIXES[0]}"
+    for item in (folder, path):
+        if item.is_symlink():
+            raise HTTPException(
+                422,
+                f"保存先 {item} はリンクです. 名前で選ぶ保存先はリンクに"
+                "書きません"
+            )
+    named = target.model_copy(update={
+        "path": str(path), "source": "name", "exists": path.exists()
+    })
+
+    return named
+
+
+def resolve_target(text: str, name: Optional[str] = None) -> ProjectTarget:
     """
     プロジェクトのディレクトリか問題の設定のファイルから, モデルの定義の
     保存先を決める関数
@@ -506,6 +583,8 @@ def resolve_target(text: str) -> ProjectTarget:
     ----------
     text: str
         プロジェクトのディレクトリか問題の設定のファイル
+    name: Optional[str]
+        models/ の下の名前 (無いか空なら既定の保存先)
 
     Returns
     ----------
@@ -526,7 +605,7 @@ def resolve_target(text: str) -> ProjectTarget:
             raise HTTPException(
                 422, f"{path.name} を選べません: {missing_record(path)}"
             )
-        target = check_target(found)
+        target = check_target(with_name(found, name))
         return target
     if not path.is_dir():
         raise HTTPException(404, f"{path} がありません")
@@ -554,9 +633,32 @@ def resolve_target(text: str) -> ProjectTarget:
             path=str(spec_path), source="project", exists=spec_path.exists(),
             project=str(path), dataset=config_dataset(path)
         )
-    target = check_target(found)
+    target = check_target(with_name(found, name))
 
     return target
+
+
+def with_name(target: ProjectTarget, name: Optional[str]) -> ProjectTarget:
+    """
+    名前があれば models/ の下の保存先に, 無ければ既定のままにする関数
+
+    Parameters
+    ----------
+    target: ProjectTarget
+        既定の保存先
+    name: Optional[str]
+        models/ の下の名前 (無いか空なら既定)
+
+    Returns
+    ----------
+    chosen: ProjectTarget
+        使う保存先
+    """
+    # 空白だけの名前は既定
+    text = (name or "").strip()
+    chosen = named_target(target, text) if text else target
+
+    return chosen
 
 
 def config_dataset(project: Path) -> Optional[str]:
@@ -861,21 +963,22 @@ def list_problems() -> ProblemList:
 
 
 @router.post("/project/target")
-def project_target(body: PathBody) -> ProjectTarget:
+def project_target(body: TargetBody) -> ProjectTarget:
     """
     プロジェクトのモデルの定義の保存先を返す関数
 
     Parameters
     ----------
-    body: PathBody
-        プロジェクトのディレクトリか問題の設定のファイル
+    body: TargetBody
+        プロジェクトのディレクトリか問題の設定のファイルと, models/ の下の
+        名前
 
     Returns
     ----------
     target: ProjectTarget
         保存先, プロジェクトとデータセットの場所, 既にあるか
     """
-    target = resolve_target(body.path)
+    target = resolve_target(body.path, body.name)
 
     return target
 
@@ -888,7 +991,7 @@ def save_project_model(body: ProjectSaveBody) -> ProjectSaved:
     Parameters
     ----------
     body: ProjectSaveBody
-        保存先を決める場所, 定義, 上書きするか
+        保存先を決める場所, models/ の下の名前, 定義, 上書きするか
 
     Returns
     ----------
@@ -902,7 +1005,7 @@ def save_project_model(body: ProjectSaveBody) -> ProjectSaved:
         422 (他は保存先を決めるときと同じ)
     """
     # 押した時点の保存先を決め直し, 既にあれば上書きの確認を求める
-    target = resolve_target(body.path)
+    target = resolve_target(body.path, body.name)
     path = Path(target.path)
     if path.exists() and not body.overwrite:
         raise HTTPException(409, f"{path} が既にあります")

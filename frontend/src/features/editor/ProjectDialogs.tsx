@@ -260,6 +260,9 @@ function DatasetSection({
 
 /** 保存先の決め方の説明 */
 function targetSource(target: ProjectTarget): string {
+  if (target.source === 'name') {
+    return 'models/ の下の名前の保存先 (config の model.spec は変えません. ML-Dashboard の学習の起動の「モデルの定義の候補」で選べます)'
+  }
   if (target.source === 'problem') {
     return `問題の設定${target.problem ? ` ${target.problem}` : ''} の記録の保存先`
   }
@@ -269,7 +272,7 @@ function targetSource(target: ProjectTarget): string {
 /**
  * プロジェクトのディレクトリか問題の設定を書き, 保存先を確かめてから定義を書く
  *
- * 既にある場合は上書きしてよいかを確かめる
+ * models/ の下の名前を書くと models/<名前>.yaml に書く (空なら既定の保存先). 既にある場合は上書きしてよいかを確かめる
  */
 function ProjectSaveSection({
   spec,
@@ -287,56 +290,70 @@ function ProjectSaveSection({
   onTarget: (target: ProjectTarget, text: string, chosen: boolean) => void
 }) {
   const [path, setPath] = useState(() => remembered(PROJECT_KEY))
-  // 確かめた保存先 (場所を書き換えたら確かめ直す)
-  const [target, setTarget] = useState<{ path: string; value: ProjectTarget } | null>(null)
+  // models/ の下の名前 (候補ごとに変えるので覚えない. 空なら既定の保存先)
+  const [name, setName] = useState('')
+  // 確かめた保存先 (場所か名前を書き換えたら確かめ直す)
+  const [target, setTarget] = useState<{
+    path: string
+    name: string
+    value: ProjectTarget
+  } | null>(null)
   // 書いたファイル (確かめ直すか保存し直すまで出す)
   const [written, setWritten] = useState<string | null>(null)
   const titleId = useId()
   // 確かめた場所の保存先を, 既にある扱いにする
-  const markExists = (text: string) =>
+  const markExists = (text: string, named: string) =>
     setTarget((current) =>
-      current && current.path === text
+      current && current.path === text && current.name === named
         ? { ...current, value: { ...current.value, exists: true } }
         : current,
     )
-  const checked = target !== null && target.path === path.trim() ? target.value : null
+  const checked =
+    target !== null && target.path === path.trim() && target.name === name.trim()
+      ? target.value
+      : null
   const resolve = useMutation({
-    mutationFn: ({ text }: { text: string; chosen: boolean }) => api.projectTarget(text),
-    onSuccess: (value, { text, chosen }) => {
+    mutationFn: ({ text, named }: { text: string; named: string; chosen: boolean }) =>
+      api.projectTarget(text, named),
+    onSuccess: (value, { text, named, chosen }) => {
       remember(PROJECT_KEY, text)
-      setTarget({ path: text, value })
+      setTarget({ path: text, name: named, value })
       setWritten(null)
       onTarget(value, text, chosen)
     },
   })
-  // 一覧から選んだ問題の設定を欄に入れ, そのまま保存先を確かめる (欄は
-  // 描画の中で, 確かめる要求は描画の後)
+  // 一覧から選んだ問題の設定を欄に入れ, 今の名前のまま保存先を確かめる
+  // (欄は描画の中で, 確かめる要求は描画の後)
   const [seenChoice, setSeenChoice] = useState(choice)
+  const [pending, setPending] = useState<{ text: string; named: string } | null>(null)
   if (choice !== seenChoice) {
     setSeenChoice(choice)
-    if (choice) setPath(choice.path)
+    if (choice) {
+      setPath(choice.path)
+      setPending({ text: choice.path, named: name.trim() })
+    }
   }
   const { mutate: resolveTarget } = resolve
   useEffect(() => {
-    if (choice) resolveTarget({ text: choice.path, chosen: true })
-  }, [choice, resolveTarget])
+    if (pending) resolveTarget({ ...pending, chosen: true })
+  }, [pending, resolveTarget])
   const save = useMutation({
-    mutationFn: ({ text, overwrite }: { text: string; overwrite: boolean }) =>
-      api.saveProjectModel(text, spec, overwrite),
-    onSuccess: (saved, { text }) => {
+    mutationFn: ({ text, named, overwrite }: { text: string; named: string; overwrite: boolean }) =>
+      api.saveProjectModel(text, named, spec, overwrite),
+    onSuccess: (saved, { text, named }) => {
       onSaved(saved.path)
       // 書いた後は既にある扱い (続けて保存すると上書きを確かめる). 保存の
       // 間に別の場所を確かめた場合は, その場所には付けない
-      markExists(text)
+      markExists(text, named)
       setWritten(saved.path)
     },
-    onError: (error, { text, overwrite }) => {
+    onError: (error, { text, named, overwrite }) => {
       // 確かめた後に別の所で書かれた場合も, 既にある扱いにして上書きして
       // よいかを聞く
       if (!(error instanceof ApiError) || error.status !== 409 || overwrite) return
-      markExists(text)
+      markExists(text, named)
       if (window.confirm(`${error.message}. 上書きしますか?`)) {
-        save.mutate({ text, overwrite: true })
+        save.mutate({ text, named, overwrite: true })
       }
     },
   })
@@ -346,7 +363,7 @@ function ProjectSaveSection({
       return
     }
     setWritten(null)
-    save.mutate({ text: path.trim(), overwrite: checked.exists })
+    save.mutate({ text: path.trim(), named: name.trim(), overwrite: checked.exists })
   }
   return (
     <section aria-labelledby={titleId} className="space-y-3">
@@ -358,7 +375,7 @@ function ProjectSaveSection({
         onSubmit={(event) => {
           event.preventDefault()
           if (path.trim() && !resolve.isPending) {
-            resolve.mutate({ text: path.trim(), chosen: false })
+            resolve.mutate({ text: path.trim(), named: name.trim(), chosen: false })
           }
         }}
       >
@@ -368,6 +385,13 @@ function ProjectSaveSection({
           value={path}
           onChange={setPath}
           placeholder="/path/to/project"
+        />
+        <PathField
+          label="models/ の下の名前"
+          hint="モデルの候補を並べる場合に, プロジェクトの models/<名前>.yaml に書きます (英数字, _, -. 拡張子は書かない). 空なら上の既定の保存先. config の model.spec は変えず, ML-Dashboard の学習の起動の「モデルの定義の候補」で選びます"
+          value={name}
+          onChange={setName}
+          placeholder="空なら既定の保存先 (例: mlp)"
         />
         <Button type="submit" disabled={!path.trim() || resolve.isPending}>
           {resolve.isPending ? '確かめています…' : '保存先を確かめる'}

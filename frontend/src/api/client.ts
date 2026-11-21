@@ -100,17 +100,17 @@ export const api = {
     }),
   /** ML-Pathfinder の置き場の問題の設定 (更新の新しい順. 使えないものは理由付き) */
   listProblems: () => request<ProblemList>('/api/problems'),
-  /** プロジェクトのディレクトリか問題の設定から, 定義の保存先を求める */
-  projectTarget: (path: string) =>
+  /** プロジェクトのディレクトリか問題の設定から, 定義の保存先を求める (name は models/ の下の名前. 空なら既定) */
+  projectTarget: (path: string, name: string) =>
     request<ProjectTarget>('/api/project/target', {
       method: 'POST',
-      body: JSON.stringify({ path }),
+      body: JSON.stringify({ path, name }),
     }),
   /** 定義をプロジェクトの保存先に書く (既にある場合は overwrite が要る. 無ければ 409) */
-  saveProjectModel: (path: string, spec: Spec, overwrite: boolean) =>
+  saveProjectModel: (path: string, name: string, spec: Spec, overwrite: boolean) =>
     request<ProjectSaved>('/api/project/model', {
       method: 'PUT',
-      body: JSON.stringify({ path, spec, overwrite }),
+      body: JSON.stringify({ path, name, spec, overwrite }),
     }),
   saveModel: (name: string, spec: Spec) =>
     request<ModelSummary>(`/api/models/${encodeURIComponent(name)}`, {

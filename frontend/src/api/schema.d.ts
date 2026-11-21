@@ -432,8 +432,9 @@ export interface paths {
          *
          *     Parameters
          *     ----------
-         *     body: PathBody
-         *         プロジェクトのディレクトリか問題の設定のファイル
+         *     body: TargetBody
+         *         プロジェクトのディレクトリか問題の設定のファイルと, models/ の下の
+         *         名前
          *
          *     Returns
          *     ----------
@@ -462,7 +463,7 @@ export interface paths {
          *     Parameters
          *     ----------
          *     body: ProjectSaveBody
-         *         保存先を決める場所, 定義, 上書きするか
+         *         保存先を決める場所, models/ の下の名前, 定義, 上書きするか
          *
          *     Returns
          *     ----------
@@ -771,6 +772,8 @@ export interface components {
         ProjectSaveBody: {
             /** Path */
             path: string;
+            /** Name */
+            name?: string | null;
             /** Spec */
             spec: {
                 [key: string]: unknown;
@@ -794,7 +797,7 @@ export interface components {
             path: string;
             /**
              * Source
-             * @description problem (問題の設定の記録) か project
+             * @description problem (問題の設定の記録), project (config の model.spec) か name (models/ の下の名前)
              */
             source: string;
             /** Exists */
@@ -820,6 +823,19 @@ export interface components {
              * @default true
              */
             infer: boolean;
+        };
+        /** TargetBody */
+        TargetBody: {
+            /**
+             * Path
+             * @description プロジェクトのディレクトリか問題の設定のファイル
+             */
+            path: string;
+            /**
+             * Name
+             * @description models/ の下の名前 (拡張子無し. 無いか空なら既定)
+             */
+            name?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -1343,7 +1359,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PathBody"];
+                "application/json": components["schemas"]["TargetBody"];
             };
         };
         responses: {
