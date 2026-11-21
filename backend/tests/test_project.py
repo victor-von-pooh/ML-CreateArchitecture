@@ -1070,7 +1070,7 @@ def test_dataset_inputs_text_vocabulary(
 ) -> None:
     """
     本物の ML-EDA で書き出した文のデータセットから, 語彙の大きさが API の
-    応答に出ることを確かめる関数 (語彙の大きさを返す ML-EDA だけ)
+    応答に出ることを確かめる関数
 
     Parameters
     ----------
@@ -1083,10 +1083,8 @@ def test_dataset_inputs_text_vocabulary(
     ----------
     None
     """
-    # 語彙の大きさを返す ML-EDA だけ
+    # 固定した ML-EDA (語彙の大きさを返す版)
     ml_eda = pytest.importorskip("ml_eda")
-    if not hasattr(ml_eda.pipeline, "text_vocabulary"):
-        pytest.skip("ML-EDA の model_inputs が語彙の大きさを返しません")
 
     # 2 クラスの短い文を語の番号の並びで書き出す
     for label, words in (("pos", "good great"), ("neg", "bad awful")):
@@ -1111,3 +1109,6 @@ def test_dataset_inputs_text_vocabulary(
     assert response.status_code == 200, response.text
     item = response.json()["inputs"][0]
     assert item["dtype"] == "int64" and item["vocabulary"] == size
+    # 埋め草と語彙に無い語と, 学習用の文の語 (共通の this, is, クラスの語,
+    # 番号) の数の範囲
+    assert 2 + 2 < size <= 2 + 2 + 4 + 5
