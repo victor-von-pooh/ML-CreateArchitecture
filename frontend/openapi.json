@@ -680,6 +680,18 @@
             "type": "array",
             "title": "Dataset Shape",
             "description": "model_inputs の形 (決まらない次元は null)"
+          },
+          "vocabulary": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vocabulary",
+            "description": "文の語の番号の入力の語彙の大きさ (埋め込みの数)"
           }
         },
         "type": "object",

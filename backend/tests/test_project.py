@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from ml_modelcontrol import load_spec
 
 from ml_createarchitecture.app import create_app
-from ml_createarchitecture.project import make_parents
+from ml_createarchitecture.project import make_parents, positive_int
 
 # 全結合だけの小さなモデルの定義
 SPEC = {
@@ -74,7 +74,8 @@ def stub_inputs(path: Any) -> dict[str, Any]:
     description = Path(path) / "dataset.yaml"
     if not description.is_file():
         raise FileNotFoundError(str(description))
-    version = yaml.safe_load(description.read_text())["format_version"]
+    info = yaml.safe_load(description.read_text())
+    version = info["format_version"]
     if version != 1:
         raise ValueError(f"format_version {version} は読めません")
     result = {
@@ -82,6 +83,11 @@ def stub_inputs(path: Any) -> dict[str, Any]:
         "task": "classification", "target": "label",
         "classes": ["a", "b", "c"], "outputs": 3
     }
+    # 説明に vocabulary があれば文の語の番号の入力 (語彙の大きさ付き)
+    if "vocabulary" in info:
+        result["inputs"] = [{"name": "x", "shape": [None, 16],
+                             "dtype": "int64",
+                             "vocabulary": info["vocabulary"]}]
 
     return result
 
@@ -140,7 +146,7 @@ def test_dataset_inputs_stub(
     body = response.json()
     assert body["inputs"] == [
         {"name": "x", "shape": [4, 7], "dtype": "float32",
-         "dataset_shape": [None, 7]}
+         "dataset_shape": [None, 7], "vocabulary": None}
     ]
     assert body["target_kind"] is None
     assert body["outputs"] == 3 and body["task"] == "classification"
@@ -300,7 +306,7 @@ def test_dataset_inputs_items(client: TestClient, tmp_path: Path) -> None:
     body = response.json()
     assert body["inputs"] == [{
         "name": "image", "shape": [4, 3, 32, 32], "dtype": "float32",
-        "dataset_shape": [None, 3, 32, 32]
+        "dataset_shape": [None, 3, 32, 32], "vocabulary": None
     }]
     assert body["target_kind"] == "mask" and body["task"] is None
     assert body["outputs"] == 3 and len(body["classes"]) == 3
@@ -999,3 +1005,61 @@ def test_list_problems(
         if entry["path"] == str(recorded)
     )
     assert first["usable"] is False and "ML-Pathfinder" in first["reason"]
+
+
+def test_positive_int() -> None:
+    """
+    語彙の大きさなどの値を, 正の整数だけ通すことを確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    # 正の整数だけ. 真偽, 0, 負, 小数, 文字, None は None
+    assert positive_int(21) == 21
+    for value in (True, 0, -3, 2.0, "21", None):
+        assert positive_int(value) is None
+
+
+def test_dataset_inputs_vocabulary(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    文の語の番号の入力の語彙の大きさを応答に通し, 正の整数でなければ null
+    にすることを, 代わりの ML-EDA で確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        モジュールの差し替え
+
+    Returns
+    ----------
+    None
+    """
+    # 代わりの ML-EDA と, 語彙の大きさの値ごとの応答
+    monkeypatch.setitem(
+        sys.modules, "ml_eda", SimpleNamespace(model_inputs=stub_inputs)
+    )
+    for index, (value, expected) in enumerate(
+        [(21, 21), ("21", None), (0, None), (True, None)]
+    ):
+        dataset = write_dataset(tmp_path / f"text{index}", 1)
+        (dataset / "dataset.yaml").write_text(
+            yaml.safe_dump({"format_version": 1, "vocabulary": value})
+        )
+        response = client.post(
+            "/api/dataset/inputs", json={"path": str(dataset)}
+        )
+        assert response.status_code == 200, response.text
+        item = response.json()["inputs"][0]
+        assert item["dtype"] == "int64" and item["shape"] == [4, 16]
+        assert item["vocabulary"] == expected
