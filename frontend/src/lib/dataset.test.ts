@@ -34,6 +34,7 @@ const units = new Map([
   ['nn.ReLU', unit('nn.ReLU', [])],
   ['nn.Conv2d', unit('nn.Conv2d', ['in_channels', 'out_channels', 'kernel_size'])],
   ['op.Reshape', unit('op.Reshape', ['shape'])],
+  ['nn.Embedding', unit('nn.Embedding', ['num_embeddings', 'embedding_dim'])],
 ])
 
 /** 7 列の表の 3 クラスの分類 */
@@ -115,6 +116,45 @@ describe('applyDatasetInputs', () => {
     )
     expect(spec.nodes).toEqual({})
     expect(notes.at(-1)).toContain('タスクを決めていない')
+  })
+})
+
+describe('applyDatasetInputs (文の語彙)', () => {
+  it('入力に直につながる埋め込みの num_embeddings を語彙の大きさにする', () => {
+    const text: DatasetInfo = {
+      path: '/data/text',
+      inputs: [{ name: 'x', shape: [4, 16], dtype: 'int64', vocabulary: 21 }],
+      task: 'classification',
+      target: 'label',
+      classes: ['neg', 'pos'],
+      outputs: 2,
+    }
+    const before: Spec = {
+      ...emptySpec(),
+      inputs: { ids: { shape: [4, 12], dtype: 'int64' } },
+      nodes: {
+        emb: {
+          unit: 'nn.Embedding',
+          params: { num_embeddings: 100, embedding_dim: 8 },
+          inputs: 'ids',
+        },
+        head: { unit: 'nn.Linear', params: { in_features: 8, out_features: 5 }, inputs: 'emb' },
+      },
+      outputs: { logits: 'head' },
+    }
+    const { spec, notes } = applyDatasetInputs(before, text, units)
+    expect(spec.inputs.x?.shape).toEqual([4, 16])
+    expect(spec.nodes.emb?.params).toEqual({ num_embeddings: 21, embedding_dim: 8 })
+    expect(spec.nodes.head?.params?.out_features).toBe(2)
+    expect(notes).toContain('emb の num_embeddings を 21 にしました')
+
+    // 語彙の大きさが無ければ埋め込みは変えない
+    const { spec: kept } = applyDatasetInputs(
+      before,
+      { ...text, inputs: [{ name: 'x', shape: [4, 16], dtype: 'int64' }] },
+      units,
+    )
+    expect(kept.nodes.emb?.params?.num_embeddings).toBe(100)
   })
 })
 

@@ -65,6 +65,10 @@ class DatasetInput(BaseModel):
         default_factory=list,
         description="model_inputs の形 (決まらない次元は null)"
     )
+    vocabulary: Optional[int] = Field(
+        default=None,
+        description="文の語の番号の入力の語彙の大きさ (埋め込みの数)"
+    )
 
 
 class DatasetInputs(BaseModel):
@@ -205,6 +209,29 @@ def absolute_path(text: str) -> Path:
     return path
 
 
+def positive_int(value: Any) -> Optional[int]:
+    """
+    正の整数ならそのまま, 他は None を返す関数
+
+    Parameters
+    ----------
+    value: Any
+        model_inputs の値 (語彙の大きさなど)
+
+    Returns
+    ----------
+    number: Optional[int]
+        正の整数 (真偽は除く), 他は None
+    """
+    # 真偽は int の仲間なので除く
+    number = (
+        value if isinstance(value, int) and not isinstance(value, bool)
+        and value > 0 else None
+    )
+
+    return number
+
+
 def example_shape(shape: Any) -> list[int]:
     """
     データセットの入力の形を, 形の推定に使う例の形にする関数
@@ -288,7 +315,8 @@ def read_dataset_inputs(body: PathBody) -> DatasetInputs:
         DatasetInput(
             name=str(item["name"]), shape=example_shape(item.get("shape")),
             dtype=str(item.get("dtype") or "float32"),
-            dataset_shape=list(item["shape"])
+            dataset_shape=list(item["shape"]),
+            vocabulary=positive_int(item.get("vocabulary"))
         )
         for item in info["inputs"] if isinstance(item, dict)
         and "name" in item

@@ -8,6 +8,8 @@ export interface DatasetInput {
   shape: number[]
   dtype: string
   dataset_shape?: (number | null)[]
+  /** 文の語の番号の入力の語彙の大きさ (語の番号の上限 + 1. 文でなければ無い) */
+  vocabulary?: number | null
 }
 
 /** バックエンドが ML-EDA の model_inputs から返す値 */
@@ -116,7 +118,7 @@ function fitReshape(
  * に無い入力は, つないでいなければ消し, つないでいれば残す. データセットで
  * 決まらない次元は定義の値のまま). 入力に直につながる in_features の引数は
  * 入力の最後の次元, in_channels の引数は 3 次元以上の入力の 2 番目の次元
- * (チャンネル) にする.
+ * (チャンネル), num_embeddings の引数は文の語の番号の入力の語彙の大きさにする.
  * 出す値の数: 部品の無い定義で入力が 2 次元なら全結合の head を置いて出力に
  * つなぎ, 出力が 1 つでつなぎ元が out_features か out_channels を持てばそれ
  * にする. つなぎ元が op.Reshape なら最初の次元とその前の out_features にする
@@ -180,7 +182,15 @@ export function applyDatasetInputs(
   next = { ...next, inputs }
 
   // 入力に直につながる in_features を入力の最後の次元に, in_channels を
-  // チャンネル (3 次元以上の入力の 2 番目の次元) に
+  // チャンネル (3 次元以上の入力の 2 番目の次元) に, num_embeddings を
+  // 文の語彙の大きさ (埋め込みの表の行の数) に
+  const vocabularies = new Map(
+    info.inputs.flatMap((item) =>
+      typeof item.vocabulary === 'number' && item.vocabulary > 0
+        ? [[item.name, item.vocabulary] as const]
+        : [],
+    ),
+  )
   const nodes = { ...next.nodes }
   for (const wire of specWires(next, units)) {
     const shape = shapes.get(wire.source)
@@ -188,6 +198,8 @@ export function applyDatasetInputs(
     if (!shape || !node || shape.length < 2) continue
     const fits: [string, number][] = [['in_features', shape.at(-1)!]]
     if (shape.length >= 3) fits.push(['in_channels', shape[1]!])
+    const vocabulary = vocabularies.get(wire.source)
+    if (vocabulary !== undefined) fits.push(['num_embeddings', vocabulary])
     for (const [param, size] of fits) {
       const current = nodes[wire.target]!
       if (!hasParam(units, current.unit, param) || current.params?.[param] === size) continue

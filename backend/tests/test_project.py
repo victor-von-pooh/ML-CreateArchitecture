@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from ml_modelcontrol import load_spec
 
 from ml_createarchitecture.app import create_app
-from ml_createarchitecture.project import make_parents
+from ml_createarchitecture.project import make_parents, positive_int
 
 # 全結合だけの小さなモデルの定義
 SPEC = {
@@ -140,7 +140,7 @@ def test_dataset_inputs_stub(
     body = response.json()
     assert body["inputs"] == [
         {"name": "x", "shape": [4, 7], "dtype": "float32",
-         "dataset_shape": [None, 7]}
+         "dataset_shape": [None, 7], "vocabulary": None}
     ]
     assert body["target_kind"] is None
     assert body["outputs"] == 3 and body["task"] == "classification"
@@ -300,7 +300,7 @@ def test_dataset_inputs_items(client: TestClient, tmp_path: Path) -> None:
     body = response.json()
     assert body["inputs"] == [{
         "name": "image", "shape": [4, 3, 32, 32], "dtype": "float32",
-        "dataset_shape": [None, 3, 32, 32]
+        "dataset_shape": [None, 3, 32, 32], "vocabulary": None
     }]
     assert body["target_kind"] == "mask" and body["task"] is None
     assert body["outputs"] == 3 and len(body["classes"]) == 3
@@ -999,3 +999,21 @@ def test_list_problems(
         if entry["path"] == str(recorded)
     )
     assert first["usable"] is False and "ML-Pathfinder" in first["reason"]
+
+
+def test_positive_int() -> None:
+    """
+    語彙の大きさなどの値を, 正の整数だけ通すことを確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    # 正の整数だけ. 真偽, 0, 負, 小数, 文字, None は None
+    assert positive_int(21) == 21
+    for value in (True, 0, -3, 2.0, "21", None):
+        assert positive_int(value) is None

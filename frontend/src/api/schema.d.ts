@@ -547,6 +547,11 @@ export interface components {
              * @description model_inputs の形 (決まらない次元は null)
              */
             dataset_shape?: (number | null)[];
+            /**
+             * Vocabulary
+             * @description 文の語の番号の入力の語彙の大きさ (埋め込みの数)
+             */
+            vocabulary?: number | null;
         };
         /** DatasetInputs */
         DatasetInputs: {
