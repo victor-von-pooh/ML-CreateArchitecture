@@ -321,6 +321,8 @@ function ProjectSaveSection({
       setWritten(null)
       onTarget(value, text, chosen)
     },
+    // 確かめに失敗した場合も, 前に書いた知らせは今の保存先のものでないので消す
+    onError: () => setWritten(null),
   })
   // 一覧から選んだ問題の設定を欄に入れ, 今の名前のまま保存先を確かめる
   // (欄は描画の中で, 確かめる要求は描画の後)
@@ -381,14 +383,14 @@ function ProjectSaveSection({
       >
         <PathField
           label="プロジェクトか問題の設定"
-          hint="ML-Pathfinder (ML-Quest) で書き出した学習のプロジェクトのディレクトリか, 問題の設定のファイル (problem.yaml など) の絶対のパス. 定義全体を, 学習のスクリプトが読む場所に書きます"
+          hint="ML-Pathfinder (ML-Quest) で書き出した学習のプロジェクトのディレクトリか, 問題の設定のファイル (problem.yaml など) の絶対のパス. 定義全体を, 学習のスクリプトが読む場所 (下の名前を書いた場合は, このプロジェクトの models/<名前>.yaml) に書きます"
           value={path}
           onChange={setPath}
           placeholder="/path/to/project"
         />
         <PathField
           label="models/ の下の名前"
-          hint="モデルの候補を並べる場合に, プロジェクトの models/<名前>.yaml に書きます (英数字, _, -. 拡張子は書かない). 空なら上の既定の保存先. config の model.spec は変えず, ML-Dashboard の学習の起動の「モデルの定義の候補」で選びます"
+          hint="モデルの候補を並べる場合に, プロジェクトの models/<名前>.yaml に書きます (英数字, _, -. 先頭に - は使えない. 64 文字まで. 拡張子は書かない. 同じ名前の .yml があればそこに書く). 空なら上の既定の保存先. config の model.spec は変えず, ML-Dashboard の学習の起動の「モデルの定義の候補」で選びます"
           value={name}
           onChange={setName}
           placeholder="空なら既定の保存先 (例: mlp)"
@@ -398,12 +400,23 @@ function ProjectSaveSection({
         </Button>
       </form>
       {resolve.error && <ErrorBox error={resolve.error} />}
+      {target !== null && !checked && path.trim() && (
+        <p className="text-xs text-warning-text">
+          場所か名前を書き換えました. 保存先を確かめ直してください
+        </p>
+      )}
       {checked && (
         <div role="group" aria-label="保存先" className="space-y-2 text-sm">
           <p>
             保存先: <span className="font-mono break-all">{checked.path}</span>
           </p>
           <p className="text-xs text-ink-3">{targetSource(checked)}</p>
+          {checked.source === 'name' && checked.default && (
+            <p className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text">
+              既定の保存先 (記録か config の model.spec) と同じファイルです.
+              保存すると既定の定義を上書きします
+            </p>
+          )}
           {checked.exists && (
             <p className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text">
               既にファイルがあります. 保存すると上書きします

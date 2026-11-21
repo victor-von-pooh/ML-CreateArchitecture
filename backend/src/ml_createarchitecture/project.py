@@ -8,6 +8,7 @@
 
 import datetime as dt
 import importlib
+import os
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Optional
@@ -65,7 +66,8 @@ class PathBody(BaseModel):
 
 class TargetBody(BaseModel):
     path: str = Field(
-        description="プロジェクトのディレクトリか問題の設定のファイル"
+        description="プロジェクトのディレクトリか問題の設定のファイルの絶対"
+        "のパス (~ から書ける)"
     )
     name: Optional[str] = Field(
         default=None,
@@ -116,6 +118,11 @@ class ProjectTarget(BaseModel):
     problem: Optional[str] = Field(
         default=None, description="問題の設定の名前"
     )
+    default: bool = Field(
+        default=False,
+        description="名前の保存先が既定の保存先 (記録か config の "
+        "model.spec) と同じファイルか"
+    )
 
 
 class ProblemEntry(BaseModel):
@@ -146,7 +153,10 @@ class ProjectSaveBody(BaseModel):
     # 保存先を決める場所, models/ の下の名前, 定義, 既にある場合に上書き
     # するか
     path: str
-    name: Optional[str] = None
+    name: Optional[str] = Field(
+        default=None,
+        description="models/ の下の名前 (拡張子無し. 無いか空なら既定)"
+    )
     spec: dict[str, Any]
     overwrite: bool = False
 
@@ -549,17 +559,25 @@ def named_target(target: ProjectTarget, name: str) -> ProjectTarget:
     if not NAME_PATTERN.fullmatch(name):
         raise HTTPException(
             422,
-            f"名前 {name!r} は使えません. 英数字, _, - (64 文字まで. 拡張子"
-            "は書かない) にしてください"
+            f"名前 {name!r} は使えません. 英数字, _, - (先頭に - は使えない. "
+            "64 文字まで. 拡張子は書かない) にしてください"
         )
     if target.project is None:
         raise HTTPException(
             422, "保存先のプロジェクトの場所が分かりません"
         )
 
-    # リンクの先には書かない (models/ の外に出ないため)
+    # 同じ名前の .yaml か .yml が既にあれば, そのファイル (大文字と小文字
+    # だけ違うものは実際の名前) に書く. 候補に同じ名前を 2 つ並べないため
     folder = Path(target.project) / MODELS_DIR
-    path = folder / f"{name}{SPEC_SUFFIXES[0]}"
+    choices = [folder / f"{name}{suffix}" for suffix in SPEC_SUFFIXES]
+    path = next(
+        (item for item in choices if item.exists() or item.is_symlink()),
+        choices[0]
+    )
+    path = actual_entry(folder, path)
+
+    # リンクの先には書かない (models/ の外に出ないため)
     for item in (folder, path):
         if item.is_symlink():
             raise HTTPException(
@@ -568,10 +586,77 @@ def named_target(target: ProjectTarget, name: str) -> ProjectTarget:
                 "書きません"
             )
     named = target.model_copy(update={
-        "path": str(path), "source": "name", "exists": path.exists()
+        "path": str(path), "source": "name", "exists": path.exists(),
+        "default": same_file(path, Path(target.path))
     })
 
     return named
+
+
+def actual_entry(folder: Path, path: Path) -> Path:
+    """
+    既にあるファイルを, ディレクトリの中の実際の名前の場所にする関数
+
+    大文字と小文字を区別しないファイルシステムで, 確かめの文と保存先に
+    実際のファイル名を出すため
+
+    Parameters
+    ----------
+    folder: Path
+        models/ のディレクトリ
+    path: Path
+        名前から作った場所
+
+    Returns
+    ----------
+    actual: Path
+        同じファイルの実際の名前の場所 (無いか読めない場合はそのまま)
+    """
+    # 同じ名前があればそのまま, 無ければ大小を無視して同じファイルを探す
+    actual = path
+    if not path.exists():
+        return actual
+    try:
+        children = list(folder.iterdir())
+        if any(child.name == path.name for child in children):
+            return actual
+        for child in children:
+            if child.name.casefold() == path.name.casefold() and (
+                os.path.samefile(child, path)
+            ):
+                actual = child
+                break
+    except OSError:
+        actual = path
+
+    return actual
+
+
+def same_file(first: Path, second: Path) -> bool:
+    """
+    2 つの場所が同じファイルを指すかを返す関数
+
+    Parameters
+    ----------
+    first: Path
+        1 つ目の場所
+    second: Path
+        2 つ目の場所
+
+    Returns
+    ----------
+    same: bool
+        同じ場所か, 両方あって同じファイルなら真
+    """
+    # 無いファイルは場所の文字で比べる
+    same = first == second
+    if not same and first.exists() and second.exists():
+        try:
+            same = os.path.samefile(first, second)
+        except OSError:
+            same = False
+
+    return same
 
 
 def resolve_target(text: str, name: Optional[str] = None) -> ProjectTarget:
