@@ -1291,7 +1291,8 @@
                 "type": "null"
               }
             ],
-            "title": "Name"
+            "title": "Name",
+            "description": "models/ の下の名前 (拡張子無し. 無いか空なら既定)"
           },
           "spec": {
             "additionalProperties": true,
@@ -1377,6 +1378,12 @@
             ],
             "title": "Problem",
             "description": "問題の設定の名前"
+          },
+          "default": {
+            "type": "boolean",
+            "title": "Default",
+            "description": "名前の保存先が既定の保存先 (記録か config の model.spec) と同じファイルか",
+            "default": false
           }
         },
         "type": "object",
@@ -1411,7 +1418,7 @@
           "path": {
             "type": "string",
             "title": "Path",
-            "description": "プロジェクトのディレクトリか問題の設定のファイル"
+            "description": "プロジェクトのディレクトリか問題の設定のファイルの絶対のパス (~ から書ける)"
           },
           "name": {
             "anyOf": [

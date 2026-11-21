@@ -527,6 +527,64 @@ def test_project_named_target(client: TestClient, tmp_path: Path) -> None:
     assert not list(outside.iterdir())
 
 
+def test_project_named_sibling(client: TestClient, tmp_path: Path) -> None:
+    """
+    同じ名前の .yml か, 大文字と小文字だけ違うファイルがあればそこに書き,
+    既定の保存先と同じ名前に印を付けることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # a.yml があれば名前 a は a.yml (既にある扱い. a.yaml は作らない)
+    project = make_project_dir(tmp_path / "proj").resolve()
+    models = project / "models"
+    models.mkdir()
+    (models / "a.yml").write_text("old\n")
+    response = client.post(
+        "/api/project/target", json={"path": str(project), "name": "a"}
+    )
+    assert response.status_code == 200, response.text
+    target = response.json()
+    assert target["path"] == str(models / "a.yml") and target["exists"]
+    assert target["default"] is False
+    body = {"path": str(project), "name": "a", "spec": SPEC}
+    assert client.put("/api/project/model", json=body).status_code == 409
+    response = client.put(
+        "/api/project/model", json={**body, "overwrite": True}
+    )
+    assert response.status_code == 200, response.text
+    assert sorted(item.name for item in models.iterdir()) == ["a.yml"]
+    assert load_spec(models / "a.yml")["nodes"]["fc"]["unit"] == "nn.Linear"
+
+    # 大文字と小文字だけ違うファイルは, 区別しないファイルシステムなら実際の
+    # 名前で出す (区別するなら別のファイル)
+    (models / "Wide.yaml").write_text("old\n")
+    response = client.post(
+        "/api/project/target", json={"path": str(project), "name": "wide"}
+    )
+    target = response.json()
+    if (models / "wide.yaml").exists():
+        assert target["path"] == str(models / "Wide.yaml")
+        assert target["exists"] is True
+    else:
+        assert target["path"] == str(models / "wide.yaml")
+        assert target["exists"] is False
+
+    # config の model.spec と同じ名前は既定の保存先と同じ印
+    response = client.post(
+        "/api/project/target", json={"path": str(project), "name": "model"}
+    )
+    assert response.json()["default"] is True
+
+
 class StubQuest:
     def __init__(self, record: dict[str, Any]):
         # handoff が返す値を保存
@@ -635,6 +693,10 @@ def test_problem_record(
     )
     assert response.status_code == 422
     assert "外" in response.json()["detail"]
+    response = client.post(
+        "/api/project/target", json={"path": str(problem), "name": "cnn"}
+    )
+    assert response.status_code == 422
 
     # 記録の無い問題の設定のファイルは 422. プロジェクトの中の記録の無い
     # problem.yaml は骨組みの既定

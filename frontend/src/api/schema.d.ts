@@ -772,7 +772,10 @@ export interface components {
         ProjectSaveBody: {
             /** Path */
             path: string;
-            /** Name */
+            /**
+             * Name
+             * @description models/ の下の名前 (拡張子無し. 無いか空なら既定)
+             */
             name?: string | null;
             /** Spec */
             spec: {
@@ -811,6 +814,12 @@ export interface components {
              * @description 問題の設定の名前
              */
             problem?: string | null;
+            /**
+             * Default
+             * @description 名前の保存先が既定の保存先 (記録か config の model.spec) と同じファイルか
+             * @default false
+             */
+            default: boolean;
         };
         /** SpecBody */
         SpecBody: {
@@ -828,7 +837,7 @@ export interface components {
         TargetBody: {
             /**
              * Path
-             * @description プロジェクトのディレクトリか問題の設定のファイル
+             * @description プロジェクトのディレクトリか問題の設定のファイルの絶対のパス (~ から書ける)
              */
             path: string;
             /**

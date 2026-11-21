@@ -149,6 +149,22 @@ test('名前を変えてプロジェクトに保存すると, models/ の下に�
   expect(readFileSync(modelFile, 'utf-8')).toBe(modelBefore)
   expect(readFileSync(config, 'utf-8')).toBe(configBefore)
 
+  // 確かめに失敗すると, 前の保存の知らせを消す (先頭の - は使えない)
+  await save.getByLabel('models/ の下の名前').fill('-bad')
+  await save.getByRole('button', { name: '保存先を確かめる' }).click()
+  await expect(save.getByRole('alert')).toContainText('先頭に - は使えない')
+  await expect(save.getByRole('status')).not.toContainText('に保存しました')
+
+  // 確かめた後に名前を書き換えると, 確かめ直すように出す
+  await save.getByLabel('models/ の下の名前').fill('model')
+  await expect(save).toContainText('保存先を確かめ直してください')
+
+  // 既定の保存先と同じ名前は, 既定の定義を上書きすると添える
+  await save.getByRole('button', { name: '保存先を確かめる' }).click()
+  await expect(save.getByRole('group', { name: '保存先' })).toContainText(
+    '既定の定義を上書きします',
+  )
+
   // 名前を消すと, 既定の保存先に戻る
   await save.getByLabel('models/ の下の名前').fill('')
   await save.getByRole('button', { name: '保存先を確かめる' }).click()
