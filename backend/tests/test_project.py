@@ -1063,3 +1063,51 @@ def test_dataset_inputs_vocabulary(
         item = response.json()["inputs"][0]
         assert item["dtype"] == "int64" and item["shape"] == [4, 16]
         assert item["vocabulary"] == expected
+
+
+def test_dataset_inputs_text_vocabulary(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    本物の ML-EDA で書き出した文のデータセットから, 語彙の大きさが API の
+    応答に出ることを確かめる関数 (語彙の大きさを返す ML-EDA だけ)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 語彙の大きさを返す ML-EDA だけ
+    ml_eda = pytest.importorskip("ml_eda")
+    if not hasattr(ml_eda.pipeline, "text_vocabulary"):
+        pytest.skip("ML-EDA の model_inputs が語彙の大きさを返しません")
+
+    # 2 クラスの短い文を語の番号の並びで書き出す
+    for label, words in (("pos", "good great"), ("neg", "bad awful")):
+        (tmp_path / "texts" / label).mkdir(parents=True)
+        for index in range(5):
+            (tmp_path / "texts" / label / f"{index}.txt").write_text(
+                f"this is {words} {index}", encoding="utf-8"
+            )
+    recipe = {
+        "target": "label", "task": "classification",
+        "item_steps": [{"op": "vocabulary", "length": 6}],
+        "split": {"method": "stratified", "valid": 0.2},
+    }
+    dataset = tmp_path / "ds"
+    ml_eda.export_dataset(ml_eda.load_data(tmp_path / "texts"), recipe,
+                          dataset)
+    steps = ml_eda.load_dataset(dataset).recipe["item_steps"]
+    size = len(steps[0]["state"]["vocabulary"])
+
+    # 応答の入力は語の番号 (int64) で, 語彙の大きさ付き
+    response = client.post("/api/dataset/inputs", json={"path": str(dataset)})
+    assert response.status_code == 200, response.text
+    item = response.json()["inputs"][0]
+    assert item["dtype"] == "int64" and item["vocabulary"] == size
