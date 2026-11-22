@@ -24,6 +24,7 @@ import { failedNodes, formatCount } from '../../lib/format'
 import { danglingNodes, emptySpec, freshName, type Spec, type UnitSpec } from '../../lib/graph'
 import { subgraphCheckTarget } from '../../lib/subgraph'
 import { useTheme } from '../../lib/themeContext'
+import { startsFresh } from '../../lib/template'
 import { ExperimentCopies, ProjectDialog } from './ProjectDialogs'
 
 /** 文字の内容を表示し, コピーできる枠 */
@@ -194,6 +195,7 @@ export function Toolbar({
   onSavingChange,
   onDataset,
   onProjectSaved,
+  onTemplate,
 }: {
   /** 保存した知らせ (保存すると上の操作を作り直すので, 外で持つ) */
   savedNotice: string
@@ -237,6 +239,8 @@ export function Toolbar({
   onDataset: (info: DatasetInputs) => string[]
   /** 定義をプロジェクトに書いた (書いたファイルの場所) */
   onProjectSaved: (path: string) => void
+  /** 問題の設定の受け持ちに合う雛形の定義を開く */
+  onTemplate: (spec: Spec) => void
 }) {
   const queryClient = useQueryClient()
   const nameId = useId()
@@ -609,8 +613,11 @@ export function Toolbar({
         <ProjectDialog
           spec={{ ...whole, name }}
           editing={editing}
+          fresh={startsFresh(whole, dirty)}
+          dirty={dirty}
           onApply={onDataset}
           onSaved={onProjectSaved}
+          onTemplate={onTemplate}
           onClose={() => setDialog(null)}
         />
       )}

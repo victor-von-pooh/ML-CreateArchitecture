@@ -10,6 +10,8 @@ const dataset = fileURLToPath(new URL('.work/dataset', import.meta.url))
 const masks = fileURLToPath(new URL('.work/masks', import.meta.url))
 const project = fileURLToPath(new URL('.work/project', import.meta.url))
 const modelFile = `${project}/models/model.yaml`
+// 受け持ちに合う雛形 (two_tower_retrieval) のある問題の設定のプロジェクト
+const rankProject = fileURLToPath(new URL('.work/rank_project', import.meta.url))
 
 // プロジェクトへの保存は 2 回目に上書きを確かめるので, 書いた順に実行
 test.describe.configure({ mode: 'serial' })
@@ -264,6 +266,70 @@ test('問題の設定を一覧から選ぶと, 記録のデータセットと保
   await target.getByRole('button', { name: 'この場所に保存' }).click()
   await expect(save.getByRole('status')).toContainText(`${modelFile} に保存しました`)
   expect(readFileSync(modelFile, 'utf-8')).toContain('out_features: 3')
+})
+
+test('雛形のある問題の設定を新しく始めるときに選ぶと雛形を開き, 定義があるときは選べるようにする', async ({
+  page,
+}) => {
+  await page.goto('/')
+  let dialog = await openDialog(page)
+  let rank = dialog
+    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('button', { name: /e2e の推薦/ })
+  await expect(rank).toContainText('雛形: two_tower_retrieval')
+
+  // 新規の画面で選ぶと, 雛形を開いたまま続けられる (保存先は今までどおり記録の場所)
+  await rank.click()
+  let note = dialog.getByRole('region', { name: '受け持ちに合う雛形' })
+  await expect(note.getByRole('status')).toContainText(
+    '問題の設定 e2e の推薦 の受け持ちに合う雛形 two_tower_retrieval を開きました',
+  )
+  await expect(note.getByRole('button')).toHaveCount(0)
+  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
+  await expect(save.getByRole('group', { name: '保存先' })).toContainText(
+    `${rankProject}/models/model.yaml`,
+  )
+  await dialog.getByRole('button', { name: '閉じる' }).click()
+  await expect(page.locator('[data-id="user_fc1"]')).toBeVisible({ timeout: 20_000 })
+  // まだどこにも保存していないので, 保存していない変更になる (知らせはダイアログの中だけ)
+  await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
+  await expect(page.getByText('雛形 two_tower_retrieval を開きました')).toHaveCount(0)
+
+  // 既に定義がある場合は上書きせず, 「雛形を開く」で選ぶ
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く', exact: true }).click()
+  await page.getByRole('button', { name: 'mlp', exact: true }).click()
+  await expect(page.locator('[data-id="fc1"]')).toBeVisible({ timeout: 20_000 })
+  dialog = await openDialog(page)
+  rank = dialog
+    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('button', { name: /e2e の推薦/ })
+  await rank.click()
+  note = dialog.getByRole('region', { name: '受け持ちに合う雛形' })
+  await expect(note.getByRole('status')).toContainText('今の定義があるので開いていません')
+  await expect(page.locator('[data-id="fc1"]')).toHaveCount(1)
+  // 保存していない変更が無くても, 今の定義を置き換えるので確かめる
+  let asked = ''
+  page.once('dialog', (confirm) => {
+    asked = confirm.message()
+    void confirm.accept()
+  })
+  await note.getByRole('button', { name: '雛形 two_tower_retrieval を開く' }).click()
+  await expect(note.getByRole('status')).toContainText('を開きました')
+  expect(asked).toContain('今の定義を雛形で置き換えますか')
+  await dialog.getByRole('button', { name: '閉じる' }).click()
+  await expect(page.locator('[data-id="user_fc1"]')).toBeVisible({ timeout: 20_000 })
+  await expect(page.locator('[data-id="fc1"]')).toHaveCount(0)
+
+  // 開いた雛形は保存していないので, 閉じるときに確かめる
+  const unload = new Promise<string>((resolve) =>
+    page.once('dialog', (confirm) => {
+      resolve(confirm.type())
+      void confirm.accept()
+    }),
+  )
+  await page.close({ runBeforeUnload: true })
+  expect(await unload).toBe('beforeunload')
 })
 
 test('名前を書いてから問題の設定を一覧から選ぶと, 記録のプロジェクトの models/ の下の名前が保存先になる', async ({

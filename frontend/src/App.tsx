@@ -728,6 +728,23 @@ function Editor() {
             setSavedNotice(`${path} に保存しました`)
             window.setTimeout(() => setSavedNotice(''), 3000)
           }}
+          onTemplate={(loaded) => {
+            // 保存する名前はそのまま (開いているデータセットとプロジェクトの
+            // ダイアログを閉じずに, 続けて入力と出力を作って保存できるように).
+            // 開いた知らせはダイアログの中に出す. 前の定義の知らせは消す
+            setNotice(null)
+            setOwnFile(null)
+            const placed = withStateVersion(placeMissing(loaded, unitsFor(loaded)))
+            history.reset(placed)
+            setEditing(null)
+            // まだどこにも保存していないので, 保存していない変更にする (閉じる
+            // ときに確かめ, 下書きにも残す)
+            setSaved('')
+            window.requestAnimationFrame(
+              () => void flow.fitView({ duration: 200, maxZoom: 1, padding: 0.1 }),
+            )
+            setSelected(null)
+          }}
         />
         {draft && (
           <section

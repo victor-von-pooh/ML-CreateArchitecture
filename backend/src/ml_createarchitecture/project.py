@@ -7,6 +7,7 @@
 """
 
 import datetime as dt
+import functools
 import importlib
 import os
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Any, Optional
 
 import yaml
 from fastapi import APIRouter, HTTPException
+from ml_modelcontrol import list_examples
 from pydantic import BaseModel, Field, ValidationError
 
 from ml_createarchitecture.settings import get_problems_dir
@@ -125,6 +127,11 @@ class ProjectTarget(BaseModel):
     problem: Optional[str] = Field(
         default=None, description="問題の設定の名前"
     )
+    example: Optional[str] = Field(
+        default=None,
+        description="問題の設定の受け持ちに合う雛形 (ML-ModelControl の"
+        "同梱の例の名前. 合うものが無ければ無し)"
+    )
     default: bool = Field(
         default=False,
         description="名前の保存先が既定の保存先 (記録か config の "
@@ -146,6 +153,10 @@ class ProblemEntry(BaseModel):
     dataset: Optional[str] = None
     target: Optional[str] = Field(
         default=None, description="モデルの定義の保存先"
+    )
+    example: Optional[str] = Field(
+        default=None,
+        description="受け持ちに合う雛形 (ML-ModelControl の同梱の例の名前)"
     )
 
 
@@ -431,6 +442,50 @@ def section(record: Any, key: str) -> dict[str, Any]:
     return part
 
 
+@functools.lru_cache(maxsize=1)
+def example_names() -> frozenset[str]:
+    """
+    同梱の例の名前の一覧を返す関数 (同梱の例は起動の間に変わらないので
+    1 度だけ読む)
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    names: frozenset[str]
+        ML-ModelControl の同梱の例の名前
+    """
+    names = frozenset(item["name"] for item in list_examples())
+
+    return names
+
+
+def known_example(value: Any) -> Optional[str]:
+    """
+    受け渡しの雛形の名前を, 同梱の例にあるものだけにする関数
+
+    Parameters
+    ----------
+    value: Any
+        ML-Quest の handoff の model.example
+
+    Returns
+    ----------
+    example: Optional[str]
+        同梱の例の名前 (無いか, 今の ML-ModelControl に無い名前なら None.
+        開けない雛形を出さないため)
+    """
+    # 名前でない値は一覧を見ずに除く
+    if not isinstance(value, str):
+        example = None
+        return example
+    example = value if value in example_names() else None
+
+    return example
+
+
 def missing_record(problem_path: Path) -> str:
     """
     問題の設定にモデルの定義の保存先の記録が無い理由を返す関数
@@ -536,7 +591,8 @@ def from_problem(problem_path: Path) -> Optional[ProjectTarget]:
         path=str(path), source="problem", exists=path.exists(),
         project=str(root),
         dataset=str(dataset) if dataset else None,
-        problem=name if isinstance(name, str) else None
+        problem=name if isinstance(name, str) else None,
+        example=known_example(model.get("example"))
     )
 
     return target
@@ -1105,6 +1161,7 @@ def problem_entry(path: Path) -> ProblemEntry:
     entry.project = target.project
     entry.dataset = target.dataset
     entry.target = target.path
+    entry.example = target.example
 
     return entry
 

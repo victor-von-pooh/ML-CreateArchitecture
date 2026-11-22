@@ -822,6 +822,7 @@ def test_problem_record(
     assert target["path"] == str(spec_path) and target["source"] == "problem"
     assert target["dataset"] == str(project / "outputs" / "dataset")
     assert target["problem"] == "sales"
+    assert target["example"] is None
     response = client.put(
         "/api/project/model", json={"path": str(problem), "spec": SPEC}
     )
@@ -840,6 +841,23 @@ def test_problem_record(
     )
     assert response.json()["path"] == str(project / "models" / "cnn.yaml")
     assert response.json()["problem"] == "sales"
+
+    # 受け持ちに合う雛形の名前を渡す (名前の保存先でも). 同梱の例に無い名前と
+    # 名前でない値は渡さない (開けない雛形を出さないため)
+    record["model"]["example"] = "unet_segmentation"
+    for name in (None, "cnn"):
+        response = client.post(
+            "/api/project/target", json={"path": str(problem), "name": name}
+        )
+        assert response.json()["example"] == "unet_segmentation"
+    for value in ("no_such_example", 3, ["unet_segmentation"]):
+        record["model"]["example"] = value
+        response = client.post(
+            "/api/project/target", json={"path": str(problem)}
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["example"] is None
+    record["model"].pop("example")
 
     # プロジェクトの外を指す記録は 422
     record["model"]["project_model_spec"] = str(tmp_path / "other.yaml")
@@ -1480,6 +1498,89 @@ def test_list_problems(
         if entry["path"] == str(recorded)
     )
     assert first["usable"] is False and "ML-Pathfinder" in first["reason"]
+
+
+def rank_problem(quest: Any) -> dict[str, Any]:
+    """
+    見本の課題から, 並べる受け持ちを一から学習する問題の設定を作る関数
+
+    Parameters
+    ----------
+    quest: Any
+        ML-Quest のモジュール
+
+    Returns
+    ----------
+    problem: dict[str, Any]
+        問題の設定 (雛形は two_tower_retrieval)
+    """
+    # 見本の受け持ちを作り直す (ML-Quest のテストの受け持ちの入れ替えと同じ)
+    problem = quest.example_problem(next(iter(quest.EXAMPLES)))
+    problem["ml"]["parts"] = [{}]
+    for key in ("decision", "basis", "current"):
+        problem["action"].pop(key, None)
+    answers = [
+        ("role", "rank"), ("what", "試しの出力"), ("item", "1 件"),
+        ("baseline", "今のやり方"), ("evaluation.link", "良くなると損が減る"),
+        ("unit", "query"), ("output", "ranking"),
+        ("target.source", "feedback"), ("method", "scratch"),
+        ("evaluation.metric", "ndcg")
+    ]
+    for key, value in answers:
+        problem = quest.answer(problem, f"ml.parts.0.{key}", value)
+
+    return problem
+
+
+def test_problem_example(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    本物の ML-Quest の受け渡しの雛形の名前を, 一覧と保存先に渡すことを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        環境変数の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    # 並べるを一から学習するものと, 見本 (表の列の予測. 雛形無し)
+    quest = pytest.importorskip("ml_quest")
+    home = tmp_path / "pathfinder"
+    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
+    example = quest.example_problem(next(iter(quest.EXAMPLES)))
+    project = tmp_path / "proj"
+    quest.make_project(example, project)
+    rank = save_problem(
+        quest, home, "rank",
+        quest.record_project(rank_problem(quest), project)
+    )
+    save_problem(quest, home, "column", quest.record_project(example, project))
+    response = client.get("/api/problems")
+    assert response.status_code == 200, response.text
+    entries = {
+        Path(entry["path"]).parent.name: entry
+        for entry in response.json()["problems"]
+    }
+    assert entries["rank"]["usable"] is True
+    assert entries["rank"]["example"] == "two_tower_retrieval"
+    assert entries["column"]["example"] is None
+
+    # 保存先の確かめでも同じ名前 (保存先と出力の大きさの受け取りは変えない)
+    response = client.post("/api/project/target", json={"path": str(rank)})
+    assert response.status_code == 200, response.text
+    target = response.json()
+    assert target["example"] == "two_tower_retrieval"
+    assert target["path"] == entries["rank"]["target"]
+    assert target["source"] == "problem" and target["exists"] is False
 
 
 def test_positive_int() -> None:
