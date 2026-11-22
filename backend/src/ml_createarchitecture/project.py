@@ -49,6 +49,13 @@ PROBLEM_FILE = "problem.yaml"
 # 学習の設定を置くプロジェクトのディレクトリ (モデルの定義は書かない)
 CONFIG_DIR = "configs"
 
+# モデルの定義を書かない, プロジェクトの直下のディレクトリと理由 (ML-Quest
+# が写したデータ, ML-EDA のデータセットと ML-Found の実験の置き場)
+RESERVED_DIRS = {
+    "data": "写したデータのディレクトリ",
+    "outputs": "データセットと実験のディレクトリ",
+}
+
 # 書けるモデルの定義の拡張子
 SPEC_SUFFIXES = (".yaml", ".yml")
 
@@ -830,8 +837,10 @@ def check_target(target: ProjectTarget) -> ProjectTarget:
     Raises
     ----------
     HTTPException
-        拡張子が YAML でない場合, 学習の設定のディレクトリ (configs/) の中
-        の場合と, ディレクトリなどファイルでないものがある場合は 422
+        拡張子が YAML でない場合, 学習の設定のディレクトリ (configs/) の中,
+        プロジェクトの直下の problem.yaml, data/ か outputs/ の中の場合,
+        途中の名前がディレクトリでない場合と, ディレクトリなどファイルで
+        ないものがある場合は 422
     """
     # YAML のファイルだけに書く
     path = Path(target.path)
@@ -840,15 +849,20 @@ def check_target(target: ProjectTarget) -> ProjectTarget:
             422, f"保存先 {path} は YAML のファイル (.yaml) ではありません"
         )
 
-    # 学習の設定 (configs/ の下) は書き換えない. 大文字と小文字を区別しない
-    # ファイルシステムでも同じ場所を断るため, 名前は大小を無視して比べる
+    # プロジェクトの中の他の段階のファイルは書き換えない
     if target.project is not None and path.is_relative_to(target.project):
-        parts = path.relative_to(target.project).parts
-        if parts and parts[0].casefold() == CONFIG_DIR:
+        check_reserved(path, path.relative_to(target.project).parts)
+
+    # 途中の名前がファイルなどなら, 保存でディレクトリを作れない (壊れた
+    # リンクも同じ)
+    for parent in path.parents:
+        if parent.is_dir():
+            continue
+        if parent.exists() or parent.is_symlink():
             raise HTTPException(
                 422,
-                f"保存先 {path} は学習の設定のディレクトリ ({CONFIG_DIR}/) "
-                "の中です. モデルの定義は models/ などに置いてください"
+                f"保存先 {path} の途中の {parent} がディレクトリではありま"
+                "せん"
             )
     if path.exists() and not path.is_file():
         raise HTTPException(
@@ -856,6 +870,54 @@ def check_target(target: ProjectTarget) -> ProjectTarget:
         )
 
     return target
+
+
+def check_reserved(path: Path, parts: tuple[str, ...]) -> None:
+    """
+    保存先が, プロジェクトの中の他の段階のファイルの場所でないかを確かめる
+    関数
+
+    学習の設定 (configs/ の下), 問題の設定の写し (直下の problem.yaml),
+    データと実験 (data/ と outputs/ の下) をモデルの定義で上書きしない
+    ため. 大文字と小文字を区別しないファイルシステムでも同じ場所を断る
+    ため, 名前は大小を無視して比べる
+
+    Parameters
+    ----------
+    path: Path
+        保存先
+    parts: tuple[str, ...]
+        プロジェクトのディレクトリからの保存先の名前の並び
+
+    Returns
+    ----------
+    None
+
+    Raises
+    ----------
+    HTTPException
+        他の段階のファイルの場所なら 422
+    """
+    # 直下の名前で見分ける
+    head = parts[0].casefold() if parts else ""
+    if head == CONFIG_DIR:
+        raise HTTPException(
+            422,
+            f"保存先 {path} は学習の設定のディレクトリ ({CONFIG_DIR}/) "
+            "の中です. モデルの定義は models/ などに置いてください"
+        )
+    if len(parts) == 1 and head == PROBLEM_FILE:
+        raise HTTPException(
+            422,
+            f"保存先 {path} はプロジェクトの問題の設定 ({PROBLEM_FILE}) "
+            "です. モデルの定義は models/ などに置いてください"
+        )
+    if len(parts) > 1 and head in RESERVED_DIRS:
+        raise HTTPException(
+            422,
+            f"保存先 {path} は{RESERVED_DIRS[head]} ({head}/) の中です. "
+            "モデルの定義は models/ などに置いてください"
+        )
 
 
 def make_parents(path: Path, project: Optional[str]) -> None:
