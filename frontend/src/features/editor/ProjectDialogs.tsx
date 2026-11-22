@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { ClipboardList } from 'lucide-react'
-import { useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
 import { api, ApiError, type DatasetInputs, type ProjectTarget } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
@@ -279,6 +279,7 @@ function ProjectSaveSection({
   choice,
   onSaved,
   onTarget,
+  onFailed,
 }: {
   /** 保存する定義全体 */
   spec: Spec
@@ -288,6 +289,8 @@ function ProjectSaveSection({
   onSaved: (path: string) => void
   /** 保存先を確かめた (記録のデータセットの場所をデータセットの欄に入れるため. chosen は一覧から選んだ場合) */
   onTarget: (target: ProjectTarget, text: string, chosen: boolean) => void
+  /** 保存先の確かめに失敗した (確かめた場所とデータセットの欄の候補を消すため) */
+  onFailed: () => void
 }) {
   const [path, setPath] = useState(() => remembered(PROJECT_KEY))
   // models/ の下の名前 (候補ごとに変えるので覚えない. 空なら既定の保存先)
@@ -312,10 +315,14 @@ function ProjectSaveSection({
     target !== null && target.path === path.trim() && target.name === name.trim()
       ? target.value
       : null
+  // 最後に送った確かめの番号 (確かめが重なった場合に, 遅れて返った前の
+  // 要求の結果で後の結果を上書きしないため. 送るのは resolveTarget だけ)
+  const latest = useRef(0)
   const resolve = useMutation({
-    mutationFn: ({ text, named }: { text: string; named: string; chosen: boolean }) =>
+    mutationFn: ({ text, named }: { text: string; named: string; chosen: boolean; id: number }) =>
       api.projectTarget(text, named),
-    onSuccess: (value, { text, named, chosen }) => {
+    onSuccess: (value, { text, named, chosen, id }) => {
+      if (id !== latest.current) return
       remember(PROJECT_KEY, text)
       setTarget({ path: text, name: named, value })
       setWritten(null)
@@ -323,9 +330,11 @@ function ProjectSaveSection({
     },
     // 確かめに失敗した場合は, 前に確かめた保存先 (と書いた知らせ) を消して
     // 誤りだけを出す (確かめ直しの知らせを重ねず, 前の保存先のまま書かない)
-    onError: () => {
+    onError: (_error, { id }) => {
+      if (id !== latest.current) return
       setTarget(null)
       setWritten(null)
+      onFailed()
     },
   })
   // 一覧から選んだ問題の設定を欄に入れ, 今の名前のまま保存先を確かめる
@@ -339,7 +348,14 @@ function ProjectSaveSection({
       setPending({ text: choice.path, named: name.trim() })
     }
   }
-  const { mutate: resolveTarget } = resolve
+  const { mutate: resolveMutate } = resolve
+  const resolveTarget = useCallback(
+    (request: { text: string; named: string; chosen: boolean }) => {
+      latest.current += 1
+      resolveMutate({ ...request, id: latest.current })
+    },
+    [resolveMutate],
+  )
   useEffect(() => {
     if (pending) resolveTarget({ ...pending, chosen: true })
   }, [pending, resolveTarget])
@@ -381,7 +397,7 @@ function ProjectSaveSection({
         onSubmit={(event) => {
           event.preventDefault()
           if (path.trim() && !resolve.isPending) {
-            resolve.mutate({ text: path.trim(), named: name.trim(), chosen: false })
+            resolveTarget({ text: path.trim(), named: name.trim(), chosen: false })
           }
         }}
       >
@@ -491,6 +507,10 @@ export function ProjectDialog({
           onTarget={(target, text, chosen) => {
             setChecked(text)
             setSuggested({ path: target.dataset ?? null, chosen })
+          }}
+          onFailed={() => {
+            setChecked(null)
+            setSuggested(null)
           }}
         />
       </div>
