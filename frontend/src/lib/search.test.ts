@@ -49,4 +49,15 @@ describe('よく使う呼び方', () => {
     expect(matchesQuery(unit('pyg.MeanAggregation'), 'readout')).toBe(true)
     expect(matchesQuery(unit('pyg.GCNConv'), 'readout')).toBe(false)
   })
+
+  it('点群のまとめの最大値は max pool の呼び方で見つかる', () => {
+    const units = [unit('op.Mean'), unit('op.Max')]
+    expect(firstMatch(units, 'max pool')?.name).toBe('op.Max')
+    expect(firstMatch(units, 'global max pool')?.name).toBe('op.Max')
+    expect(matchesQuery(unit('op.Max'), 'maximum')).toBe(true)
+    // グラフのまとめの名前そのものは, グラフの部品を先に置く
+    const graph = [unit('op.Max'), unit('pyg.MaxAggregation')]
+    expect(firstMatch(graph, 'global max pool')?.name).toBe('pyg.MaxAggregation')
+    expect(matchesQuery(unit('op.Max'), 'global max pool')).toBe(true)
+  })
 })
