@@ -284,7 +284,8 @@ test('確かめが重なった場合は最後の確かめの結果だけを出�
   const target = save.getByRole('group', { name: '保存先' })
 
   // 次の 1 回の確かめを遅らせる (late が成功か誤りで返す). 返し終わるまで待つ
-  // ための Promise を返す
+  // ための Promise を包んで返す (async の関数から Promise をそのまま返すと,
+  // 呼ぶ側の await が返し終わるまで待つため)
   const delayNext = async (late: 'success' | 'error') => {
     let finish = () => {}
     const finished = new Promise<void>((resolve) => (finish = resolve))
@@ -300,17 +301,17 @@ test('確かめが重なった場合は最後の確かめの結果だけを出�
       },
       { times: 1 },
     )
-    return finished
+    return { finished }
   }
 
   // 打った場所の確かめが遅れて成功で返っても, 後に一覧から選んだ確かめの
   // 結果のまま (確かめ直しの知らせを出さず, 一覧の選択も外さない)
-  let late = await delayNext('success')
+  let delayed = await delayNext('success')
   await field.fill(project)
   await button.click()
   await expect(button).toHaveText('確かめています…')
   await recorded.click()
-  await late
+  await delayed.finished
   await page.waitForTimeout(300)
   await expect(field).toHaveValue(/problems\/recorded\/problem\.yaml$/)
   await expect(target).toContainText('問題の設定 e2e の売上 の記録の保存先')
@@ -318,12 +319,12 @@ test('確かめが重なった場合は最後の確かめの結果だけを出�
   await expect(recorded).toHaveAttribute('aria-pressed', 'true')
 
   // 遅れて誤りで返っても, 後の確かめの結果のまま
-  late = await delayNext('error')
+  delayed = await delayNext('error')
   await field.fill(project)
   await button.click()
   await expect(button).toHaveText('確かめています…')
   await recorded.click()
-  await late
+  await delayed.finished
   await page.waitForTimeout(300)
   await expect(save.getByRole('alert')).toHaveCount(0)
   await expect(target).toContainText('問題の設定 e2e の売上 の記録の保存先')
