@@ -352,6 +352,7 @@ ML_CREATEARCHITECTURE_MODULES=my_lab.units PYTHONPATH=<my_lab を置いたディ
 | 部分モデルを消す | 一覧の部分モデルのごみ箱 (使っているノードが無いものだけ) |
 | 部分モデルの中身を編集 | 部分モデルのノードをダブルクリック. Esc で 1 つ上に戻る |
 | 部分モデルを 1 つのノードだけ変える | 詳細の「このノードだけの部分モデルにする」(2 つ以上のノードが使う部分モデルの場合に出る) |
+| 部品を受け取る引数 (`nn.TransformerEncoder` の `encoder_layer` など) | 詳細の引数の欄で部品を選ぶ (初めに候補). 下に出る「<引数> の引数」の欄に, 選んだ部品の引数を書く. YAML は版 3 (`format_version: 3`) になる |
 | torchvision と timm のモデルの名前 | 詳細の引数 `name` (timm は `model_name`) の欄に打つと候補が出る |
 | 選んだノードに戻る | 詳細の欄の中で Esc |
 

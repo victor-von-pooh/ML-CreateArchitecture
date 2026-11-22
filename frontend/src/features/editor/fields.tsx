@@ -1,11 +1,20 @@
 import { AlertTriangle, ArrowDown, ArrowUp, Info, Plus, Trash2 } from 'lucide-react'
-import { memo, useEffect, useId, useRef, useState } from 'react'
+import { memo, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import type { Issue } from '../../api/client'
 import { friendlyLocation, friendlyMessage } from '../../lib/issues'
 import { Button } from '../../components/ui'
-import { checkValue, formatValue, parseValue } from '../../lib/params'
-import { isValidName, type ParamSpec, type Subgraph } from '../../lib/graph'
+import {
+  checkValue,
+  formatValue,
+  isUnitValue,
+  parseValue,
+  pickUnit,
+  setUnitParam,
+  UNIT_DEPTH,
+  unitOptions,
+} from '../../lib/params'
+import { isValidName, type ParamSpec, type Subgraph, type UnitSpec } from '../../lib/graph'
 
 // 入力の例に使える型と値の作り方 (ML-ModelControl と同じ)
 
@@ -209,6 +218,130 @@ export function ParamField({
         <p id={hintId} className="col-start-2 text-[10px] text-ink-3">
           {hint}
         </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * 部品を受け取る引数 (種類 unit. nn.TransformerEncoder の encoder_layer など)
+ * の欄. 部品を選び, その引数を入れ子で書く (定義の版 3). 候補
+ * (suggestions) を初めの選択肢にする
+ */
+export function UnitParamField({
+  param,
+  value,
+  units,
+  onChange,
+  depth = 1,
+}: {
+  param: ParamSpec
+  value: unknown
+  units: Map<string, UnitSpec>
+  onChange: (value: unknown) => void
+  /** 入れ子の段 (ノードの引数に書いた部品が 1 段目) */
+  depth?: number
+}) {
+  const id = useId()
+  const hintId = `${id}-hint`
+  const current = isUnitValue(value) ? value : undefined
+  const { suggested, others } = useMemo(
+    () => unitOptions(units.values(), param.suggestions),
+    [units, param.suggestions],
+  )
+  const unit = current ? units.get(current.unit) : undefined
+  const listed = current && (suggested.includes(current.unit) || others.includes(current.unit))
+  const hint = [
+    param.description,
+    !param.required && value === undefined && param.default === null ? '既定 null (使わない)' : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  const setParam = (key: string, next: unknown) => {
+    if (current) onChange(setUnitParam(current, key, next))
+  }
+  return (
+    <div className="space-y-1">
+      <div className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5">
+        <label htmlFor={id} className="font-mono text-xs text-ink-2">
+          {param.name}
+          {param.required && <span className="text-critical-text"> *</span>}
+        </label>
+        <select
+          id={id}
+          value={current?.unit ?? ''}
+          aria-describedby={hint ? hintId : undefined}
+          onChange={(event) => onChange(pickUnit(value, event.target.value))}
+          className="h-7 w-full rounded-md border border-line bg-bg px-1 font-mono text-xs"
+        >
+          <option value="">(部品を選ぶ)</option>
+          {current && !listed && (
+            <option value={current.unit}>{current.unit} (書けない部品)</option>
+          )}
+          {suggested.length > 0 && (
+            <optgroup label="候補">
+              {suggested.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          <optgroup label={suggested.length > 0 ? '他の部品' : '部品'}>
+            {others.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </optgroup>
+        </select>
+        {hint && (
+          <p id={hintId} className="col-start-2 text-[10px] text-ink-3">
+            {hint}
+          </p>
+        )}
+      </div>
+      {current && unit && (unit.params.length > 0 || unit.extra_params) && (
+        <fieldset className="ml-2 space-y-2 border-l-2 border-line pl-2">
+          <legend className="mb-1 text-[11px] text-ink-3">
+            {param.name} の引数 ({current.unit})
+          </legend>
+          {unit.params.map((child) =>
+            child.kind === 'unit' ? (
+              depth < UNIT_DEPTH ? (
+                <UnitParamField
+                  key={`${current.unit}-${child.name}`}
+                  param={child}
+                  value={current.params?.[child.name]}
+                  units={units}
+                  onChange={(next) => setParam(child.name, next)}
+                  depth={depth + 1}
+                />
+              ) : (
+                <p key={child.name} className="text-[11px] text-ink-3">
+                  <span className="font-mono">{child.name}</span>: 引数の部品の入れ子は {UNIT_DEPTH}{' '}
+                  段までです
+                </p>
+              )
+            ) : (
+              <ParamField
+                // 部品を選び直したら作り直して値を合わせる
+                key={`${current.unit}-${child.name}`}
+                param={child}
+                value={current.params?.[child.name]}
+                onChange={(next) => setParam(child.name, next)}
+              />
+            ),
+          )}
+          {unit.extra_params && (
+            <ExtraParams
+              key={`extra:${current.unit}`}
+              known={new Set(unit.params.map((child) => child.name))}
+              values={current.params ?? {}}
+              onChange={setParam}
+            />
+          )}
+        </fieldset>
       )}
     </div>
   )

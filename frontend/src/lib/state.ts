@@ -1,4 +1,5 @@
 import type { NodeDef, RemapRule, Spec } from './graph'
+import { isUnitValue } from './params'
 
 /** 定義の版 2 で足したノードの項目 (パラメータの状態) */
 export const STATE_KEYS = ['train', 'eval_mode', 'zero_init', 'weights', 'share'] as const
@@ -15,10 +16,25 @@ export function usesState(spec: Spec): boolean {
   )
 }
 
-/** 版 2 の項目を使う定義の版を 2 以上にしたもの (使わなければそのまま) */
+/** 定義 (本体か部分モデル) のノードの引数に, 版 3 の項目 (部品と引数の辞書) があるか */
+export function usesUnitParams(spec: Spec): boolean {
+  const graphs = [spec, ...Object.values(spec.subgraphs ?? {})]
+  return graphs.some((graph) =>
+    Object.values(graph.nodes ?? {}).some((node) =>
+      Object.values(node.params ?? {}).some(isUnitValue),
+    ),
+  )
+}
+
+/**
+ * 版 2 の項目を使う定義の版を 2 以上, 版 3 の項目 (引数に書いた部品) を使う
+ * 定義の版を 3 以上にしたもの (使わなければそのまま. 保存では ML-ModelControl
+ * が書ける最も低い版に直す)
+ */
 export function withStateVersion(spec: Spec): Spec {
-  if (spec.format_version >= 2 || !usesState(spec)) return spec
-  return { ...spec, format_version: 2 }
+  const needed = usesUnitParams(spec) ? 3 : usesState(spec) ? 2 : 1
+  if (spec.format_version >= needed) return spec
+  return { ...spec, format_version: needed }
 }
 
 /** ノードの状態の項目を書き換えた (undefined なら消した) 定義 */

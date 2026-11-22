@@ -78,7 +78,8 @@ function Editor() {
     [whole, editingName],
   )
   // 履歴に残す全ての変更で, 版 2 の項目 (凍結, 共有など) を使った定義は
-  // 版を 2 に (部分モデルを写す, 写して分けるなどの変更も)
+  // 版を 2 に, 版 3 の項目 (引数に書いた部品) を使った定義は版を 3 に
+  // (部分モデルを写す, 写して分けるなどの変更も)
   const historySet = history.set
   const setHistory = useCallback(
     (next: Spec | ((current: Spec) => Spec), merge?: string) =>
@@ -89,7 +90,7 @@ function Editor() {
     [historySet],
   )
   // 部分モデルを編集している間の変更は, 定義の中の部分モデルに書き戻す
-  // (版 2 の項目 (凍結, 共有など) を使った定義は版を 2 に)
+  // (版 2 と版 3 の項目を使った定義は, その版に)
   const setSpec = useCallback(
     (next: Spec | ((current: Spec) => Spec), merge?: string) => {
       if (!editingName) {

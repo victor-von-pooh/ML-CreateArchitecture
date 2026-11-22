@@ -11,6 +11,7 @@ import {
   switchRuleKind,
   switchWeightsSource,
   usesState,
+  usesUnitParams,
   weightsSource,
   withStateVersion,
 } from './state'
@@ -45,6 +46,28 @@ describe('パラメータの状態', () => {
       },
     }
     expect(withStateVersion(spec).format_version).toBe(2)
+  })
+
+  it('引数に部品を書いた定義は版を 3 にし, 部分モデルの中も見る', () => {
+    const layer = { unit: 'nn.TransformerEncoderLayer', params: { d_model: 16, nhead: 4 } }
+    const spec: Spec = {
+      ...linearSpec(),
+      nodes: { enc: { unit: 'nn.TransformerEncoder', params: { encoder_layer: layer } } },
+    }
+    expect(usesUnitParams(spec)).toBe(true)
+    expect(withStateVersion(spec).format_version).toBe(3)
+    // 版 2 の項目を併せて使っても 3
+    expect(withStateVersion(setNodeState(spec, 'enc', 'train', false)).format_version).toBe(3)
+    const nested: Spec = {
+      ...linearSpec(),
+      subgraphs: {
+        block: { inputs: {}, nodes: { enc: spec.nodes.enc! }, outputs: {} },
+      },
+    }
+    expect(withStateVersion(nested).format_version).toBe(3)
+    // unit の無い辞書や部品を書かない定義は版を上げない
+    expect(usesUnitParams(linearSpec())).toBe(false)
+    expect(withStateVersion({ ...spec, format_version: 3 }).format_version).toBe(3)
   })
 
   it('名前と共有の行を読み書きする', () => {

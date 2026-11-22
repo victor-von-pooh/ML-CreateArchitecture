@@ -1,4 +1,4 @@
-import { rmSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { expect, test } from '@playwright/test'
@@ -16,6 +16,7 @@ const saved = [
   'e2e_user',
   'e2e_download',
   'e2e_state',
+  'e2e_unit',
 ].map((name) => fileURLToPath(new URL(`.work/home/models/${name}.yaml`, import.meta.url)))
 
 // 保存する前の形から始める (直列のテストの再試行は最初のテストからやり直す
@@ -1084,4 +1085,55 @@ test('パラメータの状態: 凍結, 零初期化, 共有, 外部の重みを
     timeout: 20_000,
   })
   await expect(page.locator('header')).toContainText('誤り 0 件')
+})
+
+test('部品を受け取る引数に部品と引数を書くと, 版 3 で保存して組み立てられる', async ({ page }) => {
+  await page.goto('/')
+  await page.getByPlaceholder('部品を探す').fill('nn.TransformerEncoder')
+  await page.getByRole('button', { name: /^nn\.TransformerEncoder(?!Layer)/ }).click()
+  await page.getByLabel(/^src( \*)?$/).selectOption('x')
+  await page.getByRole('button', { name: '出力' }).click()
+  await page.getByLabel(/つなぎ先/).selectOption('transformerencoder1')
+
+  // 候補の部品を選び, その引数を入れ子の欄に書く
+  await page.locator('[data-id="transformerencoder1"]').click()
+  const layer = page.getByLabel(/^encoder_layer/)
+  await expect(layer.locator('optgroup[label="候補"] option')).toHaveText([
+    'nn.TransformerEncoderLayer',
+  ])
+  await layer.selectOption('nn.TransformerEncoderLayer')
+  const inner = page.getByRole('group', { name: /encoder_layer の引数/ })
+  await inner.getByLabel(/^d_model/).fill('16')
+  await inner.getByLabel(/^d_model/).press('Enter')
+  await inner.getByLabel(/^nhead/).fill('4')
+  await inner.getByLabel(/^nhead/).press('Enter')
+  await page.getByLabel(/^num_layers/).fill('2')
+  await page.getByLabel(/^num_layers/).press('Enter')
+
+  // 形の推定まで通り (組み立てられ), YAML は版 3
+  await expect(page.locator('[data-id="transformerencoder1"]')).toContainText('[4, 16]', {
+    timeout: 20_000,
+  })
+  await expect(page.locator('header')).toContainText('誤り 0 件')
+  await page.getByRole('button', { name: 'YAML', exact: true }).click()
+  const yaml = page.getByRole('dialog')
+  await expect(yaml).toContainText('format_version: 3')
+  await expect(yaml).toContainText('unit: nn.TransformerEncoderLayer')
+  await page.keyboard.press('Escape')
+
+  // 保存したファイルも版 3 で, 開き直すと入れ子の引数が欄に戻る
+  page.on('dialog', (dialog) => void dialog.accept())
+  await page.getByLabel('保存する名前').fill('e2e_unit')
+  await page.getByRole('button', { name: /^保存/ }).click()
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible()
+  const file = fileURLToPath(new URL('.work/home/models/e2e_unit.yaml', import.meta.url))
+  expect(readFileSync(file, 'utf-8')).toContain('format_version: 3')
+  await page.getByRole('button', { name: '新規' }).click()
+  await page.getByRole('button', { name: '開く' }).click()
+  await page.getByRole('button', { name: /^e2e_unit \d/ }).click()
+  await page.locator('[data-id="transformerencoder1"]').click()
+  await expect(page.getByLabel(/^encoder_layer/)).toHaveValue('nn.TransformerEncoderLayer')
+  await expect(
+    page.getByRole('group', { name: /encoder_layer の引数/ }).getByLabel(/^d_model/),
+  ).toHaveValue('16')
 })
