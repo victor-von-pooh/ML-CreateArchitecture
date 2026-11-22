@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { Download, Plus, Trash2 } from 'lucide-react'
+import { Download, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 
 import type { WeightsReport, WeightsResult } from '../../api/client'
@@ -646,11 +646,7 @@ function ReadWeights({ onRead, stamp }: { onRead: () => Promise<WeightsResult>; 
           読めませんでした: {read.error.message}
         </p>
       )}
-      {current && read.data && !read.data.ok && (
-        <p role="alert" className="text-xs text-critical-text [overflow-wrap:anywhere]">
-          {read.data.error}
-        </p>
-      )}
+      {current && read.data && !read.data.ok && <WeightsError result={read.data} />}
       {current && read.data?.ok && (
         <section role="status" aria-label="重みの読み込みの報告" className="space-y-2">
           {read.data.reports.length === 0 && (
@@ -660,6 +656,37 @@ function ReadWeights({ onRead, stamp }: { onRead: () => Promise<WeightsResult>; 
             <ReportCard key={report.node} report={report} />
           ))}
         </section>
+      )}
+    </div>
+  )
+}
+
+// 申請制の重みを読めなかった理由ごとのリンクの文 (トークンが無効なら申請ではなく設定を直すので, ページを開くだけ)
+const GATED_LINK: Record<string, string> = {
+  no_token: '配布元のページで申請する',
+  not_granted: '配布元のページで申請する',
+  invalid_token: '配布元のページを開く',
+}
+
+/** 重みを読めなかった誤りの文. 申請制の重みは, 理由に合わせて配布元のページへの案内も出す */
+export function WeightsError({ result }: { result: WeightsResult }) {
+  const gated = result.gated
+  // 配布元のページは https の URL だけをリンクにする (バックエンドの設定の値をそのまま開かないため)
+  const url = gated?.url && gated.url.startsWith('https://') ? gated.url : null
+  return (
+    <div role="alert" className="space-y-1 text-xs text-critical-text">
+      <p className="[overflow-wrap:anywhere]">{result.error}</p>
+      {gated && url && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-accent-text underline"
+        >
+          {GATED_LINK[gated.reason] ?? '配布元のページを開く'}
+          <ExternalLink className="size-3" aria-hidden />
+          <span className="sr-only">(新しいタブで開く)</span>
+        </a>
       )}
     </div>
   )

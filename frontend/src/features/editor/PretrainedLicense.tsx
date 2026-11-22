@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, ExternalLink, Loader2 } from 'lucide-react
 
 import { api, type PretrainedInfo } from '../../api/client'
 import { useDebounced } from '../../lib/debounce'
-import { licenseParams } from '../../lib/license'
+import { formatBytes, licenseParams } from '../../lib/license'
 
 // 分類ごとの見出しと色 (商用で使えないものは誤り, 分からないものは注意の色)
 const STATUS_STYLE: Record<string, { label: string; className: string }> = {
@@ -64,9 +64,12 @@ export function PretrainedLicense({
   )
 }
 
-/** ライセンスの分類, 説明, どこから読んだか, 推論の一式での扱い */
+/** ライセンスの分類, 説明, どこから読んだか, 推論の一式での扱い, 表示の義務, 出どころの表記, 重みの大きさ
+ * (値の無いものは出さない) */
 export function LicenseCard({ info }: { info: PretrainedInfo }) {
   const style = STATUS_STYLE[info.status] ?? STATUS_STYLE.unknown!
+  // 読めない大きさ (負の値など) は行ごと出さない
+  const size = info.size_bytes == null ? null : formatBytes(info.size_bytes)
   return (
     <div
       // 結果は控えめに読み上げる (ノードを選ぶたびに割り込まないように)
@@ -95,12 +98,30 @@ export function LicenseCard({ info }: { info: PretrainedInfo }) {
             </dd>
           </>
         )}
+        {size && (
+          <>
+            <dt className="text-ink-3">重みの大きさ</dt>
+            <dd title={`${info.size_bytes} バイト`}>{size}</dd>
+          </>
+        )}
         <dt className="text-ink-3">推論の一式</dt>
         <dd>
           {info.redistributable
             ? '重みを写して固定できる'
             : '重みを写さず, 出どころの名前と版から読む'}
         </dd>
+        {info.attribution && (
+          <>
+            <dt className="text-ink-3">表示の義務</dt>
+            <dd className="[overflow-wrap:anywhere]">{info.attribution}</dd>
+          </>
+        )}
+        {info.credit && (
+          <>
+            <dt className="text-ink-3">出どころの表記</dt>
+            <dd className="select-all font-mono [overflow-wrap:anywhere]">{info.credit}</dd>
+          </>
+        )}
       </dl>
       {info.url && (
         <a
