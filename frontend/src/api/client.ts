@@ -124,11 +124,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
-  /** 実験の定義の写しを読む (run は一覧の run) */
-  openExperimentSpec: (path: string, run: string) =>
+  /** 実験の定義の写しを読む (run と root は一覧の run と置き場) */
+  openExperimentSpec: (path: string, run: string, root: string) =>
     request<ExperimentSpec>('/api/project/experiment-spec', {
       method: 'POST',
-      body: JSON.stringify({ path, run }),
+      body: JSON.stringify({ path, run, root }),
     }),
   saveModel: (name: string, spec: Spec) =>
     request<ModelSummary>(`/api/models/${encodeURIComponent(name)}`, {

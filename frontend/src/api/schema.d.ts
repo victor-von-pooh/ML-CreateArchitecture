@@ -531,7 +531,7 @@ export interface paths {
          *     Parameters
          *     ----------
          *     body: ExperimentBody
-         *         プロジェクトの場所と実験
+         *         プロジェクトの場所, 実験と置き場
          *
          *     Returns
          *     ----------
@@ -541,7 +541,8 @@ export interface paths {
          *     Raises
          *     ----------
          *     HTTPException
-         *         一覧に無い実験は 404, 写しを開けないか定義として読めない場合は 422
+         *         実験が無い場合は 404, 置き場が重なる場合は 409, 写しを開けないか
+         *         定義として読めない場合は 422
          */
         post: operations["open_experiment_spec"];
         delete?: never;
@@ -659,6 +660,11 @@ export interface components {
              * @description 実験の置き場からの実験のディレクトリ (<名前>/<日付>/<時刻>. 一覧の run)
              */
             run: string;
+            /**
+             * Root
+             * @description 実験の置き場 (一覧の root. 置き場が複数で run が重なる場合に見分ける)
+             */
+            root?: string | null;
         };
         /** ExperimentEntry */
         ExperimentEntry: {
@@ -667,6 +673,11 @@ export interface components {
              * @description 実験の置き場からの <名前>/<日付>/<時刻>
              */
             run: string;
+            /**
+             * Root
+             * @description 実験の置き場
+             */
+            root: string;
             /**
              * Path
              * @description 実験のディレクトリ

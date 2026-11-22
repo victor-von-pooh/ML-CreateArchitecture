@@ -358,6 +358,7 @@ test('実験の定義の写しを開き, 名前を付けてプロジェクトの
   await copies.getByRole('button', { name: '実験を探す' }).click()
   const run = copies.getByRole('button', { name: /e2e_run\/2026-11-20\/10-00-00/ })
   await expect(run).toContainText('models/e2e_run.yaml')
+  await expect(run).toContainText('完了')
   await run.click()
 
   // 写しの定義が開き, 保存の仕方を知らせる

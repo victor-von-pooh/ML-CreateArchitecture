@@ -160,6 +160,14 @@ function StoredProblems({
   )
 }
 
+// 実験の状態 (run.json) の表示 (ML-Dashboard の実験の一覧と同じ言葉)
+const RUN_STATUS: Record<string, string> = {
+  completed: '完了',
+  running: '実行中',
+  stopped: '中断',
+  failed: '失敗',
+}
+
 /**
  * 学習の実験に残った定義の写し (model_spec.yaml) を選んで開く欄 (「定義を開く」のダイアログの中)
  *
@@ -169,11 +177,14 @@ function StoredProblems({
 export function ExperimentCopies({
   onOpen,
   opening,
+  openError,
 }: {
-  /** 写しを開く (場所は探したプロジェクト, run は一覧の run) */
-  onOpen: (path: string, run: string) => void
+  /** 写しを開く (場所は探したプロジェクト, run と root は一覧の run と置き場) */
+  onOpen: (path: string, run: string, root: string) => void
   /** 開いている間 (押し直しを止める) */
   opening: boolean
+  /** 写しを開けなかった誤り (この欄の中に出す) */
+  openError: unknown
 }) {
   const [path, setPath] = useState(() => remembered(PROJECT_KEY))
   // 探した場所と結果 (場所を書き換えたら探し直す)
@@ -237,7 +248,7 @@ export function ExperimentCopies({
             <li key={item.path}>
               <button
                 type="button"
-                onClick={() => onOpen(list.project, item.run)}
+                onClick={() => onOpen(list.project, item.run, item.root)}
                 // 写しの記録が無いか, 中身が記録と違うものは理由を出して選べなくする
                 disabled={!item.usable || opening}
                 aria-describedby={item.reason ? `${reasonId}-${index}` : undefined}
@@ -248,7 +259,7 @@ export function ExperimentCopies({
                   <span className="block truncate font-mono">{item.run}</span>
                   <span className="block truncate text-xs text-ink-3" title={item.spec ?? ''}>
                     定義: {item.spec ?? '記録無し'}
-                    {item.status ? ` · ${item.status}` : ''}
+                    {item.status ? ` · ${RUN_STATUS[item.status] ?? '未完了'}` : ''}
                   </span>
                   {item.reason && (
                     <span id={`${reasonId}-${index}`} className="block text-xs text-warning-text">
@@ -264,6 +275,7 @@ export function ExperimentCopies({
           ))}
         </ul>
       )}
+      {openError ? <ErrorBox error={openError} /> : null}
     </section>
   )
 }

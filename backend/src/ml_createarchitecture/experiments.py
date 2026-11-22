@@ -10,6 +10,8 @@ models/ に保存し直すために, その写しを画面に開く. 読むの�
 
 import hashlib
 import os
+import stat
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Optional
 
@@ -32,20 +34,56 @@ from ml_createarchitecture.store import NAME_PATTERN
 
 router = APIRouter(prefix="/api")
 
-# 実験の置き場を書く config (ML-Dashboard が実験を探す config と同じ) と,
-# 書いていない場合の ML-Found の既定の出力先
-OUTPUT_CONFIGS = (
-    Path("configs/default/train.yaml"),
-    Path("configs/experiment/train.yaml"),
-)
+# 実験の置き場を書く config (ML-Dashboard の get_output_dirs と同じ. 既定の
+# config の値 (無ければ ML-Found の既定の outputs) に, 他の default の config
+# と experiment の config の値を足す)
+DEFAULT_DIR = Path("configs/default")
+EXPERIMENT_DIR = Path("configs/experiment")
 DEFAULT_OUTPUT = "outputs"
 
 # 実験のディレクトリのファイル (ML-Found の docs/FORMAT.md)
 SPEC_COPY = "model_spec.yaml"
 RUN_FILES = ("config.yaml", "source.yaml")
 
-# 読む写しの大きさの上限 (ML-Found が写す上限と同じ 16 MiB)
+# 読む大きさの上限 (写しは ML-Found が写す上限と同じ 16 MiB, config と記録
+# は 1 MiB)
 MAX_SPEC_BYTES = 16 * 1024 * 1024
+MAX_RECORD_BYTES = 1024 * 1024
+
+# 写しの入れ子の深さの上限 (ML-Dashboard が写しを使う決まりと同じ)
+MAX_SPEC_DEPTH = 100
+OPEN_EVENTS = (yaml.MappingStartEvent, yaml.SequenceStartEvent)
+CLOSE_EVENTS = (yaml.MappingEndEvent, yaml.SequenceEndEvent)
+
+# 一覧で辿るディレクトリの数の上限 (大きな置き場で長く止まらないため)
+MAX_VISITS = 5000
+
+# 実験の 3 段 (<名前>/<日付>/<時刻>)
+RUN_DEPTH = 3
+
+# リンクを辿らず (O_NOFOLLOW), 待たずに (O_NONBLOCK) 開く旗
+FILE_FLAGS = (
+    os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+)
+
+# ML-Found の source.yaml の model_spec.status ごとの, 写していない理由
+COPY_REASONS = {
+    "missing": "学習の時に config の model.spec の定義が無かったので, "
+    "写していません",
+    "outside": "config の model.spec がプロジェクトの外を指していたので, "
+    "写していません",
+    "link": "config の model.spec の場所か途中がシンボリックリンクだった"
+    "ので, 写していません",
+    "not_file": "config の model.spec が普通のファイルでなかったので, "
+    "写していません",
+    "unreadable": "学習の時に config の model.spec の定義を読めなかった"
+    "ので, 写していません",
+    "too_large": "config の model.spec の定義が 16 MiB を超えていたので, "
+    "写していません",
+    "invalid": "config の model.spec が場所として読めない書き方だったので, "
+    "写していません",
+    "write_failed": "実験のディレクトリに書けなかったので, 写していません",
+}
 
 
 class ExperimentBody(BaseModel):
@@ -57,11 +95,17 @@ class ExperimentBody(BaseModel):
         description="実験の置き場からの実験のディレクトリ (<名前>/<日付>/"
         "<時刻>. 一覧の run)"
     )
+    root: Optional[str] = Field(
+        default=None,
+        description="実験の置き場 (一覧の root. 置き場が複数で run が重なる"
+        "場合に見分ける)"
+    )
 
 
 class ExperimentEntry(BaseModel):
     # 実験と, その定義の写しを開けるか
     run: str = Field(description="実験の置き場からの <名前>/<日付>/<時刻>")
+    root: str = Field(description="実験の置き場")
     path: str = Field(description="実験のディレクトリ")
     spec: Optional[str] = Field(
         default=None,
@@ -77,7 +121,7 @@ class ExperimentEntry(BaseModel):
 
 
 class ExperimentList(BaseModel):
-    # プロジェクト, 探した実験の置き場, 新しい順の実験, 読めなかった理由
+    # プロジェクト, 探した実験の置き場, 新しい順の実験, 読まなかった理由
     project: str
     roots: list[str]
     experiments: list[ExperimentEntry]
@@ -138,6 +182,117 @@ def project_dir(text: str) -> Path:
     return project
 
 
+
+
+def read_plain(path: Path, limit: int) -> Optional[bytes]:
+    """
+    リンクでない普通のファイルを, 上限の大きさまで読む関数
+
+    確かめてから読むまでの間にリンクや FIFO に置き換えられても外を読まず
+    止まらないように, リンクを辿らず待たずに開き, lstat で確かめたファイル
+    と開いたファイルが同じ普通のファイルかを確かめてから, 上限 + 1 バイト
+    まで読む (ML-Dashboard の評価のファイルの読み方)
+
+    Parameters
+    ----------
+    path: Path
+        ファイル
+    limit: int
+        読む大きさの上限 (バイト)
+
+    Returns
+    ----------
+    content: Optional[bytes]
+        中身 (無い, リンク, 普通でない, 上限を超える, 読めない場合は None)
+    """
+    try:
+        found = path.lstat()
+        if not stat.S_ISREG(found.st_mode) or found.st_size > limit:
+            return None
+        fd = os.open(path, FILE_FLAGS)
+    except (OSError, ValueError):
+        return None
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode) or (
+            (opened.st_dev, opened.st_ino) != (found.st_dev, found.st_ino)
+        ):
+            return None
+        while total <= limit:
+            chunk = os.read(fd, min(1024 * 1024, limit + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+    content = b"".join(chunks) if total <= limit else None
+
+    return content
+
+
+def read_record(path: Path) -> Any:
+    """
+    小さな YAML (JSON も) のファイルを読む関数
+
+    Parameters
+    ----------
+    path: Path
+        config, source.yaml か run.json
+
+    Returns
+    ----------
+    value: Any
+        読んだ値 (無い, リンク, 1 MiB を超える, 読めない場合は None)
+    """
+    content = read_plain(path, MAX_RECORD_BYTES)
+    if content is None:
+        return None
+    try:
+        value = yaml.safe_load(content)
+    except (yaml.YAMLError, RecursionError):
+        value = None
+
+    return value
+
+
+def output_values(project: Path) -> list[str]:
+    """
+    config の experiment.output_dir の値を集める関数
+
+    Parameters
+    ----------
+    project: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    values: list[str]
+        既定の config の値 (無ければ outputs), 他の default の config と
+        experiment の config の値
+    """
+    def value_of(path: Path) -> Optional[str]:
+        value = section(read_record(path), "experiment").get("output_dir")
+        text = value.strip() if isinstance(value, str) else ""
+        return text or None
+
+    # 別の config で出力先を変えた実験も探す (ML-Dashboard と同じ)
+    values = [value_of(project / PROJECT_CONFIG) or DEFAULT_OUTPUT]
+    files = sorted((project / DEFAULT_DIR).glob("*.yaml"))
+    if (project / EXPERIMENT_DIR).is_dir():
+        files += sorted((project / EXPERIMENT_DIR).rglob("*.yaml"))
+    for file in files:
+        value = value_of(file)
+        if value and value not in values:
+            values.append(value)
+
+    return values
+
+
 def output_roots(project: Path) -> tuple[list[Path], list[str]]:
     """
     config の experiment.output_dir から実験の置き場を求める関数
@@ -154,34 +309,18 @@ def output_roots(project: Path) -> tuple[list[Path], list[str]]:
     notes: list[str]
         読まない置き場の理由
     """
-    # 書いていない config と読めない config は既定の outputs
-    values: list[str] = []
-    for name in OUTPUT_CONFIGS:
-        file = project / name
-        if not file.is_file():
-            continue
-        try:
-            config = yaml.safe_load(file.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, yaml.YAMLError):
-            config = None
-        value = section(config, "experiment").get("output_dir")
-        if isinstance(value, str) and value.strip():
-            values.append(value.strip())
-    if not values:
-        values.append(DEFAULT_OUTPUT)
-
     # プロジェクトの中で, 途中にリンクの無い置き場だけを読む (決まった
     # 場所の外を読まないため)
     roots: list[Path] = []
     notes: list[str] = []
-    for value in values:
+    for value in output_values(project):
         if "${" in value or "://" in value:
             notes.append(f"実験の置き場 {value} は参照か URL なので読みません")
             continue
-        raw = Path(os.path.normpath(project / Path(value).expanduser()))
         try:
+            raw = Path(os.path.normpath(project / Path(value).expanduser()))
             root = raw.resolve()
-        except (OSError, RuntimeError):
+        except (OSError, RuntimeError, ValueError):
             continue
         if not root.is_relative_to(project) or root == project:
             notes.append(
@@ -218,7 +357,7 @@ def child_dirs(folder: Path) -> list[Path]:
     try:
         children = sorted(
             child for child in folder.iterdir()
-            if child.is_dir() and not child.is_symlink()
+            if not child.is_symlink() and child.is_dir()
         )
     except OSError:
         children = []
@@ -226,26 +365,51 @@ def child_dirs(folder: Path) -> list[Path]:
     return children
 
 
-def read_yaml(path: Path) -> Any:
+def is_run_dir(path: Path) -> bool:
     """
-    YAML のファイルを読む関数 (読めなければ None)
+    ML-Found の実験のディレクトリ (config.yaml と source.yaml を持つ) か
 
     Parameters
     ----------
     path: Path
-        ファイル
+        ディレクトリ
 
     Returns
     ----------
-    value: Any
-        読んだ値 (無いか読めない場合は None)
+    found: bool
+        実験のディレクトリなら真
     """
-    try:
-        value = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, yaml.YAMLError):
-        value = None
+    found = all(
+        (path / file).is_file() and not (path / file).is_symlink()
+        for file in RUN_FILES
+    )
 
-    return value
+    return found
+
+
+def copy_reason(record: dict[str, Any]) -> Optional[str]:
+    """
+    source.yaml の model_spec から, 写しを開けない理由を返す関数
+
+    Parameters
+    ----------
+    record: dict[str, Any]
+        source.yaml の model_spec (無ければ空)
+
+    Returns
+    ----------
+    reason: Optional[str]
+        写した記録が無い理由 (写した場合は None)
+    """
+    # 欄の無い古い記録と, 知らない値も写していないものとして読む
+    status = record.get("status")
+    if not record or status is None:
+        return "定義の写しの記録がありません"
+    if status == "copied" and isinstance(record.get("sha256"), str):
+        return None
+    reason = COPY_REASONS.get(str(status), "定義を写していません")
+
+    return reason
 
 
 def read_copy(run_dir: Path) -> tuple[Optional[bytes], Optional[str]]:
@@ -266,29 +430,84 @@ def read_copy(run_dir: Path) -> tuple[Optional[bytes], Optional[str]]:
     """
     # 学習を始めたときの定義かは, ファイルがあることでなく記録で見分ける
     # (ML-Found の docs/FORMAT.md)
-    source = read_yaml(run_dir / "source.yaml")
-    record = section(source, "model_spec")
-    if record.get("status") != "copied" or not isinstance(
-        record.get("sha256"), str
-    ):
-        return None, "定義の写しの記録がありません"
+    record = section(read_record(run_dir / "source.yaml"), "model_spec")
+    reason = copy_reason(record)
+    if reason is not None:
+        return None, reason
     path = run_dir / SPEC_COPY
-    if path.is_symlink() or not path.is_file():
-        return None, f"{SPEC_COPY} が普通のファイルではありません"
     try:
-        if path.stat().st_size > MAX_SPEC_BYTES:
-            return None, f"{SPEC_COPY} が 16 MiB を超えます"
-        data = path.read_bytes()
-    except OSError as error:
-        return None, f"{SPEC_COPY} を読めません: {error}"
-    if len(data) > MAX_SPEC_BYTES:
-        return None, f"{SPEC_COPY} が 16 MiB を超えます"
+        found = path.lstat()
+    except FileNotFoundError:
+        return None, f"{SPEC_COPY} がありません"
+    except OSError:
+        return None, f"{SPEC_COPY} を読めません"
+    if stat.S_ISLNK(found.st_mode):
+        return None, f"{SPEC_COPY} がシンボリックリンクです"
+    if not stat.S_ISREG(found.st_mode):
+        return None, f"{SPEC_COPY} が普通のファイルではありません"
+    if found.st_size > MAX_SPEC_BYTES:
+        return None, f"{SPEC_COPY} が 16 MiB を超えています"
+    data = read_plain(path, MAX_SPEC_BYTES)
+    if data is None:
+        return None, f"{SPEC_COPY} を読めません"
     if hashlib.sha256(data).hexdigest() != record["sha256"]:
         return None, (
             f"{SPEC_COPY} の中身が記録 (学習を始めたときの定義) と違います"
         )
 
     return data, None
+
+
+def parse_copy(data: bytes) -> dict[str, Any]:
+    """
+    写しの中身を定義として読む関数
+
+    Parameters
+    ----------
+    data: bytes
+        写しの中身
+
+    Returns
+    ----------
+    spec: dict[str, Any]
+        定義 (版を今の版に直したもの)
+
+    Raises
+    ----------
+    ValueError
+        YAML の別名を使う, 入れ子が深すぎる, YAML として読めない, 定義と
+        して読めない場合
+    """
+    # 別名 (&a と *a) と深い入れ子は読む前の字句の段で断つ (自分を指す別名,
+    # 別名を重ねて膨らむ定義, 深い入れ子で長く止まらないため. ML-Dashboard
+    # が写しを使う決まりと同じ)
+    depth = 0
+    try:
+        for event in yaml.parse(data, Loader=yaml.SafeLoader):
+            if isinstance(event, yaml.AliasEvent):
+                raise ValueError(
+                    "YAML の別名 (*) を使うので, 確かめずに開きません"
+                )
+            if isinstance(event, OPEN_EVENTS):
+                depth += 1
+                if depth > MAX_SPEC_DEPTH:
+                    raise ValueError(
+                        f"入れ子が {MAX_SPEC_DEPTH} 段を超えるので, YAML "
+                        "として読めません"
+                    )
+            elif isinstance(event, CLOSE_EVENTS):
+                depth -= 1
+        raw = yaml.safe_load(data)
+    except (yaml.YAMLError, RecursionError) as error:
+        raise ValueError("YAML として読めません") from error
+    if not isinstance(raw, dict):
+        raise ValueError("定義が辞書ではありません")
+    try:
+        spec: dict[str, Any] = load_spec(raw)
+    except (TypeError, KeyError, RecursionError) as error:
+        raise ValueError(str(error)) from error
+
+    return spec
 
 
 def suggested_name(spec_path: Optional[str], run: str) -> str:
@@ -318,7 +537,9 @@ def suggested_name(spec_path: Optional[str], run: str) -> str:
     return name
 
 
-def experiment_entry(root: Path, run_dir: Path) -> ExperimentEntry:
+def experiment_entry(
+    root: Path, run_dir: Path, reason: Optional[str]
+) -> ExperimentEntry:
     """
     実験のディレクトリ 1 つを一覧の 1 件にする関数
 
@@ -328,6 +549,8 @@ def experiment_entry(root: Path, run_dir: Path) -> ExperimentEntry:
         実験の置き場
     run_dir: Path
         実験のディレクトリ
+    reason: Optional[str]
+        写しを開けない理由 (開ける場合は None)
 
     Returns
     ----------
@@ -335,22 +558,61 @@ def experiment_entry(root: Path, run_dir: Path) -> ExperimentEntry:
         実験と, 定義の写しを開けるか
     """
     run = run_dir.relative_to(root).as_posix()
-    record = section(read_yaml(run_dir / "source.yaml"), "model_spec")
+    record = section(read_record(run_dir / "source.yaml"), "model_spec")
     spec_path = record.get("path")
     spec = spec_path if isinstance(spec_path, str) else None
-    state = read_yaml(run_dir / "run.json")
+    state = read_record(run_dir / "run.json")
     status = state.get("status") if isinstance(state, dict) else None
-    _, reason = read_copy(run_dir)
+    copy = run_dir / SPEC_COPY
     entry = ExperimentEntry(
-        run=run, path=str(run_dir), spec=spec,
+        run=run, root=str(root), path=str(run_dir), spec=spec,
         name=suggested_name(spec, run),
         status=status if isinstance(status, str) else None,
-        updated_at=modified_at(run_dir / SPEC_COPY)
-        if (run_dir / SPEC_COPY).is_file() else modified_at(run_dir),
+        updated_at=modified_at(copy if copy.is_file() else run_dir),
         usable=reason is None, reason=reason
     )
 
     return entry
+
+
+def walk_runs(roots: list[Path], notes: list[str]) -> Iterator[
+    tuple[Path, Path]
+]:
+    """
+    実験の置き場の 3 段を辿り, 実験のディレクトリを返す関数
+
+    Parameters
+    ----------
+    roots: list[Path]
+        実験の置き場
+    notes: list[str]
+        辿る数の上限で打ち切った知らせを足すリスト
+
+    Returns
+    ----------
+    runs: Iterator[tuple[Path, Path]]
+        置き場と実験のディレクトリ
+    """
+    # 辿るディレクトリの数に上限 (大きな置き場で長く止まらないため)
+    visits = 0
+    for root in roots:
+        level = [root]
+        for _ in range(RUN_DEPTH):
+            next_level: list[Path] = []
+            for folder in level:
+                for child in child_dirs(folder):
+                    visits += 1
+                    if visits > MAX_VISITS:
+                        notes.append(
+                            f"ディレクトリが {MAX_VISITS} を超えるので, "
+                            "途中までの実験だけを並べます"
+                        )
+                        return
+                    next_level.append(child)
+            level = next_level
+        for run_dir in level:
+            if is_run_dir(run_dir):
+                yield root, run_dir
 
 
 def find_experiments(project: Path) -> ExperimentList:
@@ -370,18 +632,73 @@ def find_experiments(project: Path) -> ExperimentList:
     # 実験のディレクトリは <置き場>/<名前>/<日付>/<時刻>/ で, config と
     # source.yaml を持つもの (ML-Found の形)
     roots, notes = output_roots(project)
-    entries: list[ExperimentEntry] = []
-    for root in roots:
-        for name_dir in child_dirs(root):
-            for date_dir in child_dirs(name_dir):
-                for run_dir in child_dirs(date_dir):
-                    if all((run_dir / file).is_file() for file in RUN_FILES):
-                        entries.append(experiment_entry(root, run_dir))
+    entries = [
+        experiment_entry(root, run_dir, read_copy(run_dir)[1])
+        for root, run_dir in walk_runs(roots, notes)
+    ]
     entries.sort(key=lambda entry: entry.updated_at or "", reverse=True)
     found = ExperimentList(
         project=str(project), roots=[str(root) for root in roots],
         experiments=entries, notes=notes
     )
+
+    return found
+
+
+def find_run(
+    project: Path, run: str, root_text: Optional[str]
+) -> tuple[Path, Path]:
+    """
+    置き場の 3 段を名前で辿り, 一覧の run の実験のディレクトリを探す関数
+
+    送られた文字は, 置き場の中の子のディレクトリの名前と比べるだけで, 場所
+    を組み立てない
+
+    Parameters
+    ----------
+    project: Path
+        プロジェクトのディレクトリ
+    run: str
+        <名前>/<日付>/<時刻>
+    root_text: Optional[str]
+        実験の置き場 (無ければ全ての置き場から探す)
+
+    Returns
+    ----------
+    found: tuple[Path, Path]
+        置き場と実験のディレクトリ
+
+    Raises
+    ----------
+    HTTPException
+        無い場合は 404, 置き場が複数で run が重なり置き場を送っていない
+        場合は 409
+    """
+    parts = run.split("/")
+    roots, _ = output_roots(project)
+    if root_text is not None:
+        roots = [root for root in roots if str(root) == root_text]
+    matches: list[tuple[Path, Path]] = []
+    if len(parts) == RUN_DEPTH:
+        for root in roots:
+            folder: Optional[Path] = root
+            for part in parts:
+                assert folder is not None
+                folder = next(
+                    (child for child in child_dirs(folder)
+                     if child.name == part), None
+                )
+                if folder is None:
+                    break
+            if folder is not None and is_run_dir(folder):
+                matches.append((root, folder))
+    if not matches:
+        raise HTTPException(404, f"実験 {run} がありません")
+    if len(matches) > 1:
+        raise HTTPException(
+            409, f"実験 {run} が複数の置き場にあります. 置き場を選んでください"
+        )
+    found = matches[0]
 
     return found
 
@@ -414,7 +731,7 @@ def open_experiment_spec(body: ExperimentBody) -> ExperimentSpec:
     Parameters
     ----------
     body: ExperimentBody
-        プロジェクトの場所と実験
+        プロジェクトの場所, 実験と置き場
 
     Returns
     ----------
@@ -424,27 +741,20 @@ def open_experiment_spec(body: ExperimentBody) -> ExperimentSpec:
     Raises
     ----------
     HTTPException
-        一覧に無い実験は 404, 写しを開けないか定義として読めない場合は 422
+        実験が無い場合は 404, 置き場が重なる場合は 409, 写しを開けないか
+        定義として読めない場合は 422
     """
-    # 一覧に出す実験だけを読む (送られた文字から場所を組み立てない)
-    found = find_experiments(project_dir(body.path))
-    entry = next(
-        (item for item in found.experiments if item.run == body.run), None
-    )
-    if entry is None:
-        raise HTTPException(404, f"実験 {body.run} がありません")
-    data, reason = read_copy(Path(entry.path))
+    root, run_dir = find_run(project_dir(body.path), body.run, body.root)
+    data, reason = read_copy(run_dir)
     if data is None:
         raise HTTPException(422, f"実験 {body.run} の定義を開けません: {reason}")
     try:
-        raw = yaml.safe_load(data.decode("utf-8"))
-        if not isinstance(raw, dict):
-            raise ValueError("定義が辞書ではありません")
-        spec = load_spec(raw)
-    except (ValueError, TypeError, UnicodeDecodeError, yaml.YAMLError) as error:
+        spec = parse_copy(data)
+    except ValueError as error:
         raise HTTPException(
             422, f"実験 {body.run} の定義を読めません: {error}"
         ) from error
+    entry = experiment_entry(root, run_dir, None)
     opened = ExperimentSpec(
         name=entry.name, spec=spec, run=entry.run, path=entry.path
     )

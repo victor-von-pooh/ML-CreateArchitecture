@@ -74,6 +74,7 @@ function OpenDialog({
   onOpen,
   onOpenExperiment,
   opening,
+  experimentError,
   onClose,
   onDeleted,
   openError,
@@ -81,10 +82,12 @@ function OpenDialog({
   /** 開けなかった誤り (読めない YAML など. ダイアログの中に出す) */
   openError: unknown
   onOpen: (source: 'model' | 'example', name: string) => void
-  /** 実験の定義の写しを開く (path はプロジェクト, run は実験) */
-  onOpenExperiment: (path: string, run: string) => void
+  /** 実験の定義の写しを開く (path はプロジェクト, run は実験, root は置き場) */
+  onOpenExperiment: (path: string, run: string, root: string) => void
   /** 開いている間 */
   opening: boolean
+  /** 実験の写しを開けなかった誤り (実験の欄の中に出す) */
+  experimentError: unknown
   onClose: () => void
   /** 保存した定義を消した後 (今開いている定義なら, 保存していない扱いにする) */
   onDeleted: (name: string) => void
@@ -160,7 +163,7 @@ function OpenDialog({
         </ul>
       )}
       <hr className="my-4 border-line" />
-      <ExperimentCopies onOpen={onOpenExperiment} opening={opening} />
+      <ExperimentCopies onOpen={onOpenExperiment} opening={opening} openError={experimentError} />
     </Dialog>
   )
 }
@@ -281,16 +284,18 @@ export function Toolbar({
       source,
       target,
       project,
+      root,
     }: {
       source: 'model' | 'example' | 'experiment'
       target: string
-      /** 実験の写しのプロジェクト */
+      /** 実験の写しのプロジェクトと置き場 */
       project?: string
+      root?: string
     }) =>
       source === 'model'
         ? api.getModel(target)
         : source === 'experiment'
-          ? api.openExperimentSpec(project ?? '', target)
+          ? api.openExperimentSpec(project ?? '', target, root ?? '')
           : api.getExample(target),
     onSuccess: (model, { source }) => {
       onLoad(model.name, model.spec as unknown as Spec, source)
@@ -554,14 +559,16 @@ export function Toolbar({
               open.mutate({ source, target })
             }
           }}
-          onOpenExperiment={(project, run) => {
+          onOpenExperiment={(project, run, root) => {
             if (!dirty || window.confirm('保存していない変更を捨てて, 実験の定義を開きますか?')) {
-              open.mutate({ source: 'experiment', target: run, project })
+              open.mutate({ source: 'experiment', target: run, project, root })
             }
           }}
           opening={open.isPending}
+          // 開けなかった誤りは, 開こうとした欄の中に出す
+          experimentError={open.variables?.source === 'experiment' ? open.error : null}
           onClose={() => setDialog(null)}
-          openError={open.error}
+          openError={open.variables?.source === 'experiment' ? null : open.error}
         />
       )}
       {dialog === 'yaml' && (

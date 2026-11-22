@@ -595,7 +595,7 @@
     "/api/project/experiment-spec": {
       "post": {
         "summary": "Open Experiment Spec",
-        "description": "実験の定義の写しを読む関数\n\nParameters\n----------\nbody: ExperimentBody\n    プロジェクトの場所と実験\n\nReturns\n----------\nopened: ExperimentSpec\n    定義と保存する名前の候補\n\nRaises\n----------\nHTTPException\n    一覧に無い実験は 404, 写しを開けないか定義として読めない場合は 422",
+        "description": "実験の定義の写しを読む関数\n\nParameters\n----------\nbody: ExperimentBody\n    プロジェクトの場所, 実験と置き場\n\nReturns\n----------\nopened: ExperimentSpec\n    定義と保存する名前の候補\n\nRaises\n----------\nHTTPException\n    実験が無い場合は 404, 置き場が重なる場合は 409, 写しを開けないか\n    定義として読めない場合は 422",
         "operationId": "open_experiment_spec",
         "requestBody": {
           "content": {
@@ -887,6 +887,18 @@
             "type": "string",
             "title": "Run",
             "description": "実験の置き場からの実験のディレクトリ (<名前>/<日付>/<時刻>. 一覧の run)"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root",
+            "description": "実験の置き場 (一覧の root. 置き場が複数で run が重なる場合に見分ける)"
           }
         },
         "type": "object",
@@ -902,6 +914,11 @@
             "type": "string",
             "title": "Run",
             "description": "実験の置き場からの <名前>/<日付>/<時刻>"
+          },
+          "root": {
+            "type": "string",
+            "title": "Root",
+            "description": "実験の置き場"
           },
           "path": {
             "type": "string",
@@ -967,6 +984,7 @@
         "type": "object",
         "required": [
           "run",
+          "root",
           "path",
           "name",
           "usable"
