@@ -49,6 +49,11 @@ describe('LicenseCard', () => {
     expect(screen.queryByText('出どころの表記')).toBeNull()
     expect(screen.queryByText('重みの大きさ')).toBeNull()
   })
+
+  it('読めない大きさ (負の値) は出さない', () => {
+    render(<LicenseCard info={info({ size_bytes: -1 })} />)
+    expect(screen.queryByText('重みの大きさ')).toBeNull()
+  })
 })
 
 describe('WeightsError', () => {
@@ -72,6 +77,38 @@ describe('WeightsError', () => {
       'href',
       'https://huggingface.co/org/gated',
     )
+  })
+
+  // 申請制の誤りの結果 (理由と配布元のページだけを変える)
+  const gatedResult = (reason: string, url: string | null) => ({
+    ok: false,
+    reports: [],
+    error: '申請制の重みを読めません',
+    gated: { reason, hub_id: 'org/gated', url },
+  })
+
+  it('リンクの文を理由ごとに変える', () => {
+    const { rerender } = render(
+      <WeightsError result={gatedResult('no_token', 'https://huggingface.co/org/gated')} />,
+    )
+    expect(screen.getByRole('link')).toHaveTextContent('配布元のページで申請する')
+    rerender(
+      <WeightsError result={gatedResult('invalid_token', 'https://huggingface.co/org/gated')} />,
+    )
+    expect(screen.getByRole('link')).toHaveTextContent('配布元のページを開く')
+    expect(screen.getByRole('link')).not.toHaveTextContent('申請')
+  })
+
+  it('https で始まらない配布元のページはリンクにしない', () => {
+    const { rerender } = render(
+      <WeightsError result={gatedResult('not_granted', 'javascript:alert(1)')} />,
+    )
+    expect(screen.queryByRole('link')).toBeNull()
+    rerender(<WeightsError result={gatedResult('not_granted', 'http://hub.local/org/gated')} />)
+    expect(screen.queryByRole('link')).toBeNull()
+    rerender(<WeightsError result={gatedResult('not_granted', null)} />)
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.getByRole('alert')).toHaveTextContent('申請制の重みを読めません')
   })
 
   it('申請制でない誤りは文だけを出す', () => {

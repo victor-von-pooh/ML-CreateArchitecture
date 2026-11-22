@@ -661,20 +661,29 @@ function ReadWeights({ onRead, stamp }: { onRead: () => Promise<WeightsResult>; 
   )
 }
 
-/** 重みを読めなかった誤りの文. 申請制の重みは, 配布元のページで申請する案内も出す */
+// 申請制の重みを読めなかった理由ごとのリンクの文 (トークンが無効なら申請ではなく設定を直すので, ページを開くだけ)
+const GATED_LINK: Record<string, string> = {
+  no_token: '配布元のページで申請する',
+  not_granted: '配布元のページで申請する',
+  invalid_token: '配布元のページを開く',
+}
+
+/** 重みを読めなかった誤りの文. 申請制の重みは, 理由に合わせて配布元のページへの案内も出す */
 export function WeightsError({ result }: { result: WeightsResult }) {
+  const gated = result.gated
+  // 配布元のページは https の URL だけをリンクにする (バックエンドの設定の値をそのまま開かないため)
+  const url = gated?.url && gated.url.startsWith('https://') ? gated.url : null
   return (
     <div role="alert" className="space-y-1 text-xs text-critical-text">
       <p className="[overflow-wrap:anywhere]">{result.error}</p>
-      {result.gated?.url && (
-        // 申請制の重みは, 申請と条件を確かめる配布元のページへ
+      {gated && url && (
         <a
-          href={result.gated.url}
+          href={url}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-1 text-accent-text underline"
         >
-          配布元のページで申請する
+          {GATED_LINK[gated.reason] ?? '配布元のページを開く'}
           <ExternalLink className="size-3" aria-hidden />
           <span className="sr-only">(新しいタブで開く)</span>
         </a>

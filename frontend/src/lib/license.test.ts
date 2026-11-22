@@ -39,4 +39,18 @@ describe('formatBytes', () => {
     expect(formatBytes(1.5 * 1024 ** 3)).toBe('1.5 GB')
     expect(formatBytes(2048 * 1024 ** 4)).toBe('2048 TB')
   })
+
+  it('単位を上げるかは丸めた後の値で決める', () => {
+    expect(formatBytes(1048575)).toBe('1.0 MB')
+    expect(formatBytes(1023.6 * 1024)).toBe('1.0 MB')
+    expect(formatBytes(9.97 * 1024 ** 2)).toBe('10 MB')
+    expect(formatBytes(9.94 * 1024 ** 2)).toBe('9.9 MB')
+    expect(formatBytes(1024 ** 3 - 1)).toBe('1.0 GB')
+  })
+
+  it('負の値, 無限, NaN は null', () => {
+    expect(formatBytes(-1)).toBeNull()
+    expect(formatBytes(Number.NaN)).toBeNull()
+    expect(formatBytes(Number.POSITIVE_INFINITY)).toBeNull()
+  })
 })

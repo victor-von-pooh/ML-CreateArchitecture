@@ -68,6 +68,8 @@ export function PretrainedLicense({
  * (値の無いものは出さない) */
 export function LicenseCard({ info }: { info: PretrainedInfo }) {
   const style = STATUS_STYLE[info.status] ?? STATUS_STYLE.unknown!
+  // 読めない大きさ (負の値など) は行ごと出さない
+  const size = info.size_bytes == null ? null : formatBytes(info.size_bytes)
   return (
     <div
       // 結果は控えめに読み上げる (ノードを選ぶたびに割り込まないように)
@@ -96,10 +98,10 @@ export function LicenseCard({ info }: { info: PretrainedInfo }) {
             </dd>
           </>
         )}
-        {info.size_bytes != null && (
+        {size && (
           <>
             <dt className="text-ink-3">重みの大きさ</dt>
-            <dd title={`${info.size_bytes} バイト`}>{formatBytes(info.size_bytes)}</dd>
+            <dd title={`${info.size_bytes} バイト`}>{size}</dd>
           </>
         )}
         <dt className="text-ink-3">推論の一式</dt>
