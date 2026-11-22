@@ -1565,6 +1565,18 @@
             ],
             "title": "Target",
             "description": "モデルの定義の保存先"
+          },
+          "example": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Example",
+            "description": "受け持ちに合う雛形 (ML-ModelControl の同梱の例の名前)"
           }
         },
         "type": "object",
@@ -1721,6 +1733,18 @@
             ],
             "title": "Problem",
             "description": "問題の設定の名前"
+          },
+          "example": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Example",
+            "description": "問題の設定の受け持ちに合う雛形 (ML-ModelControl の同梱の例の名前. 合うものが無ければ無し)"
           },
           "default": {
             "type": "boolean",

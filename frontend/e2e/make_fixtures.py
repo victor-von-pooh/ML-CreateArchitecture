@@ -99,7 +99,42 @@ def make_project(path: Path) -> None:
     ml_quest.make_project(problem, path)
 
 
-def make_store(path: Path, project: Path, dataset: Path) -> None:
+def rank_problem() -> dict:
+    """
+    見本の課題から, 並べる受け持ちを一から学習する問題の設定 (受け持ちに
+    合う雛形は two_tower_retrieval) を作る関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    problem: dict
+        問題の設定
+    """
+    # 見本の受け持ちを作り直す
+    problem = ml_quest.example_problem(next(iter(ml_quest.EXAMPLES)))
+    problem["ml"]["parts"] = [{}]
+    for key in ("decision", "basis", "current"):
+        problem["action"].pop(key, None)
+    answers = [
+        ("role", "rank"), ("what", "試しの出力"), ("item", "1 件"),
+        ("baseline", "今のやり方"), ("evaluation.link", "良くなると損が減る"),
+        ("unit", "query"), ("output", "ranking"),
+        ("target.source", "feedback"), ("method", "scratch"),
+        ("evaluation.metric", "ndcg")
+    ]
+    for key, value in answers:
+        problem = ml_quest.answer(problem, f"ml.parts.0.{key}", value)
+    problem["name"] = "e2e の推薦"
+
+    return problem
+
+
+def make_store(
+    path: Path, project: Path, dataset: Path, rank_project: Path
+) -> None:
     """
     ML-Pathfinder の置き場に, プロジェクトを書き出した問題の設定と, まだ
     書き出していない問題の設定を保存する関数
@@ -112,6 +147,8 @@ def make_store(path: Path, project: Path, dataset: Path) -> None:
         書き出したプロジェクトのディレクトリ
     dataset: Path
         記録に書くデータセットのディレクトリ
+    rank_project: Path
+        雛形のある問題の設定のプロジェクトのディレクトリ
 
     Returns
     ----------
@@ -134,6 +171,11 @@ def make_store(path: Path, project: Path, dataset: Path) -> None:
     )
     no_spec["project"]["model_spec"] = None
     ml_quest.save_problem(no_spec, path / "problems" / "no_spec")
+
+    # 受け持ちに合う雛形があり, 保存先にまだ定義が無いもの (別のプロジェクト.
+    # 他のテストが書く定義と重ならないように)
+    ranked = ml_quest.record_project(rank_problem(), rank_project)
+    ml_quest.save_problem(ranked, path / "problems" / "rank")
 
 
 def make_experiment(project: Path) -> None:
@@ -188,5 +230,9 @@ if __name__ == "__main__":
     make_dataset(work / "dataset")
     make_masks(work / "masks")
     make_project(work / "project")
+    make_project(work / "rank_project")
     make_experiment(work / "project")
-    make_store(work / "pathfinder", work / "project", work / "dataset")
+    make_store(
+        work / "pathfinder", work / "project", work / "dataset",
+        work / "rank_project"
+    )

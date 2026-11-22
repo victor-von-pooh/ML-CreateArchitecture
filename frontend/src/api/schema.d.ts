@@ -926,6 +926,11 @@ export interface components {
              * @description モデルの定義の保存先
              */
             target?: string | null;
+            /**
+             * Example
+             * @description 受け持ちに合う雛形 (ML-ModelControl の同梱の例の名前)
+             */
+            example?: string | null;
         };
         /** ProblemList */
         ProblemList: {
@@ -987,6 +992,11 @@ export interface components {
              * @description 問題の設定の名前
              */
             problem?: string | null;
+            /**
+             * Example
+             * @description 問題の設定の受け持ちに合う雛形 (ML-ModelControl の同梱の例の名前. 合うものが無ければ無し)
+             */
+            example?: string | null;
             /**
              * Default
              * @description 名前の保存先が既定の保存先 (記録か config の model.spec) と同じファイルか

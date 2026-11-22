@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { ClipboardList, FlaskConical } from 'lucide-react'
+import { ClipboardList, FlaskConical, LayoutTemplate } from 'lucide-react'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
 import {
@@ -13,6 +13,7 @@ import {
 import { Dialog } from '../../components/Dialog'
 import { Button, ErrorBox, Spinner } from '../../components/ui'
 import type { Spec } from '../../lib/graph'
+import { templateAction } from '../../lib/template'
 
 // 最後に確かめたプロジェクトとデータセットの場所を覚えるブラウザの保存場所
 const PROJECT_KEY = 'ml-createarchitecture:project-path'
@@ -98,7 +99,8 @@ function StoredProblems({
       </h3>
       <p className="text-[11px] text-ink-3">
         ML-Pathfinder でプロジェクトを書き出した問題の設定を選ぶと,
-        その記録のデータセットと保存先を下の欄に入れます
+        その記録のデータセットと保存先を下の欄に入れます. 受け持ちに合う雛形があれば,
+        新しく始める場合はその雛形を開きます
       </p>
       {problems.isPending && <Spinner />}
       {problems.error && <ErrorBox error={problems.error} />}
@@ -140,6 +142,11 @@ function StoredProblems({
                   {item.reason && (
                     <span id={`${reasonId}-${index}`} className="block text-xs text-warning-text">
                       {item.reason}
+                    </span>
+                  )}
+                  {item.usable && item.example && (
+                    <span className="block text-xs text-ink-2">
+                      雛形: <span className="font-mono">{item.example}</span>
                     </span>
                   )}
                   {item.usable && !item.dataset && (
@@ -380,6 +387,56 @@ function DatasetSection({
           </ul>
         )}
       </div>
+    </section>
+  )
+}
+
+/** 問題の設定の受け持ちに合う雛形 (opened は開いたか) */
+export type Template = {
+  example: string
+  problem: string | null
+  opened: boolean
+  reason: string | null
+}
+
+/**
+ * 問題の設定の受け持ちに合う雛形 (ML-ModelControl の同梱の例) の知らせ. 開いていなければ「雛形を開く」を出す
+ */
+export function TemplateNote({
+  template,
+  opening,
+  error,
+  onOpen,
+}: {
+  template: Template
+  /** 雛形を読んでいる間 (押し直しを止める) */
+  opening: boolean
+  /** 雛形を読めなかった誤り */
+  error: unknown
+  onOpen: () => void
+}) {
+  const titleId = useId()
+  const from = template.problem ? `問題の設定 ${template.problem} ` : '問題の設定'
+  return (
+    <section
+      aria-labelledby={titleId}
+      className="space-y-2 rounded-lg border border-line bg-surface-2 px-3 py-2"
+    >
+      <h3 id={titleId} className="flex items-center gap-1.5 text-sm font-semibold">
+        <LayoutTemplate size={14} className="text-accent" aria-hidden />
+        受け持ちに合う雛形
+      </h3>
+      <p role="status" className="text-xs">
+        {template.opened
+          ? `${from}の受け持ちに合う雛形 ${template.example} を開きました. 入力と出力はデータセットから作れます`
+          : `${from}の受け持ちに合う雛形 ${template.example} があります${template.reason ? ` (${template.reason})` : ''}`}
+      </p>
+      {!template.opened && (
+        <Button disabled={opening} onClick={onOpen}>
+          {opening ? '開いています…' : `雛形 ${template.example} を開く`}
+        </Button>
+      )}
+      {error ? <ErrorBox error={error} /> : null}
     </section>
   )
 }
@@ -627,18 +684,27 @@ function ProjectSaveSection({
 export function ProjectDialog({
   spec,
   editing,
+  fresh,
+  dirty,
   onApply,
   onSaved,
+  onTemplate,
   onClose,
 }: {
   /** 保存する定義全体 */
   spec: Spec
   /** 編集している部分モデルの名前 (本体なら null. データセットの入力は本体だけ) */
   editing: string | null
+  /** 今の定義が新しく始める定義か (雛形をそのまま開いてよいか) */
+  fresh: boolean
+  /** 保存していない変更があるか (雛形を開く前に確かめる) */
+  dirty: boolean
   /** データセットから読んだ結果を本体の定義に入れ, 知らせる文を返す */
   onApply: (info: DatasetInputs) => string[]
   /** プロジェクトに書いた (書いたファイルの場所) */
   onSaved: (path: string) => void
+  /** 問題の設定の雛形を開く (雛形の名前, 定義, 問題の設定の名前) */
+  onTemplate: (name: string, spec: Spec, problem: string | null) => void
   onClose: () => void
 }) {
   // 学習のスクリプトが読むデータセットの場所 (記録か config の data.dataset)
@@ -646,10 +712,41 @@ export function ProjectDialog({
   // 一覧から選んだ問題の設定と, 最後に保存先を確かめた場所
   const [choice, setChoice] = useState<{ path: string } | null>(null)
   const [checked, setChecked] = useState<string | null>(null)
+  // 最後に確かめた問題の設定の雛形 (無ければ null)
+  const [template, setTemplate] = useState<Template | null>(null)
+  // 最後に送った雛形の読み込みの番号 (読み込みの間に別の問題の設定を確かめた
+  // 場合に, 前の雛形を開かないため)
+  const latestTemplate = useRef(0)
+  const load = useMutation({
+    mutationFn: ({ example }: { example: string; problem: string | null; id: number }) =>
+      api.getExample(example),
+    onSuccess: (model, { example, problem, id }) => {
+      if (id !== latestTemplate.current) return
+      onTemplate(example, model.spec as unknown as Spec, problem)
+      setTemplate({ example, problem, opened: true, reason: null })
+    },
+  })
+  const openTemplate = (example: string, problem: string | null) => {
+    latestTemplate.current += 1
+    load.mutate({ example, problem, id: latestTemplate.current })
+  }
   return (
     <Dialog title="データセットとプロジェクト" onClose={onClose}>
       <div className="space-y-6">
         <StoredProblems picked={checked} onPick={(path) => setChoice({ path })} />
+        {template && (
+          <TemplateNote
+            template={template}
+            opening={load.isPending}
+            error={load.error}
+            onOpen={() => {
+              if (dirty && !window.confirm('保存していない変更を捨てて, 雛形を開きますか?')) {
+                return
+              }
+              openTemplate(template.example, template.problem)
+            }}
+          />
+        )}
         <hr className="border-line" />
         <DatasetSection
           disabled={
@@ -668,10 +765,29 @@ export function ProjectDialog({
           onTarget={(target, text, chosen) => {
             setChecked(text)
             setSuggested({ path: target.dataset ?? null, chosen })
+            // 雛形は, 新しく始める場合だけ開く (今の定義も保存先の定義も上書きしない)
+            const example = target.example ?? null
+            const action = templateAction({ example, chosen, fresh, exists: target.exists })
+            latestTemplate.current += 1
+            load.reset()
+            if (!example || action === null) {
+              setTemplate(null)
+              return
+            }
+            const problem = target.problem ?? null
+            const reason = !fresh
+              ? '今の定義があるので開いていません'
+              : target.exists
+                ? '保存先に定義が既にあるので開いていません'
+                : null
+            setTemplate({ example, problem, opened: false, reason })
+            if (action === 'open') openTemplate(example, problem)
           }}
           onFailed={() => {
             setChecked(null)
             setSuggested(null)
+            latestTemplate.current += 1
+            setTemplate(null)
           }}
         />
       </div>

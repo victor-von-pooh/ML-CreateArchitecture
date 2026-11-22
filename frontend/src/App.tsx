@@ -728,6 +728,22 @@ function Editor() {
             setSavedNotice(`${path} に保存しました`)
             window.setTimeout(() => setSavedNotice(''), 3000)
           }}
+          onTemplate={(name, loaded, problem) => {
+            // 保存する名前と下書きはそのまま (開いているデータセットとプロジェクトの
+            // ダイアログを閉じずに, 続けて入力と出力を作って保存できるように)
+            setNotice({
+              text: `問題の設定${problem ? ` ${problem} ` : ''}の受け持ちに合う雛形 ${name} を開きました`,
+            })
+            setOwnFile(null)
+            const placed = withStateVersion(placeMissing(loaded, unitsFor(loaded)))
+            history.reset(placed)
+            setEditing(null)
+            setSaved(JSON.stringify(placed))
+            window.requestAnimationFrame(
+              () => void flow.fitView({ duration: 200, maxZoom: 1, padding: 0.1 }),
+            )
+            setSelected(null)
+          }}
         />
         {draft && (
           <section
