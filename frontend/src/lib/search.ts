@@ -30,6 +30,7 @@ const ALIASES: Record<string, string[]> = {
   'op.Add': ['residual', 'skip connection'],
   'op.Concat': ['cat', 'concatenate'],
   'op.Mean': ['mean pooling', 'average'],
+  'op.Max': ['max pooling', 'max pool', 'global max pooling', 'maximum'],
   'nn.Flatten': ['reshape to vector'],
 }
 
