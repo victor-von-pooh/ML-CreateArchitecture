@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { expect, test, type Page } from '@playwright/test'
@@ -13,6 +13,17 @@ const modelFile = `${project}/models/model.yaml`
 
 // プロジェクトへの保存は 2 回目に上書きを確かめるので, 書いた順に実行
 test.describe.configure({ mode: 'serial' })
+
+// このファイルのテストがプロジェクトに書くモデルの定義
+const written = ['model.yaml', 'e2e_candidate.yaml', 'e2e_picked.yaml'].map(
+  (name) => `${project}/models/${name}`,
+)
+
+// 書く前の形から始める (直列のテストの再試行は最初のテストからやり直すが,
+// 前の試行が書いたファイルは残り, 「まだ無い」の確かめが別の誤りで落ちるため)
+test.beforeAll(() => {
+  for (const file of written) rmSync(file, { force: true })
+})
 
 /** データセットとプロジェクトのダイアログを開く */
 async function openDialog(page: Page) {
@@ -336,4 +347,8 @@ test('確かめが重なった場合は最後の確かめの結果だけを出�
   await expect(save.getByRole('alert')).toContainText('先頭に - は使えない')
   await expect(target).toHaveCount(0)
   await expect(recorded).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('一時: 再試行を起こす', () => {
+  expect(test.info().retry).toBeGreaterThan(0)
 })
