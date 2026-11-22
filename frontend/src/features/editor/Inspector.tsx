@@ -22,7 +22,15 @@ import { CustomModuleHint } from './CustomModuleHint'
 
 // 入力の例に使える型と値の作り方 (ML-ModelControl と同じ)
 
-import { ExtraParams, IssueList, NameField, ParamField, PortRefs, SubgraphContents } from './fields'
+import {
+  ExtraParams,
+  IssueList,
+  NameField,
+  ParamField,
+  PortRefs,
+  SubgraphContents,
+  UnitParamField,
+} from './fields'
 import { friendlyMessage } from '../../lib/issues'
 const DTYPES = ['float32', 'float64', 'float16', 'bfloat16', 'int64', 'int32', 'bool']
 const FILLS = ['zeros', 'ones', 'arange']
@@ -432,15 +440,26 @@ export function Inspector({
       {(unit?.params.length ?? 0) > 0 && (
         <fieldset className="space-y-2" data-first-field>
           <legend className="mb-1 text-xs font-semibold">引数</legend>
-          {unit!.params.map((param) => (
-            <ParamField
-              // ノードを選び直したら作り直して値を合わせる
-              key={`${selected}-${param.name}`}
-              param={param}
-              value={node.params?.[param.name]}
-              onChange={(value) => setValue('params', param.name, value)}
-            />
-          ))}
+          {unit!.params.map((param) =>
+            // 部品を受け取る引数は, 部品を選んでその引数を入れ子で書く
+            param.kind === 'unit' ? (
+              <UnitParamField
+                key={`${selected}-${param.name}`}
+                param={param}
+                value={node.params?.[param.name]}
+                units={units}
+                onChange={(value) => setValue('params', param.name, value)}
+              />
+            ) : (
+              <ParamField
+                // ノードを選び直したら作り直して値を合わせる
+                key={`${selected}-${param.name}`}
+                param={param}
+                value={node.params?.[param.name]}
+                onChange={(value) => setValue('params', param.name, value)}
+              />
+            ),
+          )}
         </fieldset>
       )}
       {unit?.extra_params && (
