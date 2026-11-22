@@ -1,7 +1,28 @@
+import { rmSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { expect, test } from '@playwright/test'
 
 // 保存と読み込みを含むので, 書いた順に実行
 test.describe.configure({ mode: 'serial' })
+
+// このファイルのテストが定義の置き場 (e2e/serve.sh の作業用の置き場) に
+// 保存する定義
+const saved = [
+  'e2e_model',
+  'keyboard_model',
+  'e2e_broken',
+  'e2e_src',
+  'e2e_user',
+  'e2e_download',
+  'e2e_state',
+].map((name) => fileURLToPath(new URL(`.work/home/models/${name}.yaml`, import.meta.url)))
+
+// 保存する前の形から始める (直列のテストの再試行は最初のテストからやり直す
+// が, 前の試行が保存した定義は残り, 上書きの確認などの前提が崩れるため)
+test.beforeAll(() => {
+  for (const file of saved) rmSync(file, { force: true })
+})
 
 test('例を開くと, 誤り無しで形とパラメータ数が出る', async ({ page }) => {
   await page.goto('/')
