@@ -19,6 +19,12 @@
 - 終わりの条件: 申請制の重みの読み込みに失敗すると, 申請とトークンの案内が日本語で出る
 - つながり: ML-ModelControl の「申請制の重みの読み込みの誤りの文」
 
+### 引数に部品を書く欄と定義の版 3
+- 何を: 型ヒントが `nn.Module` の引数 (種類 `unit`. 例 `nn.TransformerEncoder` の `encoder_layer`) に, 部品と引数の辞書 `{unit, params}` を入れ子で書く欄を足す. 画面に部品を選んでその引数を入れ子で書く欄 (候補 `suggestions` を初めの選択肢に) を出し, `frontend/src/lib/state.ts` の `withStateVersion` が部品を書いた定義の `format_version` を 3 にする
+- なぜ: ML-ModelControl は版 3 で引数に部品を書けるが, 画面では書けず, 別の部品を引数に取るクラスを画面から組み立てられないため
+- 終わりの条件: 画面で `nn.TransformerEncoder` の `encoder_layer` に部品を選んで引数を書くと, `format_version: 3` の定義が保存でき, 組み立てられる
+- つながり: ML-ModelControl の docs/DESIGN.md の「引数に書く部品 (版 3)」
+
 ## 条件待ち
 
 ### ライセンスの表示の義務
