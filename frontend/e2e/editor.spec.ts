@@ -1085,7 +1085,3 @@ test('パラメータの状態: 凍結, 零初期化, 共有, 外部の重みを
   })
   await expect(page.locator('header')).toContainText('誤り 0 件')
 })
-
-test('一時: 再試行を起こす', () => {
-  expect(test.info().retry).toBeGreaterThan(0)
-})
