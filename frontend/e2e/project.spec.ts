@@ -270,3 +270,70 @@ test('名前を書いてから問題の設定を一覧から選ぶと, 記録の
   await expect(target).toContainText(`${project}/models/e2e_picked.yaml`)
   await expect(target).toContainText('モデルの定義の候補')
 })
+
+test('確かめが重なった場合は最後の確かめの結果だけを出し, 確かめに失敗すると一覧の選択を外す', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const dialog = await openDialog(page)
+  const list = dialog.getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+  const recorded = list.getByRole('button', { name: /e2e の売上/ })
+  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
+  const field = save.getByLabel('プロジェクトか問題の設定')
+  const button = save.getByRole('button', { name: /保存先を確かめる|確かめています/ })
+  const target = save.getByRole('group', { name: '保存先' })
+
+  // 次の 1 回の確かめを遅らせる (late が成功か誤りで返す). 返し終わるまで待つ
+  // ための Promise を包んで返す (async の関数から Promise をそのまま返すと,
+  // 呼ぶ側の await が返し終わるまで待つため)
+  const delayNext = async (late: 'success' | 'error') => {
+    let finish = () => {}
+    const finished = new Promise<void>((resolve) => (finish = resolve))
+    await page.route(
+      '**/api/project/target',
+      async (route) => {
+        const response = late === 'success' ? await route.fetch() : null
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        await (response
+          ? route.fulfill({ response })
+          : route.fulfill({ status: 422, json: { detail: '遅れて返った誤り' } }))
+        finish()
+      },
+      { times: 1 },
+    )
+    return { finished }
+  }
+
+  // 打った場所の確かめが遅れて成功で返っても, 後に一覧から選んだ確かめの
+  // 結果のまま (確かめ直しの知らせを出さず, 一覧の選択も外さない)
+  let delayed = await delayNext('success')
+  await field.fill(project)
+  await button.click()
+  await expect(button).toHaveText('確かめています…')
+  await recorded.click()
+  await delayed.finished
+  await page.waitForTimeout(300)
+  await expect(field).toHaveValue(/problems\/recorded\/problem\.yaml$/)
+  await expect(target).toContainText('問題の設定 e2e の売上 の記録の保存先')
+  await expect(save).not.toContainText('保存先を確かめ直してください')
+  await expect(recorded).toHaveAttribute('aria-pressed', 'true')
+
+  // 遅れて誤りで返っても, 後の確かめの結果のまま
+  delayed = await delayNext('error')
+  await field.fill(project)
+  await button.click()
+  await expect(button).toHaveText('確かめています…')
+  await recorded.click()
+  await delayed.finished
+  await page.waitForTimeout(300)
+  await expect(save.getByRole('alert')).toHaveCount(0)
+  await expect(target).toContainText('問題の設定 e2e の売上 の記録の保存先')
+  await expect(recorded).toHaveAttribute('aria-pressed', 'true')
+
+  // 確かめに失敗すると, 一覧の選択も外す (先頭の - は使えない)
+  await save.getByLabel('models/ の下の名前').fill('-bad')
+  await button.click()
+  await expect(save.getByRole('alert')).toContainText('先頭に - は使えない')
+  await expect(target).toHaveCount(0)
+  await expect(recorded).toHaveAttribute('aria-pressed', 'false')
+})
