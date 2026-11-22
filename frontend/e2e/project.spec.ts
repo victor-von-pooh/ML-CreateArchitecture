@@ -149,15 +149,22 @@ test('名前を変えてプロジェクトに保存すると, models/ の下に�
   expect(readFileSync(modelFile, 'utf-8')).toBe(modelBefore)
   expect(readFileSync(config, 'utf-8')).toBe(configBefore)
 
-  // 確かめに失敗すると, 前の保存の知らせを消す (先頭の - は使えない)
+  // 確かめた後に名前を書き換えると, 確かめ直すように出す
   await save.getByLabel('models/ の下の名前').fill('-bad')
+  await expect(save).toContainText('保存先を確かめ直してください')
+
+  // 確かめに失敗すると誤りだけを出し, 前の保存先と保存の知らせを消す
+  // (先頭の - は使えない)
   await save.getByRole('button', { name: '保存先を確かめる' }).click()
   await expect(save.getByRole('alert')).toContainText('先頭に - は使えない')
+  await expect(save).not.toContainText('保存先を確かめ直してください')
+  await expect(save.getByRole('group', { name: '保存先' })).toHaveCount(0)
   await expect(save.getByRole('status')).not.toContainText('に保存しました')
 
-  // 確かめた後に名前を書き換えると, 確かめ直すように出す
+  // 失敗した後に書き換えても, 確かめ直しの知らせは出さない (誤りのまま)
   await save.getByLabel('models/ の下の名前').fill('model')
-  await expect(save).toContainText('保存先を確かめ直してください')
+  await expect(save.getByRole('alert')).toBeVisible()
+  await expect(save).not.toContainText('保存先を確かめ直してください')
 
   // 既定の保存先と同じ名前は, 既定の定義を上書きすると添える
   await save.getByRole('button', { name: '保存先を確かめる' }).click()
@@ -174,6 +181,17 @@ test('名前を変えてプロジェクトに保存すると, models/ の下に�
   await save.getByLabel('models/ の下の名前').fill('../outside')
   await save.getByRole('button', { name: '保存先を確かめる' }).click()
   await expect(save.getByRole('alert')).toContainText('使えません')
+
+  // 保存先を決められない場所 (学習のプロジェクトでないディレクトリ) も,
+  // 誤りだけを出す
+  await save.getByLabel('models/ の下の名前').fill('')
+  await save.getByRole('button', { name: '保存先を確かめる' }).click()
+  await expect(save.getByRole('group', { name: '保存先' })).toBeVisible()
+  await save.getByLabel('プロジェクトか問題の設定').fill(dataset)
+  await save.getByRole('button', { name: '保存先を確かめる' }).click()
+  await expect(save.getByRole('alert')).toContainText('学習のプロジェクト')
+  await expect(save).not.toContainText('保存先を確かめ直してください')
+  await expect(save.getByRole('group', { name: '保存先' })).toHaveCount(0)
 })
 
 test('記録の無いプロジェクトでも, 保存先を確かめると config のデータセットの場所が入る', async ({

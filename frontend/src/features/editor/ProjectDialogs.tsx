@@ -321,8 +321,12 @@ function ProjectSaveSection({
       setWritten(null)
       onTarget(value, text, chosen)
     },
-    // 確かめに失敗した場合も, 前に書いた知らせは今の保存先のものでないので消す
-    onError: () => setWritten(null),
+    // 確かめに失敗した場合は, 前に確かめた保存先 (と書いた知らせ) を消して
+    // 誤りだけを出す (確かめ直しの知らせを重ねず, 前の保存先のまま書かない)
+    onError: () => {
+      setTarget(null)
+      setWritten(null)
+    },
   })
   // 一覧から選んだ問題の設定を欄に入れ, 今の名前のまま保存先を確かめる
   // (欄は描画の中で, 確かめる要求は描画の後)
