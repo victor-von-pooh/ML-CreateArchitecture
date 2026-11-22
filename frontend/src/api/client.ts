@@ -106,11 +106,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ path, name }),
     }),
-  /** 定義をプロジェクトの保存先に書く (既にある場合は overwrite が要る. 無ければ 409) */
-  saveProjectModel: (path: string, name: string, spec: Spec, overwrite: boolean) =>
+  /**
+   * 定義をプロジェクトの保存先に書く (target は確かめた保存先. 決め直した保存先と違うか,
+   * 既にあり overwrite が偽なら 409)
+   */
+  saveProjectModel: (path: string, name: string, spec: Spec, target: string, overwrite: boolean) =>
     request<ProjectSaved>('/api/project/model', {
       method: 'PUT',
-      body: JSON.stringify({ path, name, spec, overwrite }),
+      body: JSON.stringify({ path, name, spec, target, overwrite }),
     }),
   saveModel: (name: string, spec: Spec) =>
     request<ModelSummary>(`/api/models/${encodeURIComponent(name)}`, {

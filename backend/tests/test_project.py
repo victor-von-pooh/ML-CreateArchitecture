@@ -11,8 +11,14 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from ml_modelcontrol import load_spec
 
+from ml_createarchitecture import project as project_module
 from ml_createarchitecture.app import create_app
-from ml_createarchitecture.project import make_parents, positive_int
+from ml_createarchitecture.project import (
+    ignores_case,
+    make_parents,
+    positive_int,
+    same_file,
+)
 
 # 全結合だけの小さなモデルの定義
 SPEC = {
@@ -583,6 +589,155 @@ def test_project_named_sibling(client: TestClient, tmp_path: Path) -> None:
         "/api/project/target", json={"path": str(project), "name": "model"}
     )
     assert response.json()["default"] is True
+
+
+def test_project_save_bound_target(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    確かめた保存先と, 書くときに決め直した保存先が違えば, 上書きの許しが
+    あっても書かない (409) ことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # a.yml を確かめた後に, 他から a.yaml が作られた場合
+    project = make_project_dir(tmp_path / "proj").resolve()
+    models = project / "models"
+    models.mkdir()
+    (models / "a.yml").write_text("old\n")
+    response = client.post(
+        "/api/project/target", json={"path": str(project), "name": "a"}
+    )
+    checked = response.json()["path"]
+    assert checked == str(models / "a.yml")
+    (models / "a.yaml").write_text("other\n")
+    body = {
+        "path": str(project), "name": "a", "spec": SPEC, "overwrite": True,
+        "target": checked
+    }
+    response = client.put("/api/project/model", json=body)
+    assert response.status_code == 409
+    assert "変わりました" in response.json()["detail"]
+    assert (models / "a.yaml").read_text() == "other\n"
+    assert (models / "a.yml").read_text() == "old\n"
+
+    # 確かめ直した保存先なら書く
+    response = client.put(
+        "/api/project/model",
+        json={**body, "target": str(models / "a.yaml")}
+    )
+    assert response.status_code == 200, response.text
+    assert load_spec(models / "a.yaml")["nodes"]["fc"]["unit"] == "nn.Linear"
+
+    # 確かめた後に config の model.spec が変わった場合も同じ
+    response = client.post(
+        "/api/project/target", json={"path": str(project)}
+    )
+    checked = response.json()["path"]
+    assert checked == str(models / "model.yaml")
+    (project / "configs" / "default" / "train.yaml").write_text(
+        "model:\n  spec: models/a.yaml\n"
+    )
+    body = {"path": str(project), "spec": SPEC, "target": checked}
+    response = client.put("/api/project/model", json=body)
+    assert response.status_code == 409
+    assert not (models / "model.yaml").exists()
+
+
+def test_same_file_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    まだ無いファイルの同じかの判定が, 大文字と小文字を区別しない置き場で
+    大小だけ違う名前を同じとみなすことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        置き場の見分けを替える
+
+    Returns
+    ----------
+    None
+    """
+    # 置き場の見分けは, 実際に大小を入れ替えた名前で探した結果と同じ
+    folder = tmp_path / "Models"
+    folder.mkdir()
+    swapped = tmp_path / "mODELS"
+    assert ignores_case(folder / "a.yaml") == swapped.exists()
+
+    # 両方無く大小だけ違う名前は, 置き場の見分けで決める
+    first, second = folder / "Model.yaml", folder / "model.yaml"
+    monkeypatch.setattr(project_module, "ignores_case", lambda path: True)
+    assert same_file(first, second) is True
+    monkeypatch.setattr(project_module, "ignores_case", lambda path: False)
+    assert same_file(first, second) is False
+
+    # 名前の違うものと, 片方だけあるものは区別する置き場の別のファイル
+    monkeypatch.setattr(project_module, "ignores_case", lambda path: True)
+    assert same_file(folder / "a.yaml", second) is False
+    first.write_text("x\n")
+    if not second.exists():
+        assert same_file(first, second) is False
+
+
+def test_project_upper_suffix(client: TestClient, tmp_path: Path) -> None:
+    """
+    大文字の拡張子の保存先 (ML-Dashboard の候補に出ない) を断ることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # config の model.spec の拡張子が大文字
+    project = make_project_dir(tmp_path / "proj").resolve()
+    (project / "configs" / "default" / "train.yaml").write_text(
+        "model:\n  spec: models/Net.YAML\n"
+    )
+    response = client.post(
+        "/api/project/target", json={"path": str(project)}
+    )
+    assert response.status_code == 422
+    assert "小文字" in response.json()["detail"]
+    response = client.put(
+        "/api/project/model", json={"path": str(project), "spec": SPEC}
+    )
+    assert response.status_code == 422
+    assert not (project / "models").exists()
+
+    # 名前の保存先が大文字の拡張子の既にあるファイルになる場合 (区別しない
+    # 置き場) も断り, 区別する置き場なら小文字の別のファイル
+    models = project / "models"
+    models.mkdir()
+    (models / "wide.YML").write_text("old\n")
+    response = client.post(
+        "/api/project/target", json={"path": str(project), "name": "wide"}
+    )
+    if (models / "wide.yml").exists():
+        assert response.status_code == 422
+        assert "小文字" in response.json()["detail"]
+    else:
+        assert response.status_code == 200, response.text
+        assert response.json()["path"] == str(models / "wide.yaml")
 
 
 class StubQuest:
