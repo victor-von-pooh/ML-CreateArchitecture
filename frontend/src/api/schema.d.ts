@@ -746,6 +746,15 @@ export interface components {
             /** Code */
             code: string;
         };
+        /** GatedInfo */
+        GatedInfo: {
+            /** Reason */
+            reason: string;
+            /** Hub Id */
+            hub_id?: string | null;
+            /** Url */
+            url?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -873,6 +882,17 @@ export interface components {
             source: string;
             /** Url */
             url?: string | null;
+            /** Author */
+            author?: string | null;
+            /**
+             * Attribution
+             * @default
+             */
+            attribution: string;
+            /** Credit */
+            credit?: string | null;
+            /** Size Bytes */
+            size_bytes?: number | null;
         };
         /** ProblemEntry */
         ProblemEntry: {
@@ -1059,6 +1079,17 @@ export interface components {
             source: string;
             /** Url */
             url?: string | null;
+            /** Author */
+            author?: string | null;
+            /**
+             * Attribution
+             * @default
+             */
+            attribution: string;
+            /** Credit */
+            credit?: string | null;
+            /** Size Bytes */
+            size_bytes?: number | null;
         };
         /** WeightsReport */
         WeightsReport: {
@@ -1109,6 +1140,7 @@ export interface components {
             reports: components["schemas"]["WeightsReport"][];
             /** Error */
             error?: string | null;
+            gated?: components["schemas"]["GatedInfo"] | null;
         };
     };
     responses: never;

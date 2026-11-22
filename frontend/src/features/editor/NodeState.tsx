@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { Download, Plus, Trash2 } from 'lucide-react'
+import { Download, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 
 import type { WeightsReport, WeightsResult } from '../../api/client'
@@ -646,11 +646,7 @@ function ReadWeights({ onRead, stamp }: { onRead: () => Promise<WeightsResult>; 
           読めませんでした: {read.error.message}
         </p>
       )}
-      {current && read.data && !read.data.ok && (
-        <p role="alert" className="text-xs text-critical-text [overflow-wrap:anywhere]">
-          {read.data.error}
-        </p>
-      )}
+      {current && read.data && !read.data.ok && <WeightsError result={read.data} />}
       {current && read.data?.ok && (
         <section role="status" aria-label="重みの読み込みの報告" className="space-y-2">
           {read.data.reports.length === 0 && (
@@ -660,6 +656,28 @@ function ReadWeights({ onRead, stamp }: { onRead: () => Promise<WeightsResult>; 
             <ReportCard key={report.node} report={report} />
           ))}
         </section>
+      )}
+    </div>
+  )
+}
+
+/** 重みを読めなかった誤りの文. 申請制の重みは, 配布元のページで申請する案内も出す */
+export function WeightsError({ result }: { result: WeightsResult }) {
+  return (
+    <div role="alert" className="space-y-1 text-xs text-critical-text">
+      <p className="[overflow-wrap:anywhere]">{result.error}</p>
+      {result.gated?.url && (
+        // 申請制の重みは, 申請と条件を確かめる配布元のページへ
+        <a
+          href={result.gated.url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-accent-text underline"
+        >
+          配布元のページで申請する
+          <ExternalLink className="size-3" aria-hidden />
+          <span className="sr-only">(新しいタブで開く)</span>
+        </a>
       )}
     </div>
   )

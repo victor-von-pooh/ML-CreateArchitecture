@@ -6,7 +6,9 @@ import pytest
 import torch
 from fastapi.testclient import TestClient
 from ml_modelcontrol import clear_pretrained_cache, pretrained
+from ml_modelcontrol import model as model_module
 
+from ml_createarchitecture import api as api_module
 from ml_createarchitecture.app import create_app
 
 # 全結合と ReLU の小さなモデルの定義
@@ -305,6 +307,12 @@ def test_pretrained(
     assert info["pinned_revision"] == "a" * 40
     assert "Hugging Face" in info["source"]
 
+    # 表示の義務, 出どころの表記の例 (作者は置き場の組織), 重みの大きさ
+    assert info["attribution"]
+    assert info["credit"].startswith("org の org/nc")
+    assert info["author"] is None
+    assert info["size_bytes"] == 1234
+
     # 重みを読まない場合は null, 登録簿に無い部品は 404
     body["params"]["pretrained"] = False
     assert client.post("/api/pretrained", json=body).json() is None
@@ -328,10 +336,11 @@ def fake_hub(hub_id: str, revision: str) -> dict[str, Any]:
     Returns
     ----------
     metadata: dict[str, Any]
-        非商用のライセンスのモデルの情報
+        非商用のライセンスで重みのファイルが 1 つのモデルの情報
     """
     metadata: dict[str, Any] = {
-        "sha": "a" * 40, "cardData": {"license": "cc-by-nc-4.0"}
+        "sha": "a" * 40, "cardData": {"license": "cc-by-nc-4.0"},
+        "siblings": [{"rfilename": "model.safetensors", "size": 1234}]
     }
 
     return metadata
@@ -396,7 +405,9 @@ def test_weights_report(client: TestClient, tmp_path: Path) -> None:
 
     # 外部の重みが無い定義は組み立てずに空の報告
     body = client.post("/api/weights", json={"spec": SPEC}).json()
-    assert body == {"ok": True, "reports": [], "error": None}
+    assert body == {
+        "ok": True, "reports": [], "error": None, "gated": None
+    }
 
     # 定義の置き場の外のファイルは読まない (手元の絶対のパスも出さない)
     outside = tmp_path / "outside.pt"
@@ -424,3 +435,71 @@ def test_weights_report(client: TestClient, tmp_path: Path) -> None:
     body = client.post("/api/weights", json={"spec": spec}).json()
     assert not body["ok"]
     assert "strict: false" in body["error"]
+
+
+class GatedRepoError(Exception):
+    # huggingface_hub の申請制の誤りの代わり (置き場の名前を持つ)
+    repo_id = "org/gated"
+
+
+def test_weights_gated(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    申請制の重みを読めなかった場合は, 型の名前を付けない日本語の理由と
+    配布元のページを返し, 他の誤りは型の名前を付けることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    monkeypatch: pytest.MonkeyPatch
+        差し替えの道具
+
+    Returns
+    ----------
+    None
+    """
+    # トークンの無い環境で, 部品の作成が申請制の誤りで止まるように差し替え
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+
+    def gated_build(*args: Any, **kwargs: Any) -> None:
+        try:
+            raise GatedRepoError("401 Client Error")
+        except GatedRepoError as error:
+            raise model_module.NodeBuildError("fc", error) from error
+
+    monkeypatch.setattr(api_module, "build_model", gated_build)
+    spec = {**SPEC, "format_version": 2, "nodes": {
+        **SPEC["nodes"],
+        "fc": {**SPEC["nodes"]["fc"], "weights": {"path": "base.pt"}}
+    }}
+    body = client.post("/api/weights", json={"spec": spec}).json()
+    assert not body["ok"]
+    assert body["error"].startswith("ノード fc の部品を作れません: 申請制")
+    assert "NodeBuildError" not in body["error"]
+    assert "HF_TOKEN" in body["error"]
+    assert body["gated"] == {
+        "reason": "no_token", "hub_id": "org/gated",
+        "url": "https://huggingface.co/org/gated"
+    }
+
+    # ノードの外で起きた申請制の誤りも同じ形
+    def hub_build(*args: Any, **kwargs: Any) -> None:
+        raise GatedRepoError("401 Client Error")
+
+    monkeypatch.setattr(api_module, "build_model", hub_build)
+    body = client.post("/api/weights", json={"spec": spec}).json()
+    assert body["error"].startswith("申請制の重み (置き場 org/gated")
+    assert body["gated"]["reason"] == "no_token"
+
+    # 申請制でない誤りは型の名前を付け, gated は null
+    def other_build(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("壊れたファイル")
+
+    monkeypatch.setattr(api_module, "build_model", other_build)
+    body = client.post("/api/weights", json={"spec": spec}).json()
+    assert body["error"] == "RuntimeError: 壊れたファイル"
+    assert body["gated"] is None

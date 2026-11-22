@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { licenseParams } from './license'
+import { formatBytes, licenseParams } from './license'
 
 describe('licenseParams', () => {
   it('ライセンスに関わる引数だけを決まった順に並べる', () => {
@@ -27,5 +27,16 @@ describe('licenseParams', () => {
     expect(licenseParams({ model_name: 'resnet50', pretrained: true }, ['pretrained'])).not.toBe(
       text,
     )
+  })
+})
+
+describe('formatBytes', () => {
+  it('1024 ごとに単位を上げ, 10 未満は小数 1 桁にする', () => {
+    expect(formatBytes(0)).toBe('0 B')
+    expect(formatBytes(1023)).toBe('1023 B')
+    expect(formatBytes(1536)).toBe('1.5 KB')
+    expect(formatBytes(440 * 1024 * 1024)).toBe('440 MB')
+    expect(formatBytes(1.5 * 1024 ** 3)).toBe('1.5 GB')
+    expect(formatBytes(2048 * 1024 ** 4)).toBe('2048 TB')
   })
 })

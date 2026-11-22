@@ -16,6 +16,7 @@ from ml_modelcontrol import (
     pretrained_info,
     validate,
 )
+from ml_modelcontrol.pretrained import gated_error
 from pydantic import BaseModel
 
 from ml_createarchitecture.settings import MODULES_ENV
@@ -323,7 +324,8 @@ class PretrainedBody(BaseModel):
 class PretrainedInfo(BaseModel):
     # 学習済みの重みのライセンスの情報 (ML-ModelControl の pretrained_info).
     # 分類 (commercial, noncommercial, unknown), 警告するか, 画面に出す説明,
-    # どこから読んだか, 推論の一式に写せるか, 読んだ版
+    # どこから読んだか, 推論の一式に写せるか, 読んだ版, 作者, 表示の義務,
+    # 出どころの表記の例, 重みの大きさ (バイト数)
     unit: str
     library: str
     model: str
@@ -340,6 +342,10 @@ class PretrainedInfo(BaseModel):
     message: str
     source: str
     url: Optional[str] = None
+    author: Optional[str] = None
+    attribution: str = ""
+    credit: Optional[str] = None
+    size_bytes: Optional[int] = None
 
 
 @router.post("/pretrained")
@@ -403,11 +409,21 @@ class WeightsReport(BaseModel):
     warnings: list[str] = []
 
 
+class GatedInfo(BaseModel):
+    # 申請制の重みを読めなかった理由 (no_token, invalid_token,
+    # not_granted), 置き場の名前, 配布元のページ
+    reason: str
+    hub_id: Optional[str] = None
+    url: Optional[str] = None
+
+
 class WeightsResult(BaseModel):
-    # 読めたか, ノードごとの報告, 読めない場合の誤りの文
+    # 読めたか, ノードごとの報告, 読めない場合の誤りの文, 申請制の重みを
+    # 読めなかった場合の理由
     ok: bool
     reports: list[WeightsReport] = []
     error: Optional[str] = None
+    gated: Optional[GatedInfo] = None
 
 
 # 外部の重みの読み込みを 1 つずつにする鍵 (大きな重みを並べて読まないため)
@@ -525,15 +541,51 @@ def read_weights(body: WeightsBody, request: Request) -> WeightsResult:
         result = WeightsResult(ok=False, error=str(error))
         return result
     except Exception as error:
-        result = WeightsResult(
-            ok=False, error=f"{type(error).__name__}: {error}"
-        )
+        result = build_error(error)
         return result
     finally:
         WEIGHTS_LOCK.release()
     result = WeightsResult(
         ok=True,
         reports=[WeightsReport(**item) for item in model.weights_report]
+    )
+
+    return result
+
+
+def build_error(error: Exception) -> WeightsResult:
+    """
+    組み立てで起きた誤りを, 画面に出す誤りの文にする関数
+
+    Parameters
+    ----------
+    error: Exception
+        組み立てか重みの読み込みで起きた誤り
+
+    Returns
+    ----------
+    result: WeightsResult
+        読めなかった結果. 申請制の重みの誤りは, 型の名前を付けない日本語の
+        理由と次にすること, 理由と配布元のページ. それ以外は型の名前を
+        付けた誤りの文
+    """
+    # ノードの誤り (NodeBuildError) は申請制の誤りを持ち, 文にノードの
+    # 名前がある. 他の道 (外部の重みの hub など) は原因の誤りから探す
+    gated = getattr(error, "gated", None)
+    message = str(error)
+    if gated is None:
+        gated = gated_error(error)
+        message = str(gated)
+    if gated is None:
+        result = WeightsResult(
+            ok=False, error=f"{type(error).__name__}: {error}"
+        )
+        return result
+    result = WeightsResult(
+        ok=False, error=message,
+        gated=GatedInfo(
+            reason=gated.reason, hub_id=gated.hub_id, url=gated.url
+        )
     )
 
     return result

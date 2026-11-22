@@ -973,6 +973,10 @@ test('学習済みの重みを読むノードは, ライセンスと読めなか
   await expect(license).toContainText('警告: 商用で使えるか分からない', { timeout: 20_000 })
   await expect(license.getByRole('status')).toContainText('ネットワークを使わない設定')
   await expect(license).toContainText('重みを写さず, 出どころの名前と版から読む')
+  // 配布元で確かめられないので, 表示の義務は原文で確かめる案内 (大きさは分からないので出さない)
+  await expect(license).toContainText('配布元の条件を原文で確かめ, 求められる表示をする')
+  await expect(license).toContainText('出どころの表記')
+  await expect(license).not.toContainText('重みの大きさ')
 
   // 重みを読まない設定にすると, 読まないと出す
   await page.getByLabel('pretrained', { exact: true }).uncheck()
