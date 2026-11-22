@@ -348,7 +348,3 @@ test('確かめが重なった場合は最後の確かめの結果だけを出�
   await expect(target).toHaveCount(0)
   await expect(recorded).toHaveAttribute('aria-pressed', 'false')
 })
-
-test('一時: 再試行を起こす', () => {
-  expect(test.info().retry).toBeGreaterThan(0)
-})
