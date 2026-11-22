@@ -9,31 +9,31 @@
 <table>
   <tr>
     <td><img src="docs/images/cnn.png" alt="CNN の例: 畳み込みのノードを選ぶと, 入る形と出る形, パラメータ数, 説明と範囲付きの引数のフォームが出る"></td>
-    <td><img src="docs/images/guide/open.png" alt="開く: 保存した定義と, 同梱の例と受け持ちごとの雛形 (学習の step で行うことまで書いた説明付き)"></td>
+    <td><img src="docs/images/open.png" alt="開く: 保存した定義と, 同梱の例と受け持ちごとの雛形 (学習の step で行うことまで書いた説明付き)"></td>
   </tr>
   <tr>
     <td>CNN の例. ノードごとに推定した出力の形が出て, 右の詳細で引数を説明と範囲付きのフォームで決める</td>
     <td>「開く」の一覧. 保存した定義と, 同梱の例 (CNN, LSTM, Transformer, GCN, BERT など) と受け持ちごとの雛形 (VAE, GAN, 拡散, 対照, 2 塔, 方策と価値)</td>
   </tr>
   <tr>
-    <td><img src="docs/images/guide/error.png" alt="形の誤り: 全結合の in_features が前のノードの出力と合わず, PyTorch のエラーと直し方が出る"></td>
-    <td><img src="docs/images/param_state.png" alt="パラメータの状態: 凍結, 零初期化, 外部の重みのファイルとキーの付け替えを欄で書き, 読んだ重みの数を確かめる"></td>
+    <td><img src="docs/images/error.png" alt="形の誤り: 全結合の in_features が前のノードの出力と合わず, PyTorch のエラーと直し方が出る"></td>
+    <td><img src="docs/images/param_state.png" alt="パラメータの状態: 凍結と外部の重みのファイル, キーの付け替えを欄で書き, 読んだ重みの数を確かめる"></td>
   </tr>
   <tr>
     <td>形の誤り. 入ってきた値の形と, どの引数をどう直すかが出る</td>
     <td>パラメータの状態. 凍結, 零初期化, 外部の重み (キーの付け替え付き) を書き, 「重みを読んで確かめる」で読めた / 形の違う / 新しい / 使わない重みの数を見る</td>
   </tr>
   <tr>
-    <td><img src="docs/images/license.png" alt="学習済みの重みのライセンス (商用で使える): Hugging Face の bert-base-uncased のノードで, 配布元から読んだ apache-2.0 と読んだ版が出る"></td>
-    <td><img src="docs/images/license_alert.png" alt="学習済みの重みのライセンス (警告): 同じノードのモデルを cc-by-nc-4.0 のものに替えると, 商用で使えないという警告が出る"></td>
+    <td><img src="docs/images/dataset.png" alt="データセットとプロジェクト: 問題の設定を選ぶと, データセットから入力と出力を作り, 学習のプロジェクトの保存先が決まる"></td>
+    <td><img src="docs/images/run_copy.png" alt="学習の実験の定義の写し: プロジェクトの実験を探し, 学習に使った定義の写しを開く"></td>
   </tr>
   <tr>
-    <td>学習済みの重みのライセンス. 配布元から読んだライセンス, 商用で使えるか, 読んだ版, 推論の一式に重みを写せるかが出る</td>
-    <td>商用で使えないライセンス (ここでは cc-by-nc-4.0) の重みは, 警告の色で出る</td>
+    <td>データセットとプロジェクト. ML-Pathfinder の問題の設定を選ぶと, ML-Fathom で書き出したデータセットから入力と出力を作り, 学習のプロジェクトの保存先が入る</td>
+    <td>学習の実験の定義の写し. プロジェクトの実験 (ML-Found) を探し, 学習に使った定義を開いて手直しの元にする</td>
   </tr>
 </table>
 
-画面の例は ML-ModelControl に同梱の例 (`vae`, `cnn_classifier`, `bert_classifier`) と, 全結合の層 1 つを置いた定義 (外部の重みは小さな見本のファイル). ライセンスの 2 枚は `make setup EXTRAS=huggingface` で起動し, `bert_classifier` の `bert` のノードを選んだ所 (警告の方は `model_name` を cc-by-nc-4.0 の公開モデルに替えた所). ライセンスは Hugging Face のモデルの説明から読んだもの. 他の図は外部のライブラリを入れずに (`make setup` のまま) 起動した.
+画面の例は ML-ModelControl に同梱の例 (`vae`, `cnn_classifier`) と, 全結合の層 1 つを置いた定義 (外部の重みは小さな見本のファイル), 画面の通しのテストの見本 (3 クラスの分類のデータセット, 学習のプロジェクト, 問題の設定, 実験). 外部のライブラリを入れずに (`make setup` のまま) 起動した. 作業用の置き場の場所は `~` で示す.
 
 ## できること
 
@@ -45,6 +45,7 @@
 - **学習済みの重みのライセンス**: 重みを読む部品のノードで, ライセンスと商用で使えるかを確かめる
 - **自作の部品**: 研究で書いた `nn.Module` を, 起動の設定に書いたモジュールから部品の一覧に加える
 - **データセットとプロジェクト**: ML-Fathom (ML-EDA) で書き出したデータセットから入力の名前と形, 出力の大きさを入れ, ML-Pathfinder (ML-Quest) で書き出した学習のプロジェクトの, 学習のスクリプトが読む場所か, `models/` の下の名前 (ML-Dashboard で比べるモデルの候補) に定義を保存する. ML-Pathfinder に保存した問題の設定を一覧から選ぶと, 両方の場所が入る
+- **実験の定義の写し**: 学習のプロジェクトの実験 (ML-Found) に残った, 学習に使った定義の写しを「開く」から開き, 手直しして `models/` の下に名前を付けて保存する
 - **書き出し**: 定義の YAML と, 同じ計算をする Python のコード (ML-ModelControl を入れていない環境でも動く) をコピーかダウンロード
 - 元に戻す・やり直す, 整列, 下書き, キーボードの操作, ライトとダークの表示
 
@@ -105,12 +106,14 @@ cd frontend && pnpm exec playwright install chromium   # 通しのテストの�
 cd frontend && pnpm e2e   # 画面の通しのテスト (アプリを起動してブラウザで操作する)
 ```
 
+README の画面の例 (`docs/images/*.png`) は, `cd frontend && pnpm build && bash e2e/serve.sh` で通しのテストの見本を置いて起動し, 別の端末で `cd frontend && node e2e/screenshots.ts` を実行して撮り直す (Chrome を使う).
+
 | ディレクトリ | 内容 |
 | --- | --- |
 | `backend/` | API (Python, FastAPI). ML-ModelControl の確認, 形の推定, 書き出しを呼び, 定義のファイルを保存する |
 | `frontend/` | 画面 (TypeScript, React, Vite, React Flow) |
 | `ML-ModelControl/` | submodule (モデルの定義のライブラリ) |
-| `docs/` | 操作ガイド, 設計, README の画面の例 (`images/`) |
+| `docs/` | 操作ガイド, 設計, README と操作ガイドの画面の例 (`images/`) |
 
 ## ライセンス
 
