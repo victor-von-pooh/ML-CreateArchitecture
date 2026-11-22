@@ -19,6 +19,9 @@ export type ProjectTarget = Schemas['ProjectTarget']
 export type ProjectSaved = Schemas['ProjectSaved']
 export type ProblemEntry = Schemas['ProblemEntry']
 export type ProblemList = Schemas['ProblemList']
+export type ExperimentList = Schemas['ExperimentList']
+export type ExperimentEntry = Schemas['ExperimentEntry']
+export type ExperimentSpec = Schemas['ExperimentSpec']
 
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
@@ -114,6 +117,18 @@ export const api = {
     request<ProjectSaved>('/api/project/model', {
       method: 'PUT',
       body: JSON.stringify({ path, name, spec, target, overwrite }),
+    }),
+  /** プロジェクトの実験と, 学習に使った定義の写しを開けるかの一覧 */
+  listExperiments: (path: string) =>
+    request<ExperimentList>('/api/project/experiments', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  /** 実験の定義の写しを読む (run と root は一覧の run と置き場) */
+  openExperimentSpec: (path: string, run: string, root: string) =>
+    request<ExperimentSpec>('/api/project/experiment-spec', {
+      method: 'POST',
+      body: JSON.stringify({ path, run, root }),
     }),
   saveModel: (name: string, spec: Spec) =>
     request<ModelSummary>(`/api/models/${encodeURIComponent(name)}`, {

@@ -485,6 +485,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/project/experiments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List Experiments
+         * @description プロジェクトの実験と, 定義の写しを開けるかの一覧を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     body: PathBody
+         *         プロジェクトのディレクトリか問題の設定のファイル
+         *
+         *     Returns
+         *     ----------
+         *     found: ExperimentList
+         *         実験の置き場と, 新しい順の実験
+         */
+        post: operations["list_experiments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/project/experiment-spec": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Experiment Spec
+         * @description 実験の定義の写しを読む関数
+         *
+         *     Parameters
+         *     ----------
+         *     body: ExperimentBody
+         *         プロジェクトの場所, 実験と置き場
+         *
+         *     Returns
+         *     ----------
+         *     opened: ExperimentSpec
+         *         定義と保存する名前の候補
+         *
+         *     Raises
+         *     ----------
+         *     HTTPException
+         *         実験が無い場合は 404, 置き場が重なる場合は 409, 写しを開けないか
+         *         定義として読めない場合は 422
+         */
+        post: operations["open_experiment_spec"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -581,6 +647,87 @@ export interface components {
             name: string;
             /** Description */
             description: string;
+        };
+        /** ExperimentBody */
+        ExperimentBody: {
+            /**
+             * Path
+             * @description プロジェクトのディレクトリか問題の設定のファイルの絶対のパス (~ から書ける)
+             */
+            path: string;
+            /**
+             * Run
+             * @description 実験の置き場からの実験のディレクトリ (<名前>/<日付>/<時刻>. 一覧の run)
+             */
+            run: string;
+            /**
+             * Root
+             * @description 実験の置き場 (一覧の root. 置き場が複数で run が重なる場合に見分ける)
+             */
+            root?: string | null;
+        };
+        /** ExperimentEntry */
+        ExperimentEntry: {
+            /**
+             * Run
+             * @description 実験の置き場からの <名前>/<日付>/<時刻>
+             */
+            run: string;
+            /**
+             * Root
+             * @description 実験の置き場
+             */
+            root: string;
+            /**
+             * Path
+             * @description 実験のディレクトリ
+             */
+            path: string;
+            /**
+             * Spec
+             * @description 写した元の定義の場所 (source.yaml の model_spec.path)
+             */
+            spec?: string | null;
+            /**
+             * Name
+             * @description 保存する名前の候補
+             */
+            name: string;
+            /**
+             * Status
+             * @description run.json の状態
+             */
+            status?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Usable */
+            usable: boolean;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** ExperimentList */
+        ExperimentList: {
+            /** Project */
+            project: string;
+            /** Roots */
+            roots: string[];
+            /** Experiments */
+            experiments: components["schemas"]["ExperimentEntry"][];
+            /** Notes */
+            notes?: string[];
+        };
+        /** ExperimentSpec */
+        ExperimentSpec: {
+            /** Name */
+            name: string;
+            /** Spec */
+            spec: {
+                [key: string]: unknown;
+            };
+            /** Run */
+            run: string;
+            /** Path */
+            path: string;
         };
         /** ExportBody */
         ExportBody: {
@@ -1418,6 +1565,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectSaved"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_experiments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PathBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_experiment_spec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperimentBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentSpec"];
                 };
             };
             /** @description Validation Error */

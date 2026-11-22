@@ -651,8 +651,14 @@ function Editor() {
             setDraft(null)
             setTypedName(null)
             setNameEpoch((count) => count + 1)
-            // 前の定義の部分モデルの知らせは消す
-            setNotice(null)
+            // 前の定義の部分モデルの知らせは消す. 実験の写しは, 保存の仕方を知らせる
+            setNotice(
+              source === 'experiment'
+                ? {
+                    text: `実験の定義の写しを開きました. 「データセットとプロジェクト」の「プロジェクトに保存」で models/ の下の名前 (例: ${name}) を付けて保存できます`,
+                  }
+                : null,
+            )
             setOwnFile(source === 'model' ? name : null)
             // 位置の無いもの (手で書いた定義など) は, 開いたときに一度だけ
             // 段に分けた位置を書く (後の編集で動かないように)
