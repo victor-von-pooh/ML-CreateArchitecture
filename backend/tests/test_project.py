@@ -995,6 +995,166 @@ def test_project_refuses_configs(
     assert sorted(path.name for path in project.iterdir()) == ["configs"]
 
 
+@pytest.mark.parametrize(
+    "spec, word", [
+        ("problem.yaml", "problem.yaml"), ("Problem.YAML", "problem.yaml"),
+        ("data/model.yaml", "data/"), ("DATA/new/model.yaml", "data/"),
+        ("outputs/dataset/dataset.yaml", "outputs/"),
+        ("outputs/model.yml", "outputs/")
+    ]
+)
+def test_project_refuses_reserved(
+    client: TestClient, tmp_path: Path, spec: str, word: str
+) -> None:
+    """
+    config の model.spec がプロジェクトの直下の problem.yaml か, data/
+    か outputs/ の中を指す場合に, 確かめも保存も断ることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    spec: str
+        config の model.spec
+    word: str
+        断る理由に出る名前
+
+    Returns
+    ----------
+    None
+    """
+    # 確かめの時点で理由を付けて断り, 何も書かない
+    project = make_project_dir(tmp_path / "proj").resolve()
+    config = project / "configs" / "default" / "train.yaml"
+    config.write_text(f"model:\n  spec: {spec}\n")
+    response = client.post(
+        "/api/project/target", json={"path": str(project)}
+    )
+    assert response.status_code == 422
+    assert word in response.json()["detail"]
+    response = client.put(
+        "/api/project/model",
+        json={"path": str(project), "spec": SPEC, "overwrite": True}
+    )
+    assert response.status_code == 422
+    assert sorted(path.name for path in project.iterdir()) == ["configs"]
+
+
+def test_project_reserved_names_elsewhere(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    直下でない problem.yaml と, data か outputs で始まる別の名前には
+    書けることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 断るのは直下の problem.yaml と, data/ と outputs/ の中だけ
+    project = make_project_dir(tmp_path / "proj").resolve()
+    config = project / "configs" / "default" / "train.yaml"
+    for spec in ("models/problem.yaml", "data.yaml", "outputs2/m.yaml"):
+        config.write_text(f"model:\n  spec: {spec}\n")
+        response = client.put(
+            "/api/project/model", json={"path": str(project), "spec": SPEC}
+        )
+        assert response.status_code == 200, response.text
+        assert (project / spec).is_file()
+
+
+@pytest.mark.parametrize(
+    "spec, blocker", [
+        ("models/a/model.yaml", "models"),
+        ("models/a/b/model.yaml", "models/a"),
+    ]
+)
+def test_project_parent_is_file(
+    client: TestClient, tmp_path: Path, spec: str, blocker: str
+) -> None:
+    """
+    保存先までの途中の名前がファイルの場合に, 確かめの時点で断ることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    spec: str
+        config の model.spec
+    blocker: str
+        途中に置くファイル
+
+    Returns
+    ----------
+    None
+    """
+    # 途中のファイルを理由に出し, 保存も 500 でなく 422 にする
+    project = make_project_dir(tmp_path / "proj").resolve()
+    config = project / "configs" / "default" / "train.yaml"
+    config.write_text(f"model:\n  spec: {spec}\n")
+    (project / blocker).parent.mkdir(parents=True, exist_ok=True)
+    (project / blocker).write_text("x")
+    response = client.post(
+        "/api/project/target", json={"path": str(project)}
+    )
+    assert response.status_code == 422
+    assert str(project / blocker) in response.json()["detail"]
+    response = client.put(
+        "/api/project/model",
+        json={"path": str(project), "spec": SPEC, "overwrite": True}
+    )
+    assert response.status_code == 422
+    assert (project / blocker).read_text() == "x"
+
+    # 壊れたリンクも同じ
+    (project / blocker).unlink()
+    (project / blocker).symlink_to(tmp_path / "missing")
+    response = client.post(
+        "/api/project/target", json={"path": str(project)}
+    )
+    assert response.status_code == 422
+
+
+def test_project_named_models_file(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    名前で選ぶ保存先で models がファイルの場合に, 確かめの時点で断る
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # models/<名前>.yaml の途中の models がファイル
+    project = make_project_dir(tmp_path / "proj").resolve()
+    (project / "models").write_text("x")
+    response = client.post(
+        "/api/project/target", json={"path": str(project), "name": "cand"}
+    )
+    assert response.status_code == 422
+    assert "ディレクトリではありません" in response.json()["detail"]
+
+
 def test_project_deep_spec(client: TestClient, tmp_path: Path) -> None:
     """
     2 段以上の深さの保存先では, プロジェクトの中の無いディレクトリだけを
