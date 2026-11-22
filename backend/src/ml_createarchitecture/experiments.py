@@ -8,6 +8,7 @@ models/ に保存し直すために, その写しを画面に開く. 読むの�
 中の実験の置き場だけで, リンクはたどらない
 """
 
+import datetime as dt
 import hashlib
 import os
 import stat
@@ -412,7 +413,28 @@ def copy_reason(record: dict[str, Any]) -> Optional[str]:
     return reason
 
 
-def read_copy(run_dir: Path) -> tuple[Optional[bytes], Optional[str]]:
+def spec_record(run_dir: Path) -> dict[str, Any]:
+    """
+    実験の source.yaml の model_spec を読む関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    record: dict[str, Any]
+        source.yaml の model_spec (無い, 読めない場合は空)
+    """
+    record = section(read_record(run_dir / "source.yaml"), "model_spec")
+
+    return record
+
+
+def read_copy(
+    run_dir: Path, record: dict[str, Any]
+) -> tuple[Optional[bytes], Optional[str]]:
     """
     実験の定義の写しを読み, 記録の sha256 と合うかを確かめる関数
 
@@ -420,6 +442,8 @@ def read_copy(run_dir: Path) -> tuple[Optional[bytes], Optional[str]]:
     ----------
     run_dir: Path
         実験のディレクトリ
+    record: dict[str, Any]
+        source.yaml の model_spec (spec_record で読んだもの)
 
     Returns
     ----------
@@ -430,7 +454,6 @@ def read_copy(run_dir: Path) -> tuple[Optional[bytes], Optional[str]]:
     """
     # 学習を始めたときの定義かは, ファイルがあることでなく記録で見分ける
     # (ML-Found の docs/FORMAT.md)
-    record = section(read_record(run_dir / "source.yaml"), "model_spec")
     reason = copy_reason(record)
     if reason is not None:
         return None, reason
@@ -537,8 +560,38 @@ def suggested_name(spec_path: Optional[str], run: str) -> str:
     return name
 
 
+def updated_time(run_dir: Path) -> Optional[str]:
+    """
+    一覧に出す実験の更新時刻を求める関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    stamp: Optional[str]
+        定義の写しがリンクでない普通のファイルならその更新時刻, そうで
+        なければ実験のディレクトリの更新時刻
+    """
+    # 写しは lstat で見て, リンクはたどらない (他の読みと同じ決まり)
+    try:
+        found = (run_dir / SPEC_COPY).lstat()
+    except OSError:
+        found = None
+    if found is None or not stat.S_ISREG(found.st_mode):
+        stamp = modified_at(run_dir)
+        return stamp
+    moment = dt.datetime.fromtimestamp(found.st_mtime)
+    stamp = moment.astimezone().isoformat(timespec="seconds")
+
+    return stamp
+
+
 def experiment_entry(
-    root: Path, run_dir: Path, reason: Optional[str]
+    root: Path, run_dir: Path, record: dict[str, Any],
+    reason: Optional[str]
 ) -> ExperimentEntry:
     """
     実験のディレクトリ 1 つを一覧の 1 件にする関数
@@ -549,6 +602,8 @@ def experiment_entry(
         実験の置き場
     run_dir: Path
         実験のディレクトリ
+    record: dict[str, Any]
+        source.yaml の model_spec (spec_record で読んだもの)
     reason: Optional[str]
         写しを開けない理由 (開ける場合は None)
 
@@ -558,17 +613,15 @@ def experiment_entry(
         実験と, 定義の写しを開けるか
     """
     run = run_dir.relative_to(root).as_posix()
-    record = section(read_record(run_dir / "source.yaml"), "model_spec")
     spec_path = record.get("path")
     spec = spec_path if isinstance(spec_path, str) else None
     state = read_record(run_dir / "run.json")
     status = state.get("status") if isinstance(state, dict) else None
-    copy = run_dir / SPEC_COPY
     entry = ExperimentEntry(
         run=run, root=str(root), path=str(run_dir), spec=spec,
         name=suggested_name(spec, run),
         status=status if isinstance(status, str) else None,
-        updated_at=modified_at(copy if copy.is_file() else run_dir),
+        updated_at=updated_time(run_dir),
         usable=reason is None, reason=reason
     )
 
@@ -632,10 +685,15 @@ def find_experiments(project: Path) -> ExperimentList:
     # 実験のディレクトリは <置き場>/<名前>/<日付>/<時刻>/ で, config と
     # source.yaml を持つもの (ML-Found の形)
     roots, notes = output_roots(project)
-    entries = [
-        experiment_entry(root, run_dir, read_copy(run_dir)[1])
-        for root, run_dir in walk_runs(roots, notes)
-    ]
+    # source.yaml は実験 1 件ごとに 1 回だけ読む
+    entries: list[ExperimentEntry] = []
+    for root, run_dir in walk_runs(roots, notes):
+        record = spec_record(run_dir)
+        entries.append(
+            experiment_entry(
+                root, run_dir, record, read_copy(run_dir, record)[1]
+            )
+        )
     entries.sort(key=lambda entry: entry.updated_at or "", reverse=True)
     found = ExperimentList(
         project=str(project), roots=[str(root) for root in roots],
@@ -745,7 +803,8 @@ def open_experiment_spec(body: ExperimentBody) -> ExperimentSpec:
         定義として読めない場合は 422
     """
     root, run_dir = find_run(project_dir(body.path), body.run, body.root)
-    data, reason = read_copy(run_dir)
+    record = spec_record(run_dir)
+    data, reason = read_copy(run_dir, record)
     if data is None:
         raise HTTPException(422, f"実験 {body.run} の定義を開けません: {reason}")
     try:
@@ -754,7 +813,7 @@ def open_experiment_spec(body: ExperimentBody) -> ExperimentSpec:
         raise HTTPException(
             422, f"実験 {body.run} の定義を読めません: {error}"
         ) from error
-    entry = experiment_entry(root, run_dir, None)
+    entry = experiment_entry(root, run_dir, record, None)
     opened = ExperimentSpec(
         name=entry.name, spec=spec, run=entry.run, path=entry.path
     )

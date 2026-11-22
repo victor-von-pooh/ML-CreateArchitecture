@@ -470,3 +470,53 @@ def test_from_problem_file(client: TestClient, tmp_path: Path) -> None:
     assert [item["run"] for item in response.json()["experiments"]] == [
         "a/d/t"
     ]
+
+
+def test_updated_at_skips_linked_copy(
+    client: TestClient, tmp_path: Path
+) -> None:
+    # 写しがリンクなら, リンク先でなく実験のディレクトリの時刻を出す
+    project = make_project(tmp_path / "proj")
+    root = project / "outputs"
+    plain = make_run(root, "a/d/1")
+    linked = make_run(root, "a/d/2")
+    outside = tmp_path / "outside.yaml"
+    outside.write_text(yaml.safe_dump(SPEC))
+    (linked / "model_spec.yaml").unlink()
+    (linked / "model_spec.yaml").symlink_to(outside)
+    os.utime(plain / "model_spec.yaml", (1_000_000_000, 1_000_000_000))
+    os.utime(plain, (1_100_000_000, 1_100_000_000))
+    os.utime(outside, (1_200_000_000, 1_200_000_000))
+    os.utime(linked, (1_300_000_000, 1_300_000_000), follow_symlinks=True)
+    body = client.post(
+        "/api/project/experiments", json={"path": str(project)}
+    ).json()
+    times = {item["run"]: item["updated_at"] for item in body["experiments"]}
+    assert times["a/d/1"].startswith("2001-09-0")
+    assert times["a/d/2"].startswith("2011-03-1")
+
+
+def test_source_read_once(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 一覧は実験 1 件ごとに source.yaml を 1 回だけ読む
+    from ml_createarchitecture import experiments
+
+    project = make_project(tmp_path / "proj")
+    make_run(project / "outputs", "a/d/1")
+    make_run(project / "outputs", "a/d/2")
+    reads: list[Path] = []
+    original = experiments.read_record
+
+    def counted(path: Path) -> Any:
+        reads.append(path)
+        return original(path)
+
+    monkeypatch.setattr(experiments, "read_record", counted)
+    body = client.post(
+        "/api/project/experiments", json={"path": str(project)}
+    ).json()
+    assert len(body["experiments"]) == 2
+    sources = [path for path in reads if path.name == "source.yaml"]
+    assert len(sources) == 2
+    assert len(set(sources)) == 2
