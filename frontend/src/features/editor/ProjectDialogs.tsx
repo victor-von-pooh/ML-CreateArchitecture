@@ -303,6 +303,8 @@ function ProjectSaveSection({
   } | null>(null)
   // 書いたファイル (確かめ直すか保存し直すまで出す)
   const [written, setWritten] = useState<string | null>(null)
+  // 保存が 409 で確かめ直した理由 (次に確かめるまで出す)
+  const [conflict, setConflict] = useState<string | null>(null)
   const titleId = useId()
   // 確かめた場所の保存先を, 既にある扱いにする
   const markExists = (text: string, named: string) =>
@@ -319,13 +321,23 @@ function ProjectSaveSection({
   // 要求の結果で後の結果を上書きしないため. 送るのは resolveTarget だけ)
   const latest = useRef(0)
   const resolve = useMutation({
-    mutationFn: ({ text, named }: { text: string; named: string; chosen: boolean; id: number }) =>
-      api.projectTarget(text, named),
-    onSuccess: (value, { text, named, chosen, id }) => {
+    mutationFn: ({
+      text,
+      named,
+    }: {
+      text: string
+      named: string
+      chosen: boolean
+      id: number
+      /** 保存の 409 で確かめ直す場合の理由 */
+      reason?: string
+    }) => api.projectTarget(text, named),
+    onSuccess: (value, { text, named, chosen, id, reason }) => {
       if (id !== latest.current) return
       remember(PROJECT_KEY, text)
       setTarget({ path: text, name: named, value })
       setWritten(null)
+      setConflict(reason ?? null)
       onTarget(value, text, chosen)
     },
     // 確かめに失敗した場合は, 前に確かめた保存先 (と書いた知らせ) を消して
@@ -334,6 +346,7 @@ function ProjectSaveSection({
       if (id !== latest.current) return
       setTarget(null)
       setWritten(null)
+      setConflict(null)
       onFailed()
     },
   })
@@ -350,7 +363,7 @@ function ProjectSaveSection({
   }
   const { mutate: resolveMutate } = resolve
   const resolveTarget = useCallback(
-    (request: { text: string; named: string; chosen: boolean }) => {
+    (request: { text: string; named: string; chosen: boolean; reason?: string }) => {
       latest.current += 1
       resolveMutate({ ...request, id: latest.current })
     },
@@ -360,8 +373,17 @@ function ProjectSaveSection({
     if (pending) resolveTarget({ ...pending, chosen: true })
   }, [pending, resolveTarget])
   const save = useMutation({
-    mutationFn: ({ text, named, overwrite }: { text: string; named: string; overwrite: boolean }) =>
-      api.saveProjectModel(text, named, spec, overwrite),
+    mutationFn: ({
+      text,
+      named,
+      checkedPath,
+      overwrite,
+    }: {
+      text: string
+      named: string
+      checkedPath: string
+      overwrite: boolean
+    }) => api.saveProjectModel(text, named, spec, checkedPath, overwrite),
     onSuccess: (saved, { text, named }) => {
       onSaved(saved.path)
       // 書いた後は既にある扱い (続けて保存すると上書きを確かめる). 保存の
@@ -369,14 +391,12 @@ function ProjectSaveSection({
       markExists(text, named)
       setWritten(saved.path)
     },
-    onError: (error, { text, named, overwrite }) => {
-      // 確かめた後に別の所で書かれた場合も, 既にある扱いにして上書きして
-      // よいかを聞く
-      if (!(error instanceof ApiError) || error.status !== 409 || overwrite) return
-      markExists(text, named)
-      if (window.confirm(`${error.message}. 上書きしますか?`)) {
-        save.mutate({ text, named, overwrite: true })
-      }
+    onError: (error, { text, named }) => {
+      // 確かめた後に保存先が変わったか, 別の所でファイルが作られた (409)
+      // 場合は, 保存先を確かめ直して理由を出す (確かめていない保存先と,
+      // 既にあると知らせていないファイルに書かないため)
+      if (!(error instanceof ApiError) || error.status !== 409) return
+      resolveTarget({ text, named, chosen: false, reason: error.message })
     },
   })
   const requestSave = () => {
@@ -385,7 +405,13 @@ function ProjectSaveSection({
       return
     }
     setWritten(null)
-    save.mutate({ text: path.trim(), named: name.trim(), overwrite: checked.exists })
+    setConflict(null)
+    save.mutate({
+      text: path.trim(),
+      named: name.trim(),
+      checkedPath: checked.path,
+      overwrite: checked.exists,
+    })
   }
   return (
     <section aria-labelledby={titleId} className="space-y-3">
@@ -435,6 +461,15 @@ function ProjectSaveSection({
             <p className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text">
               既定の保存先 (記録か config の model.spec) と同じファイルです.
               保存すると既定の定義を上書きします
+            </p>
+          )}
+          {conflict && (
+            <p
+              role="alert"
+              className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text"
+            >
+              保存しませんでした: {conflict}. 保存先を確かめ直したので,
+              見直してからもう一度保存してください
             </p>
           )}
           {checked.exists && (

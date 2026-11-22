@@ -166,6 +166,11 @@ class ProjectSaveBody(BaseModel):
     )
     spec: dict[str, Any]
     overwrite: bool = False
+    target: Optional[str] = Field(
+        default=None,
+        description="確かめた保存先 (POST /api/project/target の path). 送る"
+        "と, 書くときに決め直した保存先と違えば 409"
+    )
 
 
 class ProjectSaved(BaseModel):
@@ -655,15 +660,60 @@ def same_file(first: Path, second: Path) -> bool:
     same: bool
         同じ場所か, 両方あって同じファイルなら真
     """
-    # 無いファイルは場所の文字で比べる
+    # 両方あればファイルで比べる
     same = first == second
-    if not same and first.exists() and second.exists():
+    if same:
+        return same
+    if first.exists() and second.exists():
         try:
             same = os.path.samefile(first, second)
         except OSError:
             same = False
+        return same
+
+    # 無いファイルは場所の文字で比べ, 大文字と小文字だけ違う場合は置き場が
+    # 区別しないかで決める (片方だけあるなら区別する置き場)
+    if str(first).casefold() == str(second).casefold() and not (
+        first.exists() or second.exists()
+    ):
+        same = ignores_case(first)
 
     return same
+
+
+def ignores_case(path: Path) -> bool:
+    """
+    場所の置き場が大文字と小文字を区別しないかを返す関数
+
+    まだ無いファイルが, 既にある別の名前のファイルと同じになるかを
+    見分けるため. 一番近いある上のディレクトリの名前を, 大文字と小文字を
+    入れ替えて探す
+
+    Parameters
+    ----------
+    path: Path
+        場所 (無くてよい)
+
+    Returns
+    ----------
+    ignores: bool
+        区別しないなら真. 確かめられる名前が無い場合も真 (同じファイルを
+        既定の定義の上書きと知らせずに書かないため)
+    """
+    # 大文字と小文字を入れ替えて名前の変わる, ある上のディレクトリで試す
+    for parent in (path, *path.parents):
+        swapped = parent.name.swapcase()
+        if swapped == parent.name or not parent.exists():
+            continue
+        other = parent.with_name(swapped)
+        try:
+            ignores = other.exists() and os.path.samefile(parent, other)
+        except OSError:
+            ignores = False
+        return ignores
+    ignores = True
+
+    return ignores
 
 
 def resolve_target(text: str, name: Optional[str] = None) -> ProjectTarget:
@@ -837,7 +887,7 @@ def check_target(target: ProjectTarget) -> ProjectTarget:
     Raises
     ----------
     HTTPException
-        拡張子が YAML でない場合, 学習の設定のディレクトリ (configs/) の中,
+        拡張子が小文字の YAML でない場合, 学習の設定のディレクトリ (configs/) の中,
         プロジェクトの直下の problem.yaml, data/ か outputs/ の中の場合,
         途中の名前がディレクトリでない場合と, ディレクトリなどファイルで
         ないものがある場合は 422
@@ -852,6 +902,16 @@ def check_target(target: ProjectTarget) -> ProjectTarget:
     # プロジェクトの中の他の段階のファイルは書き換えない
     if target.project is not None and path.is_relative_to(target.project):
         check_reserved(path, path.relative_to(target.project).parts)
+
+    # 拡張子は小文字だけ (ML-Dashboard のモデルの定義の候補は小文字の拡張子
+    # だけを並べるため)
+    if path.suffix not in SPEC_SUFFIXES:
+        raise HTTPException(
+            422,
+            f"保存先 {path} の拡張子が小文字ではありません. ML-Dashboard の"
+            "モデルの定義の候補に出ないので, 小文字の .yaml か .yml にして"
+            "ください (既にあるファイルは名前を直す)"
+        )
 
     # 途中の名前がファイルなどなら, 保存でディレクトリを作れない (壊れた
     # リンクも同じ)
@@ -1148,12 +1208,19 @@ def save_project_model(body: ProjectSaveBody) -> ProjectSaved:
     Raises
     ----------
     HTTPException
-        既にあり上書きしない場合は 409, 定義を読めない場合と書けない場合は
-        422 (他は保存先を決めるときと同じ)
+        確かめた保存先 (target) と違う場合と, 既にあり上書きしない場合は
+        409, 定義を読めない場合は 422, 書けない場合は 500 (他は保存先を
+        決めるときと同じ)
     """
-    # 押した時点の保存先を決め直し, 既にあれば上書きの確認を求める
+    # 押した時点の保存先を決め直し, 確かめた保存先と違うか, 既にあれば
+    # 確認を求める (上書きの旗を確かめた保存先にだけ効かせるため)
     target = resolve_target(body.path, body.name)
     path = Path(target.path)
+    if body.target is not None and body.target != target.path:
+        raise HTTPException(
+            409,
+            f"保存先が, 確かめた {body.target} から {path} に変わりました"
+        )
     if path.exists() and not body.overwrite:
         raise HTTPException(409, f"{path} が既にあります")
     try:

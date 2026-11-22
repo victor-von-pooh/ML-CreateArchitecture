@@ -517,7 +517,7 @@
     "/api/project/model": {
       "put": {
         "summary": "Save Project Model",
-        "description": "定義をプロジェクトの保存先に書く関数\n\nParameters\n----------\nbody: ProjectSaveBody\n    保存先を決める場所, models/ の下の名前, 定義, 上書きするか\n\nReturns\n----------\nsaved: ProjectSaved\n    書いたファイルと更新時刻\n\nRaises\n----------\nHTTPException\n    既にあり上書きしない場合は 409, 定義を読めない場合と書けない場合は\n    422 (他は保存先を決めるときと同じ)",
+        "description": "定義をプロジェクトの保存先に書く関数\n\nParameters\n----------\nbody: ProjectSaveBody\n    保存先を決める場所, models/ の下の名前, 定義, 上書きするか\n\nReturns\n----------\nsaved: ProjectSaved\n    書いたファイルと更新時刻\n\nRaises\n----------\nHTTPException\n    確かめた保存先 (target) と違う場合と, 既にあり上書きしない場合は\n    409, 定義を読めない場合は 422, 書けない場合は 500 (他は保存先を\n    決めるときと同じ)",
         "operationId": "save_project_model",
         "requestBody": {
           "content": {
@@ -1303,6 +1303,18 @@
             "type": "boolean",
             "title": "Overwrite",
             "default": false
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target",
+            "description": "確かめた保存先 (POST /api/project/target の path). 送ると, 書くときに決め直した保存先と違えば 409"
           }
         },
         "type": "object",

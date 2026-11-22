@@ -473,8 +473,9 @@ export interface paths {
          *     Raises
          *     ----------
          *     HTTPException
-         *         既にあり上書きしない場合は 409, 定義を読めない場合と書けない場合は
-         *         422 (他は保存先を決めるときと同じ)
+         *         確かめた保存先 (target) と違う場合と, 既にあり上書きしない場合は
+         *         409, 定義を読めない場合は 422, 書けない場合は 500 (他は保存先を
+         *         決めるときと同じ)
          */
         put: operations["save_project_model"];
         post?: never;
@@ -786,6 +787,11 @@ export interface components {
              * @default false
              */
             overwrite: boolean;
+            /**
+             * Target
+             * @description 確かめた保存先 (POST /api/project/target の path). 送ると, 書くときに決め直した保存先と違えば 409
+             */
+            target?: string | null;
         };
         /** ProjectSaved */
         ProjectSaved: {
