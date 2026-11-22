@@ -7,6 +7,7 @@
 """
 
 import datetime as dt
+import functools
 import importlib
 import os
 from pathlib import Path
@@ -441,6 +442,26 @@ def section(record: Any, key: str) -> dict[str, Any]:
     return part
 
 
+@functools.lru_cache(maxsize=1)
+def example_names() -> frozenset[str]:
+    """
+    同梱の例の名前の一覧を返す関数 (同梱の例は起動の間に変わらないので
+    1 度だけ読む)
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    names: frozenset[str]
+        ML-ModelControl の同梱の例の名前
+    """
+    names = frozenset(item["name"] for item in list_examples())
+
+    return names
+
+
 def known_example(value: Any) -> Optional[str]:
     """
     受け渡しの雛形の名前を, 同梱の例にあるものだけにする関数
@@ -456,8 +477,11 @@ def known_example(value: Any) -> Optional[str]:
         同梱の例の名前 (無いか, 今の ML-ModelControl に無い名前なら None.
         開けない雛形を出さないため)
     """
-    names = {item["name"] for item in list_examples()}
-    example = value if isinstance(value, str) and value in names else None
+    # 名前でない値は一覧を見ずに除く
+    if not isinstance(value, str):
+        example = None
+        return example
+    example = value if value in example_names() else None
 
     return example
 

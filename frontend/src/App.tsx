@@ -728,17 +728,18 @@ function Editor() {
             setSavedNotice(`${path} に保存しました`)
             window.setTimeout(() => setSavedNotice(''), 3000)
           }}
-          onTemplate={(name, loaded, problem) => {
-            // 保存する名前と下書きはそのまま (開いているデータセットとプロジェクトの
-            // ダイアログを閉じずに, 続けて入力と出力を作って保存できるように)
-            setNotice({
-              text: `問題の設定${problem ? ` ${problem} ` : ''}の受け持ちに合う雛形 ${name} を開きました`,
-            })
+          onTemplate={(loaded) => {
+            // 保存する名前はそのまま (開いているデータセットとプロジェクトの
+            // ダイアログを閉じずに, 続けて入力と出力を作って保存できるように).
+            // 開いた知らせはダイアログの中に出す. 前の定義の知らせは消す
+            setNotice(null)
             setOwnFile(null)
             const placed = withStateVersion(placeMissing(loaded, unitsFor(loaded)))
             history.reset(placed)
             setEditing(null)
-            setSaved(JSON.stringify(placed))
+            // まだどこにも保存していないので, 保存していない変更にする (閉じる
+            // ときに確かめ, 下書きにも残す)
+            setSaved('')
             window.requestAnimationFrame(
               () => void flow.fitView({ duration: 200, maxZoom: 1, padding: 0.1 }),
             )

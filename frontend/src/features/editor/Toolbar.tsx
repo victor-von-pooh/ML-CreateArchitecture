@@ -239,8 +239,8 @@ export function Toolbar({
   onDataset: (info: DatasetInputs) => string[]
   /** 定義をプロジェクトに書いた (書いたファイルの場所) */
   onProjectSaved: (path: string) => void
-  /** 問題の設定の受け持ちに合う雛形を開く (雛形の名前, 定義, 問題の設定の名前) */
-  onTemplate: (name: string, spec: Spec, problem: string | null) => void
+  /** 問題の設定の受け持ちに合う雛形の定義を開く */
+  onTemplate: (spec: Spec) => void
 }) {
   const queryClient = useQueryClient()
   const nameId = useId()

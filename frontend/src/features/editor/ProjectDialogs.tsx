@@ -13,7 +13,7 @@ import {
 import { Dialog } from '../../components/Dialog'
 import { Button, ErrorBox, Spinner } from '../../components/ui'
 import type { Spec } from '../../lib/graph'
-import { templateAction } from '../../lib/template'
+import { templateAction, templateConfirm, templateReason } from '../../lib/template'
 
 // 最後に確かめたプロジェクトとデータセットの場所を覚えるブラウザの保存場所
 const PROJECT_KEY = 'ml-createarchitecture:project-path'
@@ -703,8 +703,8 @@ export function ProjectDialog({
   onApply: (info: DatasetInputs) => string[]
   /** プロジェクトに書いた (書いたファイルの場所) */
   onSaved: (path: string) => void
-  /** 問題の設定の雛形を開く (雛形の名前, 定義, 問題の設定の名前) */
-  onTemplate: (name: string, spec: Spec, problem: string | null) => void
+  /** 問題の設定の雛形の定義を開く (開いた知らせはこのダイアログに出す) */
+  onTemplate: (spec: Spec) => void
   onClose: () => void
 }) {
   // 学習のスクリプトが読むデータセットの場所 (記録か config の data.dataset)
@@ -722,7 +722,7 @@ export function ProjectDialog({
       api.getExample(example),
     onSuccess: (model, { example, problem, id }) => {
       if (id !== latestTemplate.current) return
-      onTemplate(example, model.spec as unknown as Spec, problem)
+      onTemplate(model.spec as unknown as Spec)
       setTemplate({ example, problem, opened: true, reason: null })
     },
   })
@@ -740,9 +740,8 @@ export function ProjectDialog({
             opening={load.isPending}
             error={load.error}
             onOpen={() => {
-              if (dirty && !window.confirm('保存していない変更を捨てて, 雛形を開きますか?')) {
-                return
-              }
+              const question = templateConfirm({ fresh, dirty })
+              if (question && !window.confirm(question)) return
               openTemplate(template.example, template.problem)
             }}
           />
@@ -775,11 +774,7 @@ export function ProjectDialog({
               return
             }
             const problem = target.problem ?? null
-            const reason = !fresh
-              ? '今の定義があるので開いていません'
-              : target.exists
-                ? '保存先に定義が既にあるので開いていません'
-                : null
+            const reason = templateReason({ fresh, dirty, exists: target.exists })
             setTemplate({ example, problem, opened: false, reason })
             if (action === 'open') openTemplate(example, problem)
           }}

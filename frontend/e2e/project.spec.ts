@@ -291,6 +291,9 @@ test('雛形のある問題の設定を新しく始めるときに選ぶと雛�
   )
   await dialog.getByRole('button', { name: '閉じる' }).click()
   await expect(page.locator('[data-id="user_fc1"]')).toBeVisible({ timeout: 20_000 })
+  // まだどこにも保存していないので, 保存していない変更になる (知らせはダイアログの中だけ)
+  await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
+  await expect(page.getByText('雛形 two_tower_retrieval を開きました')).toHaveCount(0)
 
   // 既に定義がある場合は上書きせず, 「雛形を開く」で選ぶ
   await page.goto('/')
@@ -305,11 +308,28 @@ test('雛形のある問題の設定を新しく始めるときに選ぶと雛�
   note = dialog.getByRole('region', { name: '受け持ちに合う雛形' })
   await expect(note.getByRole('status')).toContainText('今の定義があるので開いていません')
   await expect(page.locator('[data-id="fc1"]')).toHaveCount(1)
+  // 保存していない変更が無くても, 今の定義を置き換えるので確かめる
+  let asked = ''
+  page.once('dialog', (confirm) => {
+    asked = confirm.message()
+    void confirm.accept()
+  })
   await note.getByRole('button', { name: '雛形 two_tower_retrieval を開く' }).click()
   await expect(note.getByRole('status')).toContainText('を開きました')
+  expect(asked).toContain('今の定義を雛形で置き換えますか')
   await dialog.getByRole('button', { name: '閉じる' }).click()
   await expect(page.locator('[data-id="user_fc1"]')).toBeVisible({ timeout: 20_000 })
   await expect(page.locator('[data-id="fc1"]')).toHaveCount(0)
+
+  // 開いた雛形は保存していないので, 閉じるときに確かめる
+  const unload = new Promise<string>((resolve) =>
+    page.once('dialog', (confirm) => {
+      resolve(confirm.type())
+      void confirm.accept()
+    }),
+  )
+  await page.close({ runBeforeUnload: true })
+  expect(await unload).toBe('beforeunload')
 })
 
 test('名前を書いてから問題の設定を一覧から選ぶと, 記録のプロジェクトの models/ の下の名前が保存先になる', async ({

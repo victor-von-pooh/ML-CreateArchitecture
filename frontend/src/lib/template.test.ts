@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { emptySpec, type Spec } from './graph'
-import { startsFresh, templateAction } from './template'
+import { startsFresh, templateAction, templateConfirm, templateReason } from './template'
 
 describe('startsFresh', () => {
   it('新規の定義は, 保存していない変更が無ければ新しく始める定義', () => {
@@ -48,5 +48,30 @@ describe('templateAction', () => {
     for (const example of [null, undefined, '']) {
       expect(templateAction({ example, chosen: true, fresh: true, exists: false })).toBeNull()
     }
+  })
+})
+
+describe('templateReason', () => {
+  it('開かなかった理由を, 保存していない変更, 今の定義, 保存先の定義に分ける', () => {
+    expect(templateReason({ fresh: false, dirty: true, exists: false })).toBe(
+      '保存していない変更があるので開いていません',
+    )
+    expect(templateReason({ fresh: false, dirty: false, exists: true })).toBe(
+      '今の定義があるので開いていません',
+    )
+    expect(templateReason({ fresh: true, dirty: false, exists: true })).toBe(
+      '保存先に定義が既にあるので開いていません',
+    )
+    expect(templateReason({ fresh: true, dirty: false, exists: false })).toBeNull()
+  })
+})
+
+describe('templateConfirm', () => {
+  it('保存していない変更か今の定義があれば確かめ, 新しく始める定義なら確かめない', () => {
+    expect(templateConfirm({ fresh: false, dirty: true })).toContain('保存していない変更を捨てて')
+    expect(templateConfirm({ fresh: false, dirty: false })).toContain(
+      '今の定義を雛形で置き換えますか',
+    )
+    expect(templateConfirm({ fresh: true, dirty: false })).toBeNull()
   })
 })

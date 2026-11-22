@@ -40,3 +40,40 @@ export function templateAction({
   if (!example) return null
   return chosen && fresh && !exists ? 'open' : 'offer'
 }
+
+/** 雛形を開かなかった理由 (開く場合は null) */
+export function templateReason({
+  fresh,
+  dirty,
+  exists,
+}: {
+  /** 今の定義が新しく始める定義か (startsFresh) */
+  fresh: boolean
+  /** 保存していない変更があるか */
+  dirty: boolean
+  /** 保存先に定義が既にあるか */
+  exists: boolean
+}): string | null {
+  if (!fresh) {
+    return dirty ? '保存していない変更があるので開いていません' : '今の定義があるので開いていません'
+  }
+  return exists ? '保存先に定義が既にあるので開いていません' : null
+}
+
+/**
+ * 「雛形を開く」を押したときに確かめる文 (確かめずに開く場合は null)
+ *
+ * 保存していない変更だけでなく, 新しく始める定義でない (部品などがある) 場合も確かめる
+ * (雛形で置き換えると, 今の定義は履歴ごと消えるため)
+ */
+export function templateConfirm({
+  fresh,
+  dirty,
+}: {
+  fresh: boolean
+  dirty: boolean
+}): string | null {
+  if (dirty) return '保存していない変更を捨てて, 雛形を開きますか?'
+  if (!fresh) return '今の定義を雛形で置き換えますか?'
+  return null
+}
