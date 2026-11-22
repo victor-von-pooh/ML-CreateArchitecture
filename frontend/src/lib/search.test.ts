@@ -60,4 +60,28 @@ describe('よく使う呼び方', () => {
     expect(firstMatch(graph, 'global max pool')?.name).toBe('pyg.MaxAggregation')
     expect(matchesQuery(unit('op.Max'), 'global max pool')).toBe(true)
   })
+
+  it('max pool の呼び方は, グラフのまとめと並べても op.Max を先に置く', () => {
+    for (const names of [
+      ['pyg.MaxAggregation', 'op.Max'],
+      ['op.Max', 'pyg.MaxAggregation'],
+    ]) {
+      const units = names.map((name) => unit(name))
+      expect(firstMatch(units, 'max pool')?.name).toBe('op.Max')
+    }
+  })
+
+  it('max の語では, 呼び方より名前の決まりの順で置く', () => {
+    for (const names of [
+      ['nn.MaxPool2d', 'op.Max'],
+      ['op.Max', 'nn.MaxPool2d'],
+    ]) {
+      const units = names.map((name) => unit(name))
+      // 名前の終わりが一致する op.Max が先 (足した呼び方に依らない)
+      expect(firstMatch(units, 'max')?.name).toBe('op.Max')
+      // MaxPool の名前の語では nn.MaxPool2d のまま
+      expect(firstMatch(units, 'maxpool')?.name).toBe('nn.MaxPool2d')
+      expect(firstMatch(units, 'maxpool2d')?.name).toBe('nn.MaxPool2d')
+    }
+  })
 })
