@@ -24,7 +24,7 @@ import { failedNodes, formatCount } from '../../lib/format'
 import { danglingNodes, emptySpec, freshName, type Spec, type UnitSpec } from '../../lib/graph'
 import { subgraphCheckTarget } from '../../lib/subgraph'
 import { useTheme } from '../../lib/themeContext'
-import { ProjectDialog } from './ProjectDialogs'
+import { ExperimentCopies, ProjectDialog } from './ProjectDialogs'
 
 /** 文字の内容を表示し, コピーできる枠 */
 function TextView({ text, fileName }: { text: string; fileName?: string }) {
@@ -72,6 +72,8 @@ function TextView({ text, fileName }: { text: string; fileName?: string }) {
 /** 保存した定義か, 同梱した例を選んで開く */
 function OpenDialog({
   onOpen,
+  onOpenExperiment,
+  opening,
   onClose,
   onDeleted,
   openError,
@@ -79,6 +81,10 @@ function OpenDialog({
   /** 開けなかった誤り (読めない YAML など. ダイアログの中に出す) */
   openError: unknown
   onOpen: (source: 'model' | 'example', name: string) => void
+  /** 実験の定義の写しを開く (path はプロジェクト, run は実験) */
+  onOpenExperiment: (path: string, run: string) => void
+  /** 開いている間 */
+  opening: boolean
   onClose: () => void
   /** 保存した定義を消した後 (今開いている定義なら, 保存していない扱いにする) */
   onDeleted: (name: string) => void
@@ -153,6 +159,8 @@ function OpenDialog({
           ))}
         </ul>
       )}
+      <hr className="my-4 border-line" />
+      <ExperimentCopies onOpen={onOpenExperiment} opening={opening} />
     </Dialog>
   )
 }
@@ -199,7 +207,7 @@ export function Toolbar({
   check: CheckResult | undefined
   checking: boolean
   onChange: (spec: Spec) => void
-  onLoad: (name: string, spec: Spec, source: 'model' | 'example' | 'new') => void
+  onLoad: (name: string, spec: Spec, source: 'model' | 'example' | 'experiment' | 'new') => void
   onSaved: (name: string, spec: Spec) => void
   onSelect: (id: string) => void
   center: (
@@ -269,8 +277,21 @@ export function Toolbar({
     return () => onSavingChange?.(false)
   }, [pending, onSavingChange])
   const open = useMutation({
-    mutationFn: ({ source, target }: { source: 'model' | 'example'; target: string }) =>
-      source === 'model' ? api.getModel(target) : api.getExample(target),
+    mutationFn: ({
+      source,
+      target,
+      project,
+    }: {
+      source: 'model' | 'example' | 'experiment'
+      target: string
+      /** 実験の写しのプロジェクト */
+      project?: string
+    }) =>
+      source === 'model'
+        ? api.getModel(target)
+        : source === 'experiment'
+          ? api.openExperimentSpec(project ?? '', target)
+          : api.getExample(target),
     onSuccess: (model, { source }) => {
       onLoad(model.name, model.spec as unknown as Spec, source)
       setDialog(null)
@@ -533,6 +554,12 @@ export function Toolbar({
               open.mutate({ source, target })
             }
           }}
+          onOpenExperiment={(project, run) => {
+            if (!dirty || window.confirm('保存していない変更を捨てて, 実験の定義を開きますか?')) {
+              open.mutate({ source: 'experiment', target: run, project })
+            }
+          }}
+          opening={open.isPending}
           onClose={() => setDialog(null)}
           openError={open.error}
         />

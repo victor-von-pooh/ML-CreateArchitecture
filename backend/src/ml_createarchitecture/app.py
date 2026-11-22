@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from ml_modelcontrol import register_units_from
 
 from ml_createarchitecture.api import router
+from ml_createarchitecture.experiments import router as experiments_router
 from ml_createarchitecture.project import router as project_router
 from ml_createarchitecture.settings import get_custom_modules, get_data_dir
 from ml_createarchitecture.store import ModelStore
@@ -383,6 +384,7 @@ def create_app(
     # API と画面の登録
     app.include_router(router)
     app.include_router(project_router)
+    app.include_router(experiments_router)
     mount_frontend(app, STATIC_DIR)
 
     return app

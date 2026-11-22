@@ -15,7 +15,7 @@ const modelFile = `${project}/models/model.yaml`
 test.describe.configure({ mode: 'serial' })
 
 // このファイルのテストがプロジェクトに書くモデルの定義
-const written = ['model.yaml', 'e2e_candidate.yaml', 'e2e_picked.yaml'].map(
+const written = ['model.yaml', 'e2e_candidate.yaml', 'e2e_picked.yaml', 'e2e_from_run.yaml'].map(
   (name) => `${project}/models/${name}`,
 )
 
@@ -347,4 +347,33 @@ test('確かめが重なった場合は最後の確かめの結果だけを出�
   await expect(save.getByRole('alert')).toContainText('先頭に - は使えない')
   await expect(target).toHaveCount(0)
   await expect(recorded).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('実験の定義の写しを開き, 名前を付けてプロジェクトの models/ に保存する', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く', exact: true }).click()
+  const open = page.getByRole('dialog', { name: '定義を開く' })
+  const copies = open.getByRole('region', { name: '学習の実験の定義の写し' })
+  await copies.getByLabel('プロジェクトか問題の設定').fill(project)
+  await copies.getByRole('button', { name: '実験を探す' }).click()
+  const run = copies.getByRole('button', { name: /e2e_run\/2026-11-20\/10-00-00/ })
+  await expect(run).toContainText('models/e2e_run.yaml')
+  await run.click()
+
+  // 写しの定義が開き, 保存の仕方を知らせる
+  await expect(open).toHaveCount(0)
+  await expect(page.locator('[data-id="e2e_fc"]')).toContainText('[4, 2]', { timeout: 20_000 })
+  await expect(page.getByText('実験の定義の写しを開きました')).toBeVisible()
+
+  // 今の保存の流れで, 名前を付けて models/ に書く (探したプロジェクトの場所が入る)
+  const dialog = await openDialog(page)
+  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
+  await expect(save.getByLabel('プロジェクトか問題の設定')).toHaveValue(project)
+  await save.getByLabel('models/ の下の名前').fill('e2e_from_run')
+  await save.getByRole('button', { name: '保存先を確かめる' }).click()
+  const target = save.getByRole('group', { name: '保存先' })
+  await expect(target).toContainText(`${project}/models/e2e_from_run.yaml`)
+  await target.getByRole('button', { name: 'この場所に保存' }).click()
+  await expect(save.getByRole('status')).toContainText('models/e2e_from_run.yaml に保存しました')
+  expect(readFileSync(`${project}/models/e2e_from_run.yaml`, 'utf-8')).toContain('e2e_fc')
 })

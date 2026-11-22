@@ -4,6 +4,7 @@ ML-Pathfinder の置き場の問題の設定を作るスクリプト (ML-EDA と
 作る. 追加の依存 project が要る)
 """
 
+import hashlib
 import sys
 from pathlib import Path
 
@@ -135,9 +136,57 @@ def make_store(path: Path, project: Path, dataset: Path) -> None:
     ml_quest.save_problem(no_spec, path / "problems" / "no_spec")
 
 
+def make_experiment(project: Path) -> None:
+    """
+    プロジェクトの実験の置き場に, 定義の写しを持つ ML-Found の形の実験を
+    作る関数
+
+    Parameters
+    ----------
+    project: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 実験の置き場は config の experiment.output_dir (無ければ outputs)
+    config = yaml.safe_load(
+        (project / "configs" / "default" / "train.yaml").read_text()
+    )
+    root = (config.get("experiment") or {}).get("output_dir") or "outputs"
+    run_dir = project / root / "e2e_run" / "2026-11-20" / "10-00-00"
+    run_dir.mkdir(parents=True)
+    spec = {
+        "format_version": 1,
+        "name": "e2e_run",
+        "inputs": {"x": {"shape": [4, 3]}},
+        "nodes": {
+            "e2e_fc": {
+                "unit": "nn.Linear",
+                "params": {"in_features": 3, "out_features": 2},
+                "inputs": "x",
+            }
+        },
+        "outputs": {"y": "e2e_fc"},
+    }
+    data = yaml.safe_dump(spec, sort_keys=False).encode()
+    (run_dir / "model_spec.yaml").write_bytes(data)
+    (run_dir / "config.yaml").write_text("model:\n  spec: models/x.yaml\n")
+    record = {
+        "path": "models/e2e_run.yaml", "status": "copied",
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+    (run_dir / "source.yaml").write_text(
+        yaml.safe_dump({"format_version": 1, "model_spec": record})
+    )
+    (run_dir / "run.json").write_text('{"status": "completed"}')
+
+
 if __name__ == "__main__":
     work = Path(sys.argv[1])
     make_dataset(work / "dataset")
     make_masks(work / "masks")
     make_project(work / "project")
+    make_experiment(work / "project")
     make_store(work / "pathfinder", work / "project", work / "dataset")

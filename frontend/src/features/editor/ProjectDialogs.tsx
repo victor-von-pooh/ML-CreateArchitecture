@@ -1,9 +1,15 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { ClipboardList } from 'lucide-react'
+import { ClipboardList, FlaskConical } from 'lucide-react'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
-import { api, ApiError, type DatasetInputs, type ProjectTarget } from '../../api/client'
+import {
+  api,
+  ApiError,
+  type DatasetInputs,
+  type ExperimentList,
+  type ProjectTarget,
+} from '../../api/client'
 import { Dialog } from '../../components/Dialog'
 import { Button, ErrorBox, Spinner } from '../../components/ui'
 import type { Spec } from '../../lib/graph'
@@ -139,6 +145,114 @@ function StoredProblems({
                   {item.usable && !item.dataset && (
                     <span className="block text-xs text-ink-2">
                       データセットの記録がありません (保存先だけ入れます)
+                    </span>
+                  )}
+                </span>
+                <span className="shrink-0 text-xs text-ink-3">
+                  {item.updated_at?.slice(0, 16).replace('T', ' ')}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/**
+ * 学習の実験に残った定義の写し (model_spec.yaml) を選んで開く欄 (「定義を開く」のダイアログの中)
+ *
+ * 候補を比べて選んだ定義を, 開いた後に「プロジェクトに保存」で models/ に名前を付けて保存するため.
+ * 探したプロジェクトの場所は, 「プロジェクトに保存」の欄にも入るように覚える
+ */
+export function ExperimentCopies({
+  onOpen,
+  opening,
+}: {
+  /** 写しを開く (場所は探したプロジェクト, run は一覧の run) */
+  onOpen: (path: string, run: string) => void
+  /** 開いている間 (押し直しを止める) */
+  opening: boolean
+}) {
+  const [path, setPath] = useState(() => remembered(PROJECT_KEY))
+  // 探した場所と結果 (場所を書き換えたら探し直す)
+  const [found, setFound] = useState<{ path: string; value: ExperimentList } | null>(null)
+  const titleId = useId()
+  const reasonId = useId()
+  const search = useMutation({
+    mutationFn: (text: string) => api.listExperiments(text),
+    onSuccess: (value, text) => {
+      remember(PROJECT_KEY, text)
+      setFound({ path: text, value })
+    },
+    onError: () => setFound(null),
+  })
+  const list = found && found.path === path.trim() ? found.value : null
+  return (
+    <section aria-labelledby={titleId} className="space-y-2">
+      <h3 id={titleId} className="mb-1 text-xs font-semibold text-ink-2">
+        学習の実験の定義の写し
+      </h3>
+      <form
+        className="space-y-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (path.trim() && !search.isPending) search.mutate(path.trim())
+        }}
+      >
+        <PathField
+          label="プロジェクトか問題の設定"
+          hint="実験 (ML-Found の実験のディレクトリ) に残った, 学習に使った定義の写しを開きます. 開いた後に「データセットとプロジェクト」の「プロジェクトに保存」で, models/ の下の名前を付けて保存できます"
+          value={path}
+          onChange={setPath}
+          placeholder="/path/to/project"
+        />
+        <Button type="submit" disabled={!path.trim() || search.isPending}>
+          {search.isPending ? '探しています…' : '実験を探す'}
+        </Button>
+      </form>
+      {search.error && <ErrorBox error={search.error} />}
+      {found !== null && !list && path.trim() && (
+        <p className="text-xs text-warning-text">場所を書き換えました. 探し直してください</p>
+      )}
+      {list?.notes?.map((note) => (
+        <p key={note} className="text-xs text-warning-text">
+          {note}
+        </p>
+      ))}
+      {list && list.experiments.length === 0 && (
+        <p className="text-xs text-ink-3">
+          {list.roots.length > 0
+            ? `実験の置き場 (${list.roots.join(', ')}) に実験がありません`
+            : '実験の置き場がありません'}
+        </p>
+      )}
+      {list && list.experiments.length > 0 && (
+        <ul
+          aria-label="プロジェクトの実験"
+          className="max-h-60 overflow-auto rounded-lg border border-line"
+        >
+          {list.experiments.map((item, index) => (
+            <li key={item.path}>
+              <button
+                type="button"
+                onClick={() => onOpen(list.project, item.run)}
+                // 写しの記録が無いか, 中身が記録と違うものは理由を出して選べなくする
+                disabled={!item.usable || opening}
+                aria-describedby={item.reason ? `${reasonId}-${index}` : undefined}
+                className="flex w-full items-start gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <FlaskConical size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-mono">{item.run}</span>
+                  <span className="block truncate text-xs text-ink-3" title={item.spec ?? ''}>
+                    定義: {item.spec ?? '記録無し'}
+                    {item.status ? ` · ${item.status}` : ''}
+                  </span>
+                  {item.reason && (
+                    <span id={`${reasonId}-${index}`} className="block text-xs text-warning-text">
+                      {item.reason}
                     </span>
                   )}
                 </span>

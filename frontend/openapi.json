@@ -552,6 +552,84 @@
           }
         }
       }
+    },
+    "/api/project/experiments": {
+      "post": {
+        "summary": "List Experiments",
+        "description": "プロジェクトの実験と, 定義の写しを開けるかの一覧を返す関数\n\nParameters\n----------\nbody: PathBody\n    プロジェクトのディレクトリか問題の設定のファイル\n\nReturns\n----------\nfound: ExperimentList\n    実験の置き場と, 新しい順の実験",
+        "operationId": "list_experiments",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/project/experiment-spec": {
+      "post": {
+        "summary": "Open Experiment Spec",
+        "description": "実験の定義の写しを読む関数\n\nParameters\n----------\nbody: ExperimentBody\n    プロジェクトの場所と実験\n\nReturns\n----------\nopened: ExperimentSpec\n    定義と保存する名前の候補\n\nRaises\n----------\nHTTPException\n    一覧に無い実験は 404, 写しを開けないか定義として読めない場合は 422",
+        "operationId": "open_experiment_spec",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperimentBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentSpec"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -797,6 +875,168 @@
           "description"
         ],
         "title": "ExampleSummary"
+      },
+      "ExperimentBody": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "プロジェクトのディレクトリか問題の設定のファイルの絶対のパス (~ から書ける)"
+          },
+          "run": {
+            "type": "string",
+            "title": "Run",
+            "description": "実験の置き場からの実験のディレクトリ (<名前>/<日付>/<時刻>. 一覧の run)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "run"
+        ],
+        "title": "ExperimentBody"
+      },
+      "ExperimentEntry": {
+        "properties": {
+          "run": {
+            "type": "string",
+            "title": "Run",
+            "description": "実験の置き場からの <名前>/<日付>/<時刻>"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "実験のディレクトリ"
+          },
+          "spec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spec",
+            "description": "写した元の定義の場所 (source.yaml の model_spec.path)"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "保存する名前の候補"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "description": "run.json の状態"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "usable": {
+            "type": "boolean",
+            "title": "Usable"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run",
+          "path",
+          "name",
+          "usable"
+        ],
+        "title": "ExperimentEntry"
+      },
+      "ExperimentList": {
+        "properties": {
+          "project": {
+            "type": "string",
+            "title": "Project"
+          },
+          "roots": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roots"
+          },
+          "experiments": {
+            "items": {
+              "$ref": "#/components/schemas/ExperimentEntry"
+            },
+            "type": "array",
+            "title": "Experiments"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project",
+          "roots",
+          "experiments"
+        ],
+        "title": "ExperimentList"
+      },
+      "ExperimentSpec": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "spec": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Spec"
+          },
+          "run": {
+            "type": "string",
+            "title": "Run"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "spec",
+          "run",
+          "path"
+        ],
+        "title": "ExperimentSpec"
       },
       "ExportBody": {
         "properties": {
