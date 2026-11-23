@@ -95,6 +95,26 @@ function mergedShape(
   return { shape, kept }
 }
 
+/**
+ * データセットに無いが残す入力の最初の次元をそろえる大きさ (バッチの次元)
+ *
+ * 定義の入力 (0 次元の値を除く) の最初の次元が全て同じで, そのうちの 1 つ
+ * 以上がデータセットの入力と同じ名前の場合だけ, 最初の次元をバッチとみなし,
+ * データセットの入力の最初の次元 (例の大きさ) を返す. 他 (最初の次元が違う
+ * 入力がある, データセットの入力と同じ名前の入力が無い, データセットの入力の
+ * 最初の次元がそろわない) は null (固定の形の値を変えないため)
+ */
+function batchSize(spec: Spec, info: DatasetInfo): number | null {
+  const firsts = Object.values(spec.inputs).flatMap((value) =>
+    value.shape && value.shape.length > 0 ? [value.shape[0]!] : [],
+  )
+  const sizes = new Set(info.inputs.map((item) => item.shape[0]))
+  const [size] = sizes
+  if (firsts.length === 0 || new Set(firsts).size !== 1 || sizes.size !== 1) return null
+  const replaced = info.inputs.some((item) => (spec.inputs[item.name]?.shape?.length ?? 0) > 0)
+  return replaced && typeof size === 'number' ? size : null
+}
+
 /** 出力の最後の形を変える部品 (op.Reshape) の最初の次元と, その前の out_features を出す値の数に合わせる */
 function fitReshape(
   spec: Spec,
@@ -142,7 +162,9 @@ export function tableWidthNote(table: TableWidth): string {
  *
  * 入力: 名前, 形, 型をデータセットに合わせる (1 つずつで名前が違えば名前を
  * 変えてつなぎ先も書き換える. 同じ名前は値の作り方と位置を残す. データセット
- * に無い入力は, つないでいなければ消し, つないでいれば残す. データセットで
+ * に無い入力は, つないでいなければ消し, つないでいれば残す. 残す入力の最初
+ * の次元は, 定義の入力の最初の次元が全て同じならバッチとみなし, データ
+ * セットの入力の最初の次元 (例の大きさ) にそろえる. データセットで
  * 決まらない次元は定義の値のまま). 入力に直につながる in_features の引数は
  * 入力の最後の次元, in_channels の引数は 3 次元以上の入力の 2 番目の次元
  * (チャンネル), num_embeddings の引数は文の語の番号の入力の語彙の大きさにする.
@@ -178,11 +200,23 @@ export function applyDatasetInputs(
     notes.push(`入力 ${current[0]} の名前を ${only.name} にしました`)
   }
 
-  // データセットに無い入力は, つないでいなければ消す
+  // データセットに無い入力は, つないでいなければ消す. 残す入力の最初の
+  // 次元は, バッチとみなせればデータセットの入力にそろえる
+  const batch = batchSize(next, info)
   const inputs: Record<string, InputDef> = {}
   for (const [name, value] of Object.entries(next.inputs)) {
     if (names.includes(name)) continue
     if (isUsed(next, units, name)) {
+      const shape = value.shape
+      if (batch !== null && shape && shape.length > 0 && shape[0] !== batch) {
+        const aligned = [batch, ...shape.slice(1)]
+        inputs[name] = { ...value, shape: aligned }
+        notes.push(
+          `入力 ${name} はデータセットに無いですが, つないでいるので残し, ` +
+            `最初の次元 (バッチ) をデータセットの入力と同じ ${batch} にしました (${shapeText(aligned)})`,
+        )
+        continue
+      }
       inputs[name] = value
       notes.push(`入力 ${name} はデータセットに無いですが, つないでいるので残しました`)
     } else {
