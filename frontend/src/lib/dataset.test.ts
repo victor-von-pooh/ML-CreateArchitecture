@@ -315,7 +315,7 @@ describe('applyDatasetInputs (表の生成)', () => {
   it('入力と出力の幅を符号化した行の幅にし, 決め方を初めに知らせる', () => {
     const { spec, notes } = applyDatasetInputs(denoiser, generated, units)
     expect(spec.inputs.x).toMatchObject({ shape: [4, 8], dtype: 'float32' })
-    expect(spec.inputs.t).toMatchObject({ shape: [8], dtype: 'int64', fill: 'arange' })
+    expect(spec.inputs.t).toMatchObject({ shape: [4], dtype: 'int64', fill: 'arange' })
     expect(spec.nodes.x_fc!.params).toMatchObject({ in_features: 8, out_features: 32 })
     expect(spec.nodes.head!.params).toMatchObject({ in_features: 32, out_features: 8 })
     expect(spec.nodes.t_fc!.params).toMatchObject({ in_features: 32 })
@@ -323,8 +323,92 @@ describe('applyDatasetInputs (表の生成)', () => {
       '問題の設定 顧客の表 が表の生成なので, 入力と出力の幅を, 学習で使う 1 行の長さ 8 にしました ' +
         '(数の項目 3 は 1 つずつ, 分類の項目 2 は選べる値の数の合計 5. 項目の数 5 ではありません)',
     )
-    expect(notes).toContain('入力 t はデータセットに無いですが, つないでいるので残しました')
+    expect(notes).toContain(
+      '入力 t はデータセットに無いですが, つないでいるので残し, ' +
+        '最初の次元 (バッチ) を例の大きさ 4 にしました ([4])',
+    )
     expect(notes).toContain('head の out_features を 8 にしました')
+  })
+
+  it('最初の次元が入力ごとに違えば, 残す入力の形を変えない', () => {
+    const fixed: Spec = {
+      ...denoiser,
+      inputs: { ...denoiser.inputs, t: { ...denoiser.inputs.t!, shape: [10] } },
+    }
+    const { spec, notes } = applyDatasetInputs(fixed, generated, units)
+    expect(spec.inputs.t!.shape).toEqual([10])
+    expect(notes).toContain('入力 t はデータセットに無いですが, つないでいるので残しました')
+  })
+
+  it('データセットの入力と同じ名前の入力が無ければ, 残す入力の形を変えない', () => {
+    const other: Spec = {
+      ...denoiser,
+      inputs: {
+        a: { shape: [8, 16] },
+        t: denoiser.inputs.t!,
+      },
+      nodes: {
+        ...denoiser.nodes,
+        a_fc: { unit: 'nn.Linear', params: { in_features: 16, out_features: 32 }, inputs: 'a' },
+      },
+    }
+    const { spec } = applyDatasetInputs(other, generated, units)
+    expect(spec.inputs.a!.shape).toEqual([8, 16])
+    expect(spec.inputs.t!.shape).toEqual([8])
+  })
+
+  it('0 次元の値は数えず, 形も変えない', () => {
+    const scalar: Spec = {
+      ...denoiser,
+      inputs: { ...denoiser.inputs, s: { shape: [] } },
+      nodes: {
+        ...denoiser.nodes,
+        s_fc: { unit: 'nn.Linear', params: { in_features: 1, out_features: 1 }, inputs: 's' },
+      },
+    }
+    const { spec } = applyDatasetInputs(scalar, generated, units)
+    expect(spec.inputs.s!.shape).toEqual([])
+    expect(spec.inputs.t!.shape).toEqual([4])
+
+    // 0 次元の値だけの定義はそろえない
+    const only: Spec = {
+      ...scalar,
+      inputs: { x: { shape: [] }, s: { shape: [] } },
+    }
+    const { spec: kept } = applyDatasetInputs(only, generated, units)
+    expect(kept.inputs.s!.shape).toEqual([])
+  })
+
+  it('データセットの入力どうしで最初の次元が違えば, 残す入力の形を変えない', () => {
+    const pair: Spec = {
+      ...denoiser,
+      inputs: { ...denoiser.inputs, y: { shape: [8, 16] } },
+    }
+    const mixed: DatasetInfo = {
+      ...generated,
+      inputs: [
+        { name: 'x', shape: [4, 8], dtype: 'float32' },
+        { name: 'y', shape: [2, 8], dtype: 'float32' },
+      ],
+    }
+    const { spec } = applyDatasetInputs(pair, mixed, units)
+    expect(spec.inputs.t!.shape).toEqual([8])
+  })
+
+  it('名前を変えた後の入力で照らす (1 つずつの入力は名前を変えて形を入れ, 残す入力は無い)', () => {
+    const single: Spec = {
+      ...emptySpec(),
+      inputs: { a: { shape: [8, 16] } },
+      nodes: {
+        fc: { unit: 'nn.Linear', params: { in_features: 16, out_features: 8 }, inputs: 'a' },
+      },
+      outputs: { out: 'fc' },
+    }
+    const { spec, notes } = applyDatasetInputs(single, generated, units)
+    expect(Object.keys(spec.inputs)).toEqual(['x'])
+    expect(spec.inputs.x!.shape).toEqual([4, 8])
+    expect(notes).toContain('入力 a の名前を x にしました')
+    expect(notes.join('\n')).not.toContain('残し')
   })
 
   it('表の生成でなければ決め方を知らせない', () => {

@@ -84,6 +84,32 @@ test('同梱の U-Net の例を, ファイルの組のデータセットのチ�
   await expect(page.locator('header')).toContainText('誤り 0 件')
 })
 
+test('同梱の拡散の例に表のデータセットを入れると, 残す時刻の入力のバッチをそろえて形が出る', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く', exact: true }).click()
+  await page.getByRole('button', { name: 'diffusion_denoiser', exact: true }).click()
+  await expect(page.locator('[data-id="head"]')).toContainText('[8, 16]', { timeout: 20_000 })
+
+  const dialog = await openDialog(page)
+  const section = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
+  await section.getByLabel('データセットのディレクトリ').fill(dataset)
+  await section.getByRole('button', { name: '入力と出力を作る' }).click()
+
+  // データセットに無い時刻の入力 t は残し, バッチの次元を x と同じ例の大きさ 4 にする
+  const result = section.getByRole('status')
+  await expect(result).toContainText('入力 x [4, 3]')
+  await expect(result).toContainText(
+    '入力 t はデータセットに無いですが, つないでいるので残し, 最初の次元 (バッチ) を例の大きさ 4 にしました ([4])',
+  )
+  await dialog.getByRole('button', { name: '閉じる' }).click()
+
+  // x_fc と t_act の和 (add) が通り, 出力 noise のつなぎ元 head が [4, 3] になる
+  await expect(page.locator('[data-id="head"]')).toContainText('[4, 3]', { timeout: 20_000 })
+  await expect(page.locator('header')).toContainText('誤り 0 件')
+})
+
 test('データセットでない場所は, 理由を出して定義を変えない', async ({ page }) => {
   await page.goto('/')
   const dialog = await openDialog(page)
