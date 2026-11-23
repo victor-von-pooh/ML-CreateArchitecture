@@ -393,7 +393,9 @@ def table_width(problem_path: Path, dataset: Path) -> Optional[TableWidth]:
         encoding = quest.table_encoding(problem, dataset)
     except READ_ERRORS as error:
         raise HTTPException(
-            422, f"表の生成の符号化した行の幅を求められません: {error}"
+            422,
+            "表の生成の, 学習で使う 1 行の長さ (入力と出力の幅) を求められ"
+            f"ません: {error}"
         ) from error
     if encoding is None:
         table = None
@@ -415,11 +417,14 @@ def table_width(problem_path: Path, dataset: Path) -> Optional[TableWidth]:
         )
     except (*READ_ERRORS, ValidationError) as error:
         raise HTTPException(
-            422, f"符号化した行の幅を読めません: {error}"
+            422,
+            f"学習で使う 1 行の長さ (入力と出力の幅) を読めません: {error}"
         ) from error
     if table.width < 1:
         raise HTTPException(
-            422, "表の生成の符号化した行の幅が 0 です (学習に使う列がありません)"
+            422,
+            "表の生成の, 学習で使う 1 行の長さ (入力と出力の幅) が 0 です "
+            "(学習に使う項目がありません)"
         )
 
     return table
@@ -451,7 +456,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     HTTPException
         ML-EDA か ML-Quest が要るのに無い場合は 501, ディレクトリ, 説明か
         問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の
-        組など) と, 表の生成の幅を求められない場合は 422
+        組など) と, 表の生成の幅を求められない場合と, 表の生成で入力が
+        表の行 (バッチと列の 2 次元の 1 つ) でない場合は 422
     """
     # 説明の版と読み方は ML-EDA に任せる
     path = absolute_path(body.path)

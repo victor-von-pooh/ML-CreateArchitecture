@@ -131,9 +131,9 @@ function fitReshape(
 export function tableWidthNote(table: TableWidth): string {
   const from = table.problem ? `問題の設定 ${table.problem} が表の生成` : '表の生成の問題の設定'
   return (
-    `${from}なので, 入力と出力の幅を学習のスクリプトと同じ符号化した行の幅 ${table.width} にしました ` +
-    `(数の列 ${table.numbers} は 1 ずつ, 種類の列 ${table.categories} は値の種類の数の和 ${table.values}. ` +
-    `列の数 ${table.columns} ではありません)`
+    `${from}なので, 入力と出力の幅を, 学習で使う 1 行の長さ ${table.width} にしました ` +
+    `(数の項目 ${table.numbers} は 1 つずつ, 分類の項目 ${table.categories} は選べる値の数の合計 ${table.values}. ` +
+    `項目の数 ${table.columns} ではありません)`
   )
 }
 

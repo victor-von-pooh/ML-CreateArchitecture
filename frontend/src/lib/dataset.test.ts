@@ -320,8 +320,8 @@ describe('applyDatasetInputs (表の生成)', () => {
     expect(spec.nodes.head!.params).toMatchObject({ in_features: 32, out_features: 8 })
     expect(spec.nodes.t_fc!.params).toMatchObject({ in_features: 32 })
     expect(notes[0]).toBe(
-      '問題の設定 顧客の表 が表の生成なので, 入力と出力の幅を学習のスクリプトと同じ符号化した行の幅 8 にしました ' +
-        '(数の列 3 は 1 ずつ, 種類の列 2 は値の種類の数の和 5. 列の数 5 ではありません)',
+      '問題の設定 顧客の表 が表の生成なので, 入力と出力の幅を, 学習で使う 1 行の長さ 8 にしました ' +
+        '(数の項目 3 は 1 つずつ, 分類の項目 2 は選べる値の数の合計 5. 項目の数 5 ではありません)',
     )
     expect(notes).toContain('入力 t はデータセットに無いですが, つないでいるので残しました')
     expect(notes).toContain('head の out_features を 8 にしました')
@@ -329,6 +329,6 @@ describe('applyDatasetInputs (表の生成)', () => {
 
   it('表の生成でなければ決め方を知らせない', () => {
     const { notes } = applyDatasetInputs(denoiser, { ...generated, table: null }, units)
-    expect(notes.join('\n')).not.toContain('符号化した行の幅')
+    expect(notes.join('\n')).not.toContain('1 行の長さ')
   })
 })

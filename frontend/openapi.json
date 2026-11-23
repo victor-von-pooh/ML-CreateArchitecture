@@ -420,7 +420,7 @@
     "/api/dataset/inputs": {
       "post": {
         "summary": "Read Dataset Inputs",
-        "description": "データセットから, モデルの入力と出す値の数を読む関数\n\n問題の設定を渡し, それが表の生成なら, 入力の最後の次元と出す値の数を\n符号化した行の幅 (ML-Quest の table_encoding) にする (学習のスクリプト\nが学ぶ行の幅. 列の数とは違う)\n\nParameters\n----------\nbody: DatasetBody\n    データセットのディレクトリと, 問題の設定のファイル (任意)\n\nReturns\n----------\nresult: DatasetInputs\n    入力 (形はバッチの次元を例の大きさにしたものと, データセットの\n    形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の\n    符号化した行の幅\n\nRaises\n----------\nHTTPException\n    ML-EDA か ML-Quest が要るのに無い場合は 501, ディレクトリ, 説明か\n    問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の\n    組など) と, 表の生成の幅を求められない場合は 422",
+        "description": "データセットから, モデルの入力と出す値の数を読む関数\n\n問題の設定を渡し, それが表の生成なら, 入力の最後の次元と出す値の数を\n符号化した行の幅 (ML-Quest の table_encoding) にする (学習のスクリプト\nが学ぶ行の幅. 列の数とは違う)\n\nParameters\n----------\nbody: DatasetBody\n    データセットのディレクトリと, 問題の設定のファイル (任意)\n\nReturns\n----------\nresult: DatasetInputs\n    入力 (形はバッチの次元を例の大きさにしたものと, データセットの\n    形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の\n    符号化した行の幅\n\nRaises\n----------\nHTTPException\n    ML-EDA か ML-Quest が要るのに無い場合は 501, ディレクトリ, 説明か\n    問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の\n    組など) と, 表の生成の幅を求められない場合と, 表の生成で入力が\n    表の行 (バッチと列の 2 次元の 1 つ) でない場合は 422",
         "operationId": "read_dataset_inputs",
         "requestBody": {
           "content": {

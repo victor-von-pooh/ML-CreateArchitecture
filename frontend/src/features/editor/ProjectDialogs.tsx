@@ -372,8 +372,8 @@ function DatasetSection({
         {problem && (
           <p className="text-[11px] text-ink-3">
             問題の設定 <span className="font-mono break-all">{problem}</span> も渡します.
-            表の生成なら, 入力と出力の幅を学習のスクリプトと同じ符号化した行の幅 (数の列は 1,
-            種類の列は値の種類の数) にします
+            表の生成なら, 入力と出力の幅を, 学習で使う 1 行の長さにします (数の項目は 1 つずつ,
+            分類の項目は選べる値の数の合計)
           </p>
         )}
         <Button

@@ -379,7 +379,8 @@ export interface paths {
          *     HTTPException
          *         ML-EDA か ML-Quest が要るのに無い場合は 501, ディレクトリ, 説明か
          *         問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の
-         *         組など) と, 表の生成の幅を求められない場合は 422
+         *         組など) と, 表の生成の幅を求められない場合と, 表の生成で入力が
+         *         表の行 (バッチと列の 2 次元の 1 つ) でない場合は 422
          */
         post: operations["read_dataset_inputs"];
         delete?: never;
