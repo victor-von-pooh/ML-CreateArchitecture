@@ -358,22 +358,28 @@ export interface paths {
          * Read Dataset Inputs
          * @description データセットから, モデルの入力と出す値の数を読む関数
          *
+         *     問題の設定を渡し, それが表の生成なら, 入力の最後の次元と出す値の数を
+         *     符号化した行の幅 (ML-Quest の table_encoding) にする (学習のスクリプト
+         *     が学ぶ行の幅. 列の数とは違う)
+         *
          *     Parameters
          *     ----------
-         *     body: PathBody
-         *         データセットのディレクトリ
+         *     body: DatasetBody
+         *         データセットのディレクトリと, 問題の設定のファイル (任意)
          *
          *     Returns
          *     ----------
          *     result: DatasetInputs
          *         入力 (形はバッチの次元を例の大きさにしたものと, データセットの
-         *         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数
+         *         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
+         *         符号化した行の幅
          *
          *     Raises
          *     ----------
          *     HTTPException
-         *         ML-EDA が無い場合は 501, ディレクトリか説明が無い場合は 404,
-         *         読めない場合 (知らない版, 知らない項目の組など) は 422
+         *         ML-EDA か ML-Quest が要るのに無い場合は 501, ディレクトリ, 説明か
+         *         問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の
+         *         組など) と, 表の生成の幅を求められない場合は 422
          */
         post: operations["read_dataset_inputs"];
         delete?: never;
@@ -602,6 +608,19 @@ export interface components {
             /** Units */
             units: string[];
         };
+        /** DatasetBody */
+        DatasetBody: {
+            /**
+             * Path
+             * @description データセットの絶対のパス (~ から書ける)
+             */
+            path: string;
+            /**
+             * Problem
+             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする)
+             */
+            problem?: string | null;
+        };
         /** DatasetInput */
         DatasetInput: {
             /** Name */
@@ -640,6 +659,8 @@ export interface components {
             target_kind?: string | null;
             /** Outputs */
             outputs?: number | null;
+            /** @description 表の生成の問題の設定で, 入力と出力の幅にした符号化した行の幅 (他は無し) */
+            table?: components["schemas"]["TableWidth"] | null;
         };
         /** ExampleSummary */
         ExampleSummary: {
@@ -993,6 +1014,11 @@ export interface components {
              */
             problem?: string | null;
             /**
+             * Problem Path
+             * @description 記録を読んだ問題の設定のファイル (データセットから入力と出力を作るときに渡す)
+             */
+            problem_path?: string | null;
+            /**
              * Example
              * @description 問題の設定の受け持ちに合う雛形 (ML-ModelControl の同梱の例の名前. 合うものが無ければ無し)
              */
@@ -1015,6 +1041,39 @@ export interface components {
              * @default true
              */
             infer: boolean;
+        };
+        /** TableWidth */
+        TableWidth: {
+            /**
+             * Width
+             * @description 符号化した行の幅
+             */
+            width: number;
+            /**
+             * Numbers
+             * @description 数の列の数 (1 ずつ)
+             */
+            numbers: number;
+            /**
+             * Categories
+             * @description 種類の列の数
+             */
+            categories: number;
+            /**
+             * Values
+             * @description 種類の列の値の種類の数の和
+             */
+            values: number;
+            /**
+             * Columns
+             * @description 学習に使う列の数
+             */
+            columns: number;
+            /**
+             * Problem
+             * @description 問題の設定の名前
+             */
+            problem?: string | null;
         };
         /** TargetBody */
         TargetBody: {
@@ -1510,7 +1569,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PathBody"];
+                "application/json": components["schemas"]["DatasetBody"];
             };
         };
         responses: {

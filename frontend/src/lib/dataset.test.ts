@@ -287,3 +287,48 @@ describe('applyDatasetInputs (ファイルの組)', () => {
     )
   })
 })
+
+describe('applyDatasetInputs (表の生成)', () => {
+  /** 同梱の例 diffusion_denoiser の形 (雑音を加えた行 x と時刻 t から雑音を当てる) */
+  const denoiser: Spec = {
+    ...emptySpec(),
+    inputs: {
+      x: { shape: [8, 16], ui: { x: 0, y: 60 } },
+      t: { shape: [8], dtype: 'int64', fill: 'arange', ui: { x: 0, y: 260 } },
+    },
+    nodes: {
+      t_fc: { unit: 'nn.Linear', params: { in_features: 32, out_features: 32 }, inputs: 't' },
+      x_fc: { unit: 'nn.Linear', params: { in_features: 16, out_features: 32 }, inputs: 'x' },
+      head: { unit: 'nn.Linear', params: { in_features: 32, out_features: 16 }, inputs: 'x_fc' },
+    },
+    outputs: { noise: 'head' },
+  }
+  /** 列の数 5 (数の列 3, 値の種類 3 と 2 の種類の列) の符号化した行の幅 8 */
+  const generated: DatasetInfo = {
+    path: '/data/ds',
+    inputs: [{ name: 'x', shape: [4, 8], dtype: 'float32', dataset_shape: [null, 8] }],
+    task: null,
+    outputs: 8,
+    table: { width: 8, numbers: 3, categories: 2, values: 5, columns: 5, problem: '顧客の表' },
+  }
+
+  it('入力と出力の幅を符号化した行の幅にし, 決め方を初めに知らせる', () => {
+    const { spec, notes } = applyDatasetInputs(denoiser, generated, units)
+    expect(spec.inputs.x).toMatchObject({ shape: [4, 8], dtype: 'float32' })
+    expect(spec.inputs.t).toMatchObject({ shape: [8], dtype: 'int64', fill: 'arange' })
+    expect(spec.nodes.x_fc!.params).toMatchObject({ in_features: 8, out_features: 32 })
+    expect(spec.nodes.head!.params).toMatchObject({ in_features: 32, out_features: 8 })
+    expect(spec.nodes.t_fc!.params).toMatchObject({ in_features: 32 })
+    expect(notes[0]).toBe(
+      '問題の設定 顧客の表 が表の生成なので, 入力と出力の幅を学習のスクリプトと同じ符号化した行の幅 8 にしました ' +
+        '(数の列 3 は 1 ずつ, 種類の列 2 は値の種類の数の和 5. 列の数 5 ではありません)',
+    )
+    expect(notes).toContain('入力 t はデータセットに無いですが, つないでいるので残しました')
+    expect(notes).toContain('head の out_features を 8 にしました')
+  })
+
+  it('表の生成でなければ決め方を知らせない', () => {
+    const { notes } = applyDatasetInputs(denoiser, { ...generated, table: null }, units)
+    expect(notes.join('\n')).not.toContain('符号化した行の幅')
+  })
+})

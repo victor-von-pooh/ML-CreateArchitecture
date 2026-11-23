@@ -12,6 +12,21 @@ export interface DatasetInput {
   vocabulary?: number | null
 }
 
+/** 表の生成の符号化した行の幅と内訳 (ML-Quest の table_encoding) */
+export interface TableWidth {
+  width: number
+  /** 数の列の数 (1 ずつ) */
+  numbers: number
+  /** 種類の列の数 */
+  categories: number
+  /** 種類の列の値の種類の数の和 */
+  values: number
+  /** 学習に使う列の数 */
+  columns: number
+  /** 問題の設定の名前 */
+  problem?: string | null
+}
+
 /** バックエンドが ML-EDA の model_inputs から返す値 */
 export interface DatasetInfo {
   path: string
@@ -22,6 +37,8 @@ export interface DatasetInfo {
   /** ファイルの組の正解の種類 (mask, point_cloud など. 列の正解は null) */
   target_kind?: string | null
   outputs?: number | null
+  /** 表の生成の問題の設定で, 入力と出力の幅にした符号化した行の幅 (他は無い) */
+  table?: TableWidth | null
 }
 
 /** 入れた結果 (定義と, 知らせる文) */
@@ -110,6 +127,16 @@ function fitReshape(
   }
 }
 
+/** 表の生成で, 入力と出力の幅をどう決めたかの文 */
+export function tableWidthNote(table: TableWidth): string {
+  const from = table.problem ? `問題の設定 ${table.problem} が表の生成` : '表の生成の問題の設定'
+  return (
+    `${from}なので, 入力と出力の幅を学習のスクリプトと同じ符号化した行の幅 ${table.width} にしました ` +
+    `(数の列 ${table.numbers} は 1 ずつ, 種類の列 ${table.categories} は値の種類の数の和 ${table.values}. ` +
+    `列の数 ${table.columns} ではありません)`
+  )
+}
+
 /**
  * データセットの入力と出す値の数を定義に入れる
  *
@@ -121,14 +148,16 @@ function fitReshape(
  * (チャンネル), num_embeddings の引数は文の語の番号の入力の語彙の大きさにする.
  * 出す値の数: 部品の無い定義で入力が 2 次元なら全結合の head を置いて出力に
  * つなぎ, 出力が 1 つでつなぎ元が out_features か out_channels を持てばそれ
- * にする. つなぎ元が op.Reshape なら最初の次元とその前の out_features にする
+ * にする. つなぎ元が op.Reshape なら最初の次元とその前の out_features にする.
+ * 表の生成の問題の設定 (info.table) では, 入力の列の次元と出す値の数が
+ * 符号化した行の幅なので, その決め方を初めに知らせる
  */
 export function applyDatasetInputs(
   spec: Spec,
   info: DatasetInfo,
   units: Map<string, UnitSpec>,
 ): DatasetApplied {
-  const notes: string[] = []
+  const notes: string[] = info.table ? [tableWidthNote(info.table)] : []
   let next = spec
   // ノードと同じ名前の入力は作らない (つなぎ先が入力を指すように変わるため)
   const clashes = info.inputs.filter((item) => item.name in spec.nodes)
