@@ -420,13 +420,13 @@
     "/api/dataset/inputs": {
       "post": {
         "summary": "Read Dataset Inputs",
-        "description": "データセットから, モデルの入力と出す値の数を読む関数\n\nParameters\n----------\nbody: PathBody\n    データセットのディレクトリ\n\nReturns\n----------\nresult: DatasetInputs\n    入力 (形はバッチの次元を例の大きさにしたものと, データセットの\n    形), タスク, 目的の列, クラス, 正解の種類, 出す値の数\n\nRaises\n----------\nHTTPException\n    ML-EDA が無い場合は 501, ディレクトリか説明が無い場合は 404,\n    読めない場合 (知らない版, 知らない項目の組など) は 422",
+        "description": "データセットから, モデルの入力と出す値の数を読む関数\n\n問題の設定を渡し, それが表の生成なら, 入力の最後の次元と出す値の数を\n符号化した行の幅 (ML-Quest の table_encoding) にする (学習のスクリプト\nが学ぶ行の幅. 列の数とは違う)\n\nParameters\n----------\nbody: DatasetBody\n    データセットのディレクトリと, 問題の設定のファイル (任意)\n\nReturns\n----------\nresult: DatasetInputs\n    入力 (形はバッチの次元を例の大きさにしたものと, データセットの\n    形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の\n    符号化した行の幅\n\nRaises\n----------\nHTTPException\n    ML-EDA か ML-Quest が要るのに無い場合は 501, ディレクトリ, 説明か\n    問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の\n    組など) と, 表の生成の幅を求められない場合と, 表の生成で入力が\n    表の行 (バッチと列の 2 次元の 1 つ) でない場合は 422",
         "operationId": "read_dataset_inputs",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PathBody"
+                "$ref": "#/components/schemas/DatasetBody"
               }
             }
           },
@@ -727,6 +727,32 @@
         ],
         "title": "CustomModule"
       },
+      "DatasetBody": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "データセットの絶対のパス (~ から書ける)"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem",
+            "description": "問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "DatasetBody"
+      },
       "DatasetInput": {
         "properties": {
           "name": {
@@ -849,6 +875,17 @@
               }
             ],
             "title": "Outputs"
+          },
+          "table": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TableWidth"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "表の生成の問題の設定で, 入力と出力の幅にした符号化した行の幅 (他は無し)"
           }
         },
         "type": "object",
@@ -1734,6 +1771,18 @@
             "title": "Problem",
             "description": "問題の設定の名前"
           },
+          "problem_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem Path",
+            "description": "記録を読んだ問題の設定のファイル (データセットから入力と出力を作るときに渡す)"
+          },
           "example": {
             "anyOf": [
               {
@@ -1779,6 +1828,56 @@
           "spec"
         ],
         "title": "SpecBody"
+      },
+      "TableWidth": {
+        "properties": {
+          "width": {
+            "type": "integer",
+            "title": "Width",
+            "description": "符号化した行の幅"
+          },
+          "numbers": {
+            "type": "integer",
+            "title": "Numbers",
+            "description": "数の列の数 (1 ずつ)"
+          },
+          "categories": {
+            "type": "integer",
+            "title": "Categories",
+            "description": "種類の列の数"
+          },
+          "values": {
+            "type": "integer",
+            "title": "Values",
+            "description": "種類の列の値の種類の数の和"
+          },
+          "columns": {
+            "type": "integer",
+            "title": "Columns",
+            "description": "学習に使う列の数"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem",
+            "description": "問題の設定の名前"
+          }
+        },
+        "type": "object",
+        "required": [
+          "width",
+          "numbers",
+          "categories",
+          "values",
+          "columns"
+        ],
+        "title": "TableWidth"
       },
       "TargetBody": {
         "properties": {

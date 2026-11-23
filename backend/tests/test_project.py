@@ -822,6 +822,7 @@ def test_problem_record(
     assert target["path"] == str(spec_path) and target["source"] == "problem"
     assert target["dataset"] == str(project / "outputs" / "dataset")
     assert target["problem"] == "sales"
+    assert target["problem_path"] == str(problem.resolve())
     assert target["example"] is None
     response = client.put(
         "/api/project/model", json={"path": str(problem), "spec": SPEC}
@@ -834,6 +835,7 @@ def test_problem_record(
         "/api/project/target", json={"path": str(project)}
     )
     assert response.json()["path"] == str(spec_path)
+    assert response.json()["problem_path"] == str(project / "problem.yaml")
 
     # 名前を書くと, 記録のプロジェクトの models/<名前>.yaml
     response = client.post(
@@ -1688,3 +1690,118 @@ def test_dataset_inputs_text_vocabulary(
     # 埋め草と語彙に無い語と, 学習用の文の語 (共通の this, is, クラスの語,
     # 番号) の数の範囲
     assert 2 + 2 < size <= 2 + 2 + 4 + 5
+
+
+def table_generation_problem(ml_quest: Any) -> dict[str, Any]:
+    """
+    見本の課題から, 表の生成 (作るで正解の種類が表) の問題の設定を作る関数
+
+    Parameters
+    ----------
+    ml_quest: Any
+        ML-Quest のモジュール
+
+    Returns
+    ----------
+    problem: dict[str, Any]
+        受け持ちを表の生成に答え直した問題の設定
+    """
+    # 受け持ちの答えだけを作り直す
+    problem = ml_quest.example_problem("総菜の作る量")
+    problem["ml"]["parts"] = [{}]
+    for key, value in [("role", "generate"), ("unit", "row"),
+                       ("output", "table"), ("target.source", "self"),
+                       ("target.kind", "table"), ("method", "scratch")]:
+        problem = ml_quest.answer(problem, f"ml.parts.0.{key}", value)
+
+    return problem
+
+
+def test_dataset_inputs_table_generation(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    表の生成の問題の設定を渡すと, 入力と出す値の数を符号化した行の幅に
+    することを確かめる関数 (ML-EDA と table_encoding のある ML-Quest が
+    無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 読み込みに要るライブラリ
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    if not hasattr(ml_quest, "table_encoding"):
+        pytest.skip("ML-Quest に table_encoding がありません")
+
+    # 数の列 2 つと, 値の種類 3 と 2 の種類の列 (列の数 4, 幅 7) を, 目的の
+    # 列の無いレシピで書き出し
+    rng = np.random.default_rng(0)
+    frame = pd.DataFrame({
+        "age": rng.normal(40, 10, 60), "visits": rng.integers(0, 9, 60),
+        "city": np.array(["a", "b", "c"] * 20),
+        "member": np.array(["yes", "no"] * 30)
+    })
+    source = tmp_path / "table.csv"
+    frame.to_csv(source, index=False)
+    recipe = {
+        "task": "none", "steps": [],
+        "split": {"method": "random", "valid": 0.2, "test": 0.2}
+    }
+    dataset = tmp_path / "ds"
+    ml_eda.export_dataset(ml_eda.load_data(source), recipe, dataset)
+    problem = tmp_path / "problem.yaml"
+    ml_quest.save_problem(table_generation_problem(ml_quest), problem)
+
+    # 問題の設定を渡すと, 入力の列の次元と出す値の数が符号化した行の幅
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(dataset), "problem": str(problem)}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["inputs"][0]["shape"] == [4, 7]
+    assert body["inputs"][0]["dataset_shape"] == [None, 7]
+    assert body["outputs"] == 7
+    assert body["table"] == {
+        "width": 7, "numbers": 2, "categories": 2, "values": 5,
+        "columns": 4, "problem": "総菜の作る量"
+    }
+
+    # 渡さないか, 表の生成でない問題の設定なら列の数のまま
+    other = tmp_path / "other.yaml"
+    ml_quest.save_problem(ml_quest.example_problem("総菜の作る量"), other)
+    for extra in ({}, {"problem": str(other)}):
+        response = client.post(
+            "/api/dataset/inputs", json={"path": str(dataset), **extra}
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["inputs"][0]["shape"] == [4, 4]
+        assert response.json()["table"] is None
+
+    # 問題の設定が無い場所は 404, 幅を求められない (目的の列のある)
+    # データセットは 422
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(dataset), "problem": str(tmp_path / "none.yaml")}
+    )
+    assert response.status_code == 404
+    labeled = tmp_path / "labeled"
+    ml_eda.export_dataset(
+        ml_eda.load_data(source),
+        {**recipe, "task": "regression", "target": "age"}, labeled
+    )
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(labeled), "problem": str(problem)}
+    )
+    assert response.status_code == 422
+    assert "目的の列" in response.json()["detail"]

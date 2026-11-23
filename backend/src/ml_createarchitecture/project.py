@@ -73,6 +73,15 @@ class PathBody(BaseModel):
     path: str = Field(description="絶対のパス (~ から書ける)")
 
 
+class DatasetBody(BaseModel):
+    path: str = Field(description="データセットの絶対のパス (~ から書ける)")
+    problem: Optional[str] = Field(
+        default=None,
+        description="問題の設定のファイルの絶対のパス (表の生成なら, 入力と"
+        "出力の幅を ML-Quest の table_encoding の符号化した行の幅にする)"
+    )
+
+
 class TargetBody(BaseModel):
     path: str = Field(
         description="プロジェクトのディレクトリか問題の設定のファイルの絶対"
@@ -100,6 +109,18 @@ class DatasetInput(BaseModel):
     )
 
 
+class TableWidth(BaseModel):
+    # 表の生成の符号化した行の幅と, その内訳 (ML-Quest の table_encoding)
+    width: int = Field(description="符号化した行の幅")
+    numbers: int = Field(description="数の列の数 (1 ずつ)")
+    categories: int = Field(description="種類の列の数")
+    values: int = Field(description="種類の列の値の種類の数の和")
+    columns: int = Field(description="学習に使う列の数")
+    problem: Optional[str] = Field(
+        default=None, description="問題の設定の名前"
+    )
+
+
 class DatasetInputs(BaseModel):
     # データセットの場所と, ML-EDA の model_inputs の結果
     path: str
@@ -112,6 +133,11 @@ class DatasetInputs(BaseModel):
         description="ファイルの組の正解の種類 (mask, point_cloud など)"
     )
     outputs: Optional[int] = None
+    table: Optional[TableWidth] = Field(
+        default=None,
+        description="表の生成の問題の設定で, 入力と出力の幅にした符号化した"
+        "行の幅 (他は無し)"
+    )
 
 
 class ProjectTarget(BaseModel):
@@ -126,6 +152,11 @@ class ProjectTarget(BaseModel):
     dataset: Optional[str] = None
     problem: Optional[str] = Field(
         default=None, description="問題の設定の名前"
+    )
+    problem_path: Optional[str] = Field(
+        default=None,
+        description="記録を読んだ問題の設定のファイル (データセットから入力と"
+        "出力を作るときに渡す)"
     )
     example: Optional[str] = Field(
         default=None,
@@ -324,27 +355,109 @@ def example_shape(shape: Any) -> list[int]:
     return example
 
 
-@router.post("/dataset/inputs")
-def read_dataset_inputs(body: PathBody) -> DatasetInputs:
+def table_width(problem_path: Path, dataset: Path) -> Optional[TableWidth]:
     """
-    データセットから, モデルの入力と出す値の数を読む関数
+    表の生成の問題の設定なら, データセットの符号化した行の幅を求める関数
 
     Parameters
     ----------
-    body: PathBody
+    problem_path: Path
+        問題の設定のファイル
+    dataset: Path
         データセットのディレクトリ
+
+    Returns
+    ----------
+    table: Optional[TableWidth]
+        符号化した行の幅と内訳 (表の生成でなければ None)
+
+    Raises
+    ----------
+    HTTPException
+        ML-Quest が無いか古い場合は 501, 問題の設定のファイルが無い場合は
+        404, 問題の設定を読めない場合と, 幅を求められない場合 (目的の列か
+        欠損のある列がある, 種類の値が多すぎる列があるなど) は 422
+    """
+    # 読み方と列の符号化の決まりは ML-Quest に任せる (学習のスクリプトと
+    # 同じ幅にするため)
+    if not problem_path.is_file():
+        raise HTTPException(404, f"問題の設定 {problem_path} がありません")
+    quest = load_library("ml_quest", "table_encoding")
+    try:
+        problem = quest.load_problem(problem_path)
+    except READ_ERRORS as error:
+        raise HTTPException(
+            422, f"問題の設定を読めません: {error}"
+        ) from error
+    try:
+        encoding = quest.table_encoding(problem, dataset)
+    except READ_ERRORS as error:
+        raise HTTPException(
+            422,
+            "表の生成の, 学習で使う 1 行の長さ (入力と出力の幅) を求められ"
+            f"ません: {error}"
+        ) from error
+    if encoding is None:
+        table = None
+        return table
+
+    # 幅と内訳 (形の崩れた値は 422)
+    try:
+        columns = encoding["columns"]
+        values = sum(
+            len(column["categories"]) for column in columns
+            if column["type"] == "category"
+        )
+        name = problem.get("name") if isinstance(problem, dict) else None
+        table = TableWidth(
+            width=encoding["width"], numbers=encoding["numbers"],
+            categories=encoding["categories"], values=values,
+            columns=len(columns),
+            problem=name if isinstance(name, str) else None
+        )
+    except (*READ_ERRORS, ValidationError) as error:
+        raise HTTPException(
+            422,
+            f"学習で使う 1 行の長さ (入力と出力の幅) を読めません: {error}"
+        ) from error
+    if table.width < 1:
+        raise HTTPException(
+            422,
+            "表の生成の, 学習で使う 1 行の長さ (入力と出力の幅) が 0 です "
+            "(学習に使う項目がありません)"
+        )
+
+    return table
+
+
+@router.post("/dataset/inputs")
+def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
+    """
+    データセットから, モデルの入力と出す値の数を読む関数
+
+    問題の設定を渡し, それが表の生成なら, 入力の最後の次元と出す値の数を
+    符号化した行の幅 (ML-Quest の table_encoding) にする (学習のスクリプト
+    が学ぶ行の幅. 列の数とは違う)
+
+    Parameters
+    ----------
+    body: DatasetBody
+        データセットのディレクトリと, 問題の設定のファイル (任意)
 
     Returns
     ----------
     result: DatasetInputs
         入力 (形はバッチの次元を例の大きさにしたものと, データセットの
-        形), タスク, 目的の列, クラス, 正解の種類, 出す値の数
+        形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
+        符号化した行の幅
 
     Raises
     ----------
     HTTPException
-        ML-EDA が無い場合は 501, ディレクトリか説明が無い場合は 404,
-        読めない場合 (知らない版, 知らない項目の組など) は 422
+        ML-EDA か ML-Quest が要るのに無い場合は 501, ディレクトリ, 説明か
+        問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の
+        組など) と, 表の生成の幅を求められない場合と, 表の生成で入力が
+        表の行 (バッチと列の 2 次元の 1 つ) でない場合は 422
     """
     # 説明の版と読み方は ML-EDA に任せる
     path = absolute_path(body.path)
@@ -381,6 +494,24 @@ def read_dataset_inputs(body: PathBody) -> DatasetInputs:
         raise HTTPException(422, "データセットに入力がありません")
     outputs = info.get("outputs")
     classes = info.get("classes")
+
+    # 表の生成は, 入力 (バッチと列の 2 次元) の列の次元と出す値の数を
+    # 符号化した行の幅に
+    table = None
+    if body.problem and body.problem.strip():
+        table = table_width(absolute_path(body.problem), path)
+    if table is not None:
+        if len(inputs) != 1 or len(inputs[0].shape) != 2:
+            raise HTTPException(
+                422,
+                "表の生成の問題の設定ですが, データセットの入力が表の行 "
+                "(バッチと列の 2 次元の 1 つ) ではありません"
+            )
+        inputs = [inputs[0].model_copy(update={
+            "shape": [EXAMPLE_SIZE, table.width],
+            "dataset_shape": [None, table.width]
+        })]
+        outputs = table.width
     try:
         result = DatasetInputs(
             path=str(path), inputs=inputs, task=optional_text(info, "task"),
@@ -388,7 +519,8 @@ def read_dataset_inputs(body: PathBody) -> DatasetInputs:
             classes=list(classes) if isinstance(classes, list) else None,
             target_kind=optional_text(info, "target_kind"),
             outputs=outputs if isinstance(outputs, int)
-            and not isinstance(outputs, bool) and outputs > 0 else None
+            and not isinstance(outputs, bool) and outputs > 0 else None,
+            table=table
         )
     except ValidationError as error:
         raise HTTPException(
@@ -592,6 +724,7 @@ def from_problem(problem_path: Path) -> Optional[ProjectTarget]:
         project=str(root),
         dataset=str(dataset) if dataset else None,
         problem=name if isinstance(name, str) else None,
+        problem_path=str(problem_path),
         example=known_example(model.get("example"))
     )
 

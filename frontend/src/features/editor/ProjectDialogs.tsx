@@ -295,12 +295,15 @@ export function ExperimentCopies({
 function DatasetSection({
   disabled,
   suggested,
+  problem,
   onApply,
 }: {
   /** 選べない理由 (部分モデルを編集している間. 選べる場合は null) */
   disabled: string | null
   /** 学習のスクリプトが読むデータセットの場所 (問題の設定の記録か, 無ければ config の data.dataset. この欄に打つ前か, 一覧から問題の設定を選んだ場合に入れる) */
   suggested: Suggestion | null
+  /** 最後に保存先を確かめた問題の設定のファイル (表の生成なら幅を符号化した行の幅にするため. 無ければ null) */
+  problem: string | null
   /** 読んだ結果を定義に入れ, 知らせる文を返す */
   onApply: (info: DatasetInputs) => string[]
 }) {
@@ -330,7 +333,8 @@ function DatasetSection({
   // 定義に入れるのは mutate に渡した onSuccess (読んでいる間にダイアログを
   // 閉じた場合は入れない)
   const read = useMutation({
-    mutationFn: (target: string) => api.datasetInputs(target),
+    mutationFn: ({ target, from }: { target: string; from: string | null }) =>
+      api.datasetInputs(target, from),
   })
   return (
     <section aria-labelledby={titleId} className="space-y-3">
@@ -343,12 +347,15 @@ function DatasetSection({
           event.preventDefault()
           if (path.trim() && !read.isPending && !disabled) {
             setResult(null)
-            read.mutate(path.trim(), {
-              onSuccess: (info) => {
-                remember(DATASET_KEY, info.path)
-                setResult(onApply(info))
+            read.mutate(
+              { target: path.trim(), from: problem },
+              {
+                onSuccess: (info) => {
+                  remember(DATASET_KEY, info.path)
+                  setResult(onApply(info))
+                },
               },
-            })
+            )
           }
         }}
       >
@@ -362,6 +369,13 @@ function DatasetSection({
           }}
           placeholder="/path/to/project/outputs/dataset"
         />
+        {problem && (
+          <p className="text-[11px] text-ink-3">
+            問題の設定 <span className="font-mono break-all">{problem}</span> も渡します.
+            表の生成なら, 入力と出力の幅を, 学習で使う 1 行の長さにします (数の項目は 1 つずつ,
+            分類の項目は選べる値の数の合計)
+          </p>
+        )}
         <Button
           type="submit"
           variant="primary"
@@ -712,6 +726,8 @@ export function ProjectDialog({
   // 一覧から選んだ問題の設定と, 最後に保存先を確かめた場所
   const [choice, setChoice] = useState<{ path: string } | null>(null)
   const [checked, setChecked] = useState<string | null>(null)
+  // 最後に確かめた保存先の問題の設定のファイル (データセットの欄に渡す)
+  const [problemPath, setProblemPath] = useState<string | null>(null)
   // 最後に確かめた問題の設定の雛形 (無ければ null)
   const [template, setTemplate] = useState<Template | null>(null)
   // 最後に送った雛形の読み込みの番号 (読み込みの間に別の問題の設定を確かめた
@@ -754,6 +770,7 @@ export function ProjectDialog({
               : `部分モデル sub.${editing} を編集している間は選べません (データセットの入力は本体の入力なので, 本体に戻ってから選んでください)`
           }
           suggested={suggested}
+          problem={problemPath}
           onApply={onApply}
         />
         <hr className="border-line" />
@@ -763,6 +780,7 @@ export function ProjectDialog({
           onSaved={onSaved}
           onTarget={(target, text, chosen) => {
             setChecked(text)
+            setProblemPath(target.problem_path ?? null)
             setSuggested({ path: target.dataset ?? null, chosen })
             // 雛形は, 新しく始める場合だけ開く (今の定義も保存先の定義も上書きしない)
             const example = target.example ?? null
@@ -780,6 +798,7 @@ export function ProjectDialog({
           }}
           onFailed={() => {
             setChecked(null)
+            setProblemPath(null)
             setSuggested(null)
             latestTemplate.current += 1
             setTemplate(null)

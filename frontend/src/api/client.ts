@@ -96,10 +96,10 @@ export const api = {
   deleteModel: (name: string) =>
     request<void>(`/api/models/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   /** データセットのディレクトリから, 入力と出す値の数を読む (ML-EDA) */
-  datasetInputs: (path: string) =>
+  datasetInputs: (path: string, problem: string | null = null) =>
     request<DatasetInputs>('/api/dataset/inputs', {
       method: 'POST',
-      body: JSON.stringify({ path }),
+      body: JSON.stringify({ path, problem }),
     }),
   /** ML-Pathfinder の置き場の問題の設定 (更新の新しい順. 使えないものは理由付き) */
   listProblems: () => request<ProblemList>('/api/problems'),
