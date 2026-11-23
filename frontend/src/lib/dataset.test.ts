@@ -325,7 +325,7 @@ describe('applyDatasetInputs (表の生成)', () => {
     )
     expect(notes).toContain(
       '入力 t はデータセットに無いですが, つないでいるので残し, ' +
-        '最初の次元 (バッチ) をデータセットの入力と同じ 4 にしました ([4])',
+        '最初の次元 (バッチ) を例の大きさ 4 にしました ([4])',
     )
     expect(notes).toContain('head の out_features を 8 にしました')
   })
@@ -355,6 +355,60 @@ describe('applyDatasetInputs (表の生成)', () => {
     const { spec } = applyDatasetInputs(other, generated, units)
     expect(spec.inputs.a!.shape).toEqual([8, 16])
     expect(spec.inputs.t!.shape).toEqual([8])
+  })
+
+  it('0 次元の値は数えず, 形も変えない', () => {
+    const scalar: Spec = {
+      ...denoiser,
+      inputs: { ...denoiser.inputs, s: { shape: [] } },
+      nodes: {
+        ...denoiser.nodes,
+        s_fc: { unit: 'nn.Linear', params: { in_features: 1, out_features: 1 }, inputs: 's' },
+      },
+    }
+    const { spec } = applyDatasetInputs(scalar, generated, units)
+    expect(spec.inputs.s!.shape).toEqual([])
+    expect(spec.inputs.t!.shape).toEqual([4])
+
+    // 0 次元の値だけの定義はそろえない
+    const only: Spec = {
+      ...scalar,
+      inputs: { x: { shape: [] }, s: { shape: [] } },
+    }
+    const { spec: kept } = applyDatasetInputs(only, generated, units)
+    expect(kept.inputs.s!.shape).toEqual([])
+  })
+
+  it('データセットの入力どうしで最初の次元が違えば, 残す入力の形を変えない', () => {
+    const pair: Spec = {
+      ...denoiser,
+      inputs: { ...denoiser.inputs, y: { shape: [8, 16] } },
+    }
+    const mixed: DatasetInfo = {
+      ...generated,
+      inputs: [
+        { name: 'x', shape: [4, 8], dtype: 'float32' },
+        { name: 'y', shape: [2, 8], dtype: 'float32' },
+      ],
+    }
+    const { spec } = applyDatasetInputs(pair, mixed, units)
+    expect(spec.inputs.t!.shape).toEqual([8])
+  })
+
+  it('名前を変えた後の入力で照らす (1 つずつの入力は名前を変えて形を入れ, 残す入力は無い)', () => {
+    const single: Spec = {
+      ...emptySpec(),
+      inputs: { a: { shape: [8, 16] } },
+      nodes: {
+        fc: { unit: 'nn.Linear', params: { in_features: 16, out_features: 8 }, inputs: 'a' },
+      },
+      outputs: { out: 'fc' },
+    }
+    const { spec, notes } = applyDatasetInputs(single, generated, units)
+    expect(Object.keys(spec.inputs)).toEqual(['x'])
+    expect(spec.inputs.x!.shape).toEqual([4, 8])
+    expect(notes).toContain('入力 a の名前を x にしました')
+    expect(notes.join('\n')).not.toContain('残し')
   })
 
   it('表の生成でなければ決め方を知らせない', () => {

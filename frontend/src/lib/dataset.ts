@@ -213,7 +213,7 @@ export function applyDatasetInputs(
         inputs[name] = { ...value, shape: aligned }
         notes.push(
           `入力 ${name} はデータセットに無いですが, つないでいるので残し, ` +
-            `最初の次元 (バッチ) をデータセットの入力と同じ ${batch} にしました (${shapeText(aligned)})`,
+            `最初の次元 (バッチ) を例の大きさ ${batch} にしました (${shapeText(aligned)})`,
         )
         continue
       }

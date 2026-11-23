@@ -101,7 +101,7 @@ test('同梱の拡散の例に表のデータセットを入れると, 残す時
   const result = section.getByRole('status')
   await expect(result).toContainText('入力 x [4, 3]')
   await expect(result).toContainText(
-    '入力 t はデータセットに無いですが, つないでいるので残し, 最初の次元 (バッチ) をデータセットの入力と同じ 4 にしました ([4])',
+    '入力 t はデータセットに無いですが, つないでいるので残し, 最初の次元 (バッチ) を例の大きさ 4 にしました ([4])',
   )
   await dialog.getByRole('button', { name: '閉じる' }).click()
 
