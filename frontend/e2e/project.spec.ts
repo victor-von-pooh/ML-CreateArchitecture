@@ -387,7 +387,7 @@ test('並べるの問題の設定を選んで入力と出力を作ると, 入力
       'item の大きさを学習用の品物の数 4 にしました',
   )
   await expect(result).toContainText(
-    '分ける割合はプロジェクトの config の検証用 0.1 とテスト用 0.1',
+    '(学習用の反応の行の数 32 (時刻の順に分けたもの). 分ける割合はプロジェクトの学習の設定の検証用 0.1 とテスト用 0.1',
   )
   await expect(result).toContainText('user_fc1 の in_features を 6 にしました')
   await expect(result).toContainText('item_fc1 の in_features を 4 にしました')

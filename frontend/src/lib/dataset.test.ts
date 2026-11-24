@@ -439,7 +439,7 @@ describe('applyDatasetInputs (並べる)', () => {
     },
     outputs: { user_embedding: 'user_fc1', item_embedding: 'item_fc1' },
   }
-  /** 学習用の利用者 6 人と品物 4 つ (config の割合で分けた) */
+  /** 学習用の利用者 6 人と品物 4 つ (プロジェクトの学習の設定の割合で分けた) */
   const reactions: DatasetInfo = {
     path: '/proj/data/reactions.csv',
     inputs: [
@@ -466,8 +466,8 @@ describe('applyDatasetInputs (並べる)', () => {
     expect(spec.nodes.item_fc1!.params).toMatchObject({ in_features: 4, out_features: 32 })
     expect(notes[0]).toBe(
       '問題の設定 会員の品 が並べるなので, 入力 user の大きさを学習用の利用者の数 6, ' +
-        'item の大きさを学習用の品物の数 4 にしました (反応を時刻の順に分けた学習用の反応 31 行に出る数. ' +
-        '分ける割合はプロジェクトの config の検証用 0.1 とテスト用 0.1. ' +
+        'item の大きさを学習用の品物の数 4 にしました (学習用の反応の行の数 31 (時刻の順に分けたもの). ' +
+        '分ける割合はプロジェクトの学習の設定の検証用 0.1 とテスト用 0.1. ' +
         '検証用とテスト用にだけ出る利用者と品物は数えません)',
     )
     expect(notes[1]).toBe('反応の強さ (qty) が 0 以下か数でない 1 行を除きました')

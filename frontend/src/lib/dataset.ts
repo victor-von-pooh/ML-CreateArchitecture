@@ -182,13 +182,13 @@ export function rankSizeNote(rank: RankSize): string {
   const from = rank.problem ? `問題の設定 ${rank.problem} が並べる` : '並べるの問題の設定'
   const rates =
     typeof rank.valid === 'number' && typeof rank.test === 'number'
-      ? `プロジェクトの config の検証用 ${rank.valid} とテスト用 ${rank.test}`
+      ? `プロジェクトの学習の設定の検証用 ${rank.valid} とテスト用 ${rank.test}`
       : '学習のスクリプトの既定'
   const train = rank.rows.train ?? 0
   return (
     `${from}なので, 入力 user の大きさを学習用の利用者の数 ${rank.users}, ` +
     `item の大きさを学習用の品物の数 ${rank.items} にしました ` +
-    `(反応を時刻の順に分けた学習用の反応 ${train} 行に出る数. 分ける割合は${rates}. ` +
+    `(学習用の反応の行の数 ${train} (時刻の順に分けたもの). 分ける割合は${rates}. ` +
     '検証用とテスト用にだけ出る利用者と品物は数えません)'
   )
 }

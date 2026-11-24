@@ -1914,3 +1914,76 @@ def test_dataset_inputs_rank(client: TestClient, tmp_path: Path) -> None:
     )
     assert response.status_code == 422
     assert "data.valid" in response.json()["detail"]
+
+    # 学習の設定が壊れていて読めなければ, 既定の割合に戻して知らせる
+    config_path.write_text("data: [", encoding="utf-8")
+    response = client.post(
+        "/api/dataset/inputs", json={"path": dataset, "problem": str(place)}
+    )
+    assert response.status_code == 200, response.text
+    rank = response.json()["rank"]
+    assert (rank["users"], rank["items"]) == (6, 4)
+    assert (rank["valid"], rank["test"]) == (None, None)
+    assert rank["notes"][0] == (
+        "学習の設定 (configs/default/train.yaml) を読めないので, 分ける割合"
+        "は既定の値です"
+    )
+
+
+def test_dataset_inputs_without_rank_encoding(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    rank_encoding の無い古い ML-Quest でも, 並べる以外の問題の設定は 501
+    にならず, 並べるの問題の設定だけが 501 になることを確かめる関数
+    (ML-EDA と ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        ML-Quest の rank_encoding を外す
+
+    Returns
+    ----------
+    None
+    """
+    # 目的の列の無い表のデータセットと, 表の生成, 列の予測, 並べるの
+    # 問題の設定
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    frame = pd.DataFrame({"age": np.arange(30.0), "city": ["a", "b"] * 15})
+    source = tmp_path / "table.csv"
+    frame.to_csv(source, index=False)
+    dataset = tmp_path / "ds"
+    ml_eda.export_dataset(ml_eda.load_data(source), {
+        "task": "none", "steps": [],
+        "split": {"method": "random", "valid": 0.2, "test": 0.2}
+    }, dataset)
+    places = {}
+    for name, problem in (
+        ("table", table_generation_problem(ml_quest)),
+        ("column", ml_quest.example_problem("総菜の作る量")),
+        ("rank", rank_problem(ml_quest)),
+    ):
+        places[name] = tmp_path / f"{name}.yaml"
+        ml_quest.save_problem(problem, places[name])
+
+    # rank_encoding が無くても, 並べる以外はそのまま読む
+    monkeypatch.delattr(ml_quest, "rank_encoding")
+    for name in ("table", "column"):
+        response = client.post(
+            "/api/dataset/inputs",
+            json={"path": str(dataset), "problem": str(places[name])}
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["rank"] is None
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(dataset), "problem": str(places["rank"])}
+    )
+    assert response.status_code == 501
+    assert "rank_encoding" in response.json()["detail"]

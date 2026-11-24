@@ -507,7 +507,7 @@ def table_width(problem: Any, dataset: Path) -> Optional[TableWidth]:
     return table
 
 
-def split_rates(problem: Any) -> dict[str, float]:
+def split_rates(problem: Any) -> tuple[dict[str, float], list[str]]:
     """
     問題の設定が記録したプロジェクトの config から, 反応を時刻の順に分ける
     割合を読む関数
@@ -523,29 +523,70 @@ def split_rates(problem: Any) -> dict[str, float]:
         valid と test のうち config に数で書いてあるもの (プロジェクトの
         記録か config が無いか読めなければ空. 学習のスクリプトの既定に
         任せる)
+    notes: list[str]
+        config があるのに読めない場合の, 既定の割合に戻した知らせ (他は
+        空)
     """
-    # 既定に任せるだけなので, 読めない config は黙って空
+    # 既定に任せるだけなので, 読めない config は止めずに知らせる
     quest = load_library("ml_quest", "project_of")
     try:
         place = quest.project_of(problem).get("path")
     except READ_ERRORS:
         place = None
     rates: dict[str, float] = {}
-    if not isinstance(place, str):
-        return rates
+    notes: list[str] = []
+    if not isinstance(place, str) or not (
+        Path(place) / PROJECT_CONFIG
+    ).is_file():
+        return rates, notes
     try:
         config = yaml.safe_load(
             (Path(place) / PROJECT_CONFIG).read_text(encoding="utf-8")
         )
     except (OSError, UnicodeDecodeError, yaml.YAMLError):
-        return rates
+        config = None
+    if not isinstance(config, dict):
+        notes.append(
+            f"学習の設定 ({PROJECT_CONFIG}) を読めないので, 分ける割合は"
+            "既定の値です"
+        )
+        return rates, notes
     data = section(config, "data")
     for key in ("valid", "test"):
         value = data.get(key)
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             rates[key] = float(value)
 
-    return rates
+    return rates, notes
+
+
+def is_rank(problem: Any) -> bool:
+    """
+    問題の設定の受け持ちが並べるかを返す関数
+
+    並べる以外では rank_encoding を求めない (rank_encoding の無い古い
+    ML-Quest でも, 表の生成や列の予測を止めないため)
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+
+    Returns
+    ----------
+    rank: bool
+        受け持ちの答えが並べる (rank) か (要らなくなった問いの古い答えは
+        除外. 読めなければ False)
+    """
+    # 答えの読み方は ML-Quest に任せる
+    quest = load_library("ml_quest", "active_value")
+    try:
+        role = quest.active_value(problem, f"{quest.PART}.role")
+    except READ_ERRORS:
+        role = None
+    rank = bool(isinstance(role, str) and role == "rank")
+
+    return rank
 
 
 def rank_size(problem: Any, dataset: Path) -> Optional[RankSize]:
@@ -563,19 +604,24 @@ def rank_size(problem: Any, dataset: Path) -> Optional[RankSize]:
     Returns
     ----------
     rank: Optional[RankSize]
-        学習用の利用者と品物の数と決め方 (並べるでなければ None)
+        学習用の利用者と品物の数と決め方 (並べるでなければ None. 並べるの
+        受け持ちかは is_rank で先に見て, 並べる以外では ML-Quest の
+        rank_encoding を読まない)
 
     Raises
     ----------
     HTTPException
-        ML-Quest が古い場合は 501, 反応の表が無い場合は 404, 数を求め
-        られない場合 (列が無い, 時刻を読めない, 学習用か検証用が空になる
-        など) は 422
+        並べるで ML-Quest が古い場合は 501, 反応の表が無い場合は 404,
+        数を求められない場合 (列が無い, 時刻を読めない, 学習用か検証用が
+        空になるなど) は 422
     """
     # 読み方, 分割と番号の決まりは ML-Quest に任せる (学習のスクリプトと
     # 同じ数にするため). 割合はプロジェクトの config にあればそれ
+    if not is_rank(problem):
+        rank = None
+        return rank
     quest = load_library("ml_quest", "rank_encoding")
-    rates = split_rates(problem)
+    rates, notes = split_rates(problem)
     try:
         encoding = quest.rank_encoding(problem, dataset, **rates)
     except FileNotFoundError as error:
@@ -597,7 +643,8 @@ def rank_size(problem: Any, dataset: Path) -> Optional[RankSize]:
         rank = RankSize(
             users=encoding["users"], items=encoding["items"],
             rows=encoding["rows"], valid=rates.get("valid"),
-            test=rates.get("test"), notes=encoding.get("notes") or [],
+            test=rates.get("test"),
+            notes=[*notes, *(encoding.get("notes") or [])],
             problem=problem_name(problem)
         )
     except (*READ_ERRORS, ValidationError) as error:
