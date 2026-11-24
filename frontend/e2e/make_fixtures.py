@@ -111,19 +111,23 @@ def rank_problem() -> dict:
     Returns
     ----------
     problem: dict
-        問題の設定
+        問題の設定 (反応の表の列は member, item_id, ts)
     """
     # 見本の受け持ちを作り直す
     problem = ml_quest.example_problem(next(iter(ml_quest.EXAMPLES)))
     problem["ml"]["parts"] = [{}]
     for key in ("decision", "basis", "current"):
         problem["action"].pop(key, None)
+    problem = ml_quest.answer(
+        problem, "information.columns", ["member", "item_id", "ts"]
+    )
     answers = [
         ("role", "rank"), ("what", "試しの出力"), ("item", "1 件"),
         ("baseline", "今のやり方"), ("evaluation.link", "良くなると損が減る"),
         ("unit", "query"), ("output", "ranking"),
         ("target.source", "feedback"), ("method", "scratch"),
-        ("evaluation.metric", "ndcg")
+        ("evaluation.metric", "ndcg"), ("rank.user", "member"),
+        ("rank.item", "item_id"), ("rank.time", "ts"), ("rank.k", 5)
     ]
     for key, value in answers:
         problem = ml_quest.answer(problem, f"ml.parts.0.{key}", value)
@@ -148,7 +152,8 @@ def make_store(
     dataset: Path
         記録に書くデータセットのディレクトリ
     rank_project: Path
-        雛形のある問題の設定のプロジェクトのディレクトリ
+        雛形のある問題の設定のプロジェクトのディレクトリ (並べるの骨組みを
+        書き出し, 反応の表を置く)
 
     Returns
     ----------
@@ -173,8 +178,20 @@ def make_store(
     ml_quest.save_problem(no_spec, path / "problems" / "no_spec")
 
     # 受け持ちに合う雛形があり, 保存先にまだ定義が無いもの (別のプロジェクト.
-    # 他のテストが書く定義と重ならないように)
+    # 他のテストが書く定義と重ならないように). 反応の表は利用者 6 人と品物
+    # 4 つの 40 行で, 新しい 4 行だけに出る利用者 m9 と品物 i9 は, 骨組みの
+    # 割合 (検証用とテスト用が 1 割ずつ) では学習用にいない
+    ml_quest.make_project(rank_problem(), rank_project)
     ranked = ml_quest.record_project(rank_problem(), rank_project)
+    rows = [
+        {"member": f"m{number % 6}", "item_id": f"i{number % 4}",
+         "ts": number}
+        for number in range(36)
+    ] + [{"member": "m9", "item_id": "i9", "ts": 36 + number}
+         for number in range(4)]
+    reactions = Path(ranked["project"]["dataset"])
+    reactions.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(reactions, index=False)
     ml_quest.save_problem(ranked, path / "problems" / "rank")
 
 
@@ -230,7 +247,6 @@ if __name__ == "__main__":
     make_dataset(work / "dataset")
     make_masks(work / "masks")
     make_project(work / "project")
-    make_project(work / "rank_project")
     make_experiment(work / "project")
     make_store(
         work / "pathfinder", work / "project", work / "dataset",

@@ -358,6 +358,44 @@ test('雛形のある問題の設定を新しく始めるときに選ぶと雛�
   expect(await unload).toBe('beforeunload')
 })
 
+test('並べるの問題の設定を選んで入力と出力を作ると, 入力の大きさを学習用の利用者と品物の数にし, 決め方を出す', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const dialog = await openDialog(page)
+  await dialog
+    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('button', { name: /e2e の推薦/ })
+    .click()
+  await expect(
+    dialog.getByRole('region', { name: '受け持ちに合う雛形' }).getByRole('status'),
+  ).toContainText('雛形 two_tower_retrieval を開きました')
+
+  // 欄には記録の反応の表のファイルが入り, 問題の設定も渡す
+  const data = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
+  await expect(data.getByLabel('データセットのディレクトリ')).toHaveValue(
+    /rank_project\/outputs\/interactions\.csv$/,
+  )
+  await expect(data).toContainText('並べるなら, 入力 user と item の大きさを')
+  await data.getByRole('button', { name: '入力と出力を作る' }).click()
+
+  // 反応の表の 7 人と 5 品のうち, 学習用にいる 6 人と 4 品にする (決め方を初めに出す)
+  const result = data.getByRole('status')
+  await expect(result).toContainText('反応の表から入れました: 入力 user [4, 6], item [4, 4]')
+  await expect(result).toContainText(
+    '問題の設定 e2e の推薦 が並べるなので, 入力 user の大きさを学習用の利用者の数 6, ' +
+      'item の大きさを学習用の品物の数 4 にしました',
+  )
+  await expect(result).toContainText(
+    '分ける割合はプロジェクトの config の検証用 0.1 とテスト用 0.1',
+  )
+  await expect(result).toContainText('user_fc1 の in_features を 6 にしました')
+  await expect(result).toContainText('item_fc1 の in_features を 4 にしました')
+  await dialog.getByRole('button', { name: '閉じる' }).click()
+  await expect(page.locator('[data-id="user_fc1"]')).toBeVisible({ timeout: 20_000 })
+  await expect(page.locator('header')).toContainText('誤り 0 件', { timeout: 20_000 })
+})
+
 test('名前を書いてから問題の設定を一覧から選ぶと, 記録のプロジェクトの models/ の下の名前が保存先になる', async ({
   page,
 }) => {
