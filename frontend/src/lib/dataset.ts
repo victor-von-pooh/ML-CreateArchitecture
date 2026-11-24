@@ -27,6 +27,24 @@ export interface TableWidth {
   problem?: string | null
 }
 
+/** 並べるの学習用の利用者と品物の数と決め方 (ML-Quest の rank_encoding) */
+export interface RankSize {
+  /** 学習用の利用者の数 (入力 user の大きさ) */
+  users: number
+  /** 学習用の品物の数 (入力 item の大きさ) */
+  items: number
+  /** 分割の名前から反応の行の数 (時刻の順に分けたもの) */
+  rows: Record<string, number>
+  /** プロジェクトの config の検証用の割合 (書いていなければ無い. 学習のスクリプトの既定) */
+  valid?: number | null
+  /** プロジェクトの config のテスト用の割合 (書いていなければ無い. 学習のスクリプトの既定) */
+  test?: number | null
+  /** 除いた行の知らせ */
+  notes?: string[]
+  /** 問題の設定の名前 */
+  problem?: string | null
+}
+
 /** バックエンドが ML-EDA の model_inputs から返す値 */
 export interface DatasetInfo {
   path: string
@@ -39,6 +57,8 @@ export interface DatasetInfo {
   outputs?: number | null
   /** 表の生成の問題の設定で, 入力と出力の幅にした符号化した行の幅 (他は無い) */
   table?: TableWidth | null
+  /** 並べるの問題の設定で, 入力 user と item の大きさにした学習用の利用者と品物の数 (他は無い) */
+  rank?: RankSize | null
 }
 
 /** 入れた結果 (定義と, 知らせる文) */
@@ -157,6 +177,22 @@ export function tableWidthNote(table: TableWidth): string {
   )
 }
 
+/** 並べるで, 入力 user と item の大きさをどう決めたかの文 */
+export function rankSizeNote(rank: RankSize): string {
+  const from = rank.problem ? `問題の設定 ${rank.problem} が並べる` : '並べるの問題の設定'
+  const rates =
+    typeof rank.valid === 'number' && typeof rank.test === 'number'
+      ? `プロジェクトの config の検証用 ${rank.valid} とテスト用 ${rank.test}`
+      : '学習のスクリプトの既定'
+  const train = rank.rows.train ?? 0
+  return (
+    `${from}なので, 入力 user の大きさを学習用の利用者の数 ${rank.users}, ` +
+    `item の大きさを学習用の品物の数 ${rank.items} にしました ` +
+    `(反応を時刻の順に分けた学習用の反応 ${train} 行に出る数. 分ける割合は${rates}. ` +
+    '検証用とテスト用にだけ出る利用者と品物は数えません)'
+  )
+}
+
 /**
  * データセットの入力と出す値の数を定義に入れる
  *
@@ -172,14 +208,21 @@ export function tableWidthNote(table: TableWidth): string {
  * つなぎ, 出力が 1 つでつなぎ元が out_features か out_channels を持てばそれ
  * にする. つなぎ元が op.Reshape なら最初の次元とその前の out_features にする.
  * 表の生成の問題の設定 (info.table) では, 入力の列の次元と出す値の数が
- * 符号化した行の幅なので, その決め方を初めに知らせる
+ * 符号化した行の幅なので, その決め方を初めに知らせる. 並べるの問題の設定
+ * (info.rank) では, 入力 user と item の大きさが学習用の利用者と品物の数
+ * なので, その決め方と除いた行の知らせを初めに知らせる (出力は全ての組の
+ * 点数の表なので大きさを変えない)
  */
 export function applyDatasetInputs(
   spec: Spec,
   info: DatasetInfo,
   units: Map<string, UnitSpec>,
 ): DatasetApplied {
-  const notes: string[] = info.table ? [tableWidthNote(info.table)] : []
+  const notes: string[] = info.table
+    ? [tableWidthNote(info.table)]
+    : info.rank
+      ? [rankSizeNote(info.rank), ...(info.rank.notes ?? [])]
+      : []
   let next = spec
   // ノードと同じ名前の入力は作らない (つなぎ先が入力を指すように変わるため)
   const clashes = info.inputs.filter((item) => item.name in spec.nodes)
@@ -275,7 +318,11 @@ export function applyDatasetInputs(
   // 出す値の数
   const outputs = info.outputs ?? null
   if (outputs === null) {
-    notes.push('タスクを決めていないデータセットなので, 出力の大きさは変えていません')
+    notes.push(
+      info.rank
+        ? '出力 score は利用者と品物の全ての組の点数の表なので, 出力の大きさは変えていません'
+        : 'タスクを決めていないデータセットなので, 出力の大きさは変えていません',
+    )
     return { spec: next, notes }
   }
   const first = info.inputs[0]!
@@ -357,5 +404,6 @@ export function datasetSummary(info: DatasetInfo): string {
   else if (info.target) parts.push(`目的の列 ${info.target}`)
   if (info.classes) parts.push(`クラス ${info.classes.length}`)
   if (info.outputs != null) parts.push(`出す値 ${info.outputs}`)
-  return `データセットから入れました: ${parts.join(', ')}`
+  const from = info.rank ? '反応の表' : 'データセット'
+  return `${from}から入れました: ${parts.join(', ')}`
 }

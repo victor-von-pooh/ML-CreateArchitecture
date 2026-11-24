@@ -360,27 +360,31 @@ export interface paths {
          *
          *     問題の設定を渡し, それが表の生成なら, 入力の最後の次元と出す値の数を
          *     符号化した行の幅 (ML-Quest の table_encoding) にする (学習のスクリプト
-         *     が学ぶ行の幅. 列の数とは違う)
+         *     が学ぶ行の幅. 列の数とは違う). 並べるなら, 場所は反応の表のファイルで,
+         *     入力 user と item の大きさを学習用の利用者と品物の数 (ML-Quest の
+         *     rank_encoding) にする
          *
          *     Parameters
          *     ----------
          *     body: DatasetBody
-         *         データセットのディレクトリと, 問題の設定のファイル (任意)
+         *         データセットのディレクトリ (並べるなら反応の表のファイル) と,
+         *         問題の設定のファイル (任意)
          *
          *     Returns
          *     ----------
          *     result: DatasetInputs
          *         入力 (形はバッチの次元を例の大きさにしたものと, データセットの
          *         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
-         *         符号化した行の幅
+         *         符号化した行の幅, 並べるの学習用の利用者と品物の数
          *
          *     Raises
          *     ----------
          *     HTTPException
          *         ML-EDA か ML-Quest が要るのに無い場合は 501, ディレクトリ, 説明か
          *         問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の
-         *         組など) と, 表の生成の幅を求められない場合と, 表の生成で入力が
-         *         表の行 (バッチと列の 2 次元の 1 つ) でない場合は 422
+         *         組など) と, 表の生成の幅か並べるの数を求められない場合と, 表の生成
+         *         で入力が表の行 (バッチと列の 2 次元の 1 つ) でない場合は 422.
+         *         並べるで反応の表が無い場合は 404
          */
         post: operations["read_dataset_inputs"];
         delete?: never;
@@ -618,7 +622,7 @@ export interface components {
             path: string;
             /**
              * Problem
-             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする)
+             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. 並べるなら, path は反応の表のファイルで, 入力 user と item の大きさを ML-Quest の rank_encoding の学習用の利用者と品物の数にする)
              */
             problem?: string | null;
         };
@@ -662,6 +666,8 @@ export interface components {
             outputs?: number | null;
             /** @description 表の生成の問題の設定で, 入力と出力の幅にした符号化した行の幅 (他は無し) */
             table?: components["schemas"]["TableWidth"] | null;
+            /** @description 並べるの問題の設定で, 入力 user と item の大きさにした学習用の利用者と品物の数 (他は無し) */
+            rank?: components["schemas"]["RankSize"] | null;
         };
         /** ExampleSummary */
         ExampleSummary: {
@@ -1030,6 +1036,46 @@ export interface components {
              * @default false
              */
             default: boolean;
+        };
+        /** RankSize */
+        RankSize: {
+            /**
+             * Users
+             * @description 学習用の利用者の数 (入力 user の大きさ)
+             */
+            users: number;
+            /**
+             * Items
+             * @description 学習用の品物の数 (入力 item の大きさ)
+             */
+            items: number;
+            /**
+             * Rows
+             * @description 分割の名前から反応の行の数 (時刻の順に分けたもの)
+             */
+            rows: {
+                [key: string]: number;
+            };
+            /**
+             * Valid
+             * @description プロジェクトの config の検証用の反応の行の割合 (書いていなければ無し. 学習のスクリプトの既定)
+             */
+            valid?: number | null;
+            /**
+             * Test
+             * @description プロジェクトの config のテスト用の反応の行の割合 (書いていなければ無し. 学習のスクリプトの既定)
+             */
+            test?: number | null;
+            /**
+             * Notes
+             * @description 除いた行の知らせ
+             */
+            notes?: string[];
+            /**
+             * Problem
+             * @description 問題の設定の名前
+             */
+            problem?: string | null;
         };
         /** SpecBody */
         SpecBody: {

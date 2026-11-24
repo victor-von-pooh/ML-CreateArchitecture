@@ -416,3 +416,71 @@ describe('applyDatasetInputs (表の生成)', () => {
     expect(notes.join('\n')).not.toContain('1 行の長さ')
   })
 })
+
+describe('applyDatasetInputs (並べる)', () => {
+  /** 同梱の例 two_tower_retrieval の入力と 1 段目の全結合 (利用者 12 人, 品物 20) */
+  const tower: Spec = {
+    ...emptySpec(),
+    inputs: {
+      user: { shape: [8, 12], ui: { x: 0, y: 60 } },
+      item: { shape: [8, 20], ui: { x: 0, y: 300 } },
+    },
+    nodes: {
+      user_fc1: {
+        unit: 'nn.Linear',
+        params: { in_features: 12, out_features: 32 },
+        inputs: 'user',
+      },
+      item_fc1: {
+        unit: 'nn.Linear',
+        params: { in_features: 20, out_features: 32 },
+        inputs: 'item',
+      },
+    },
+    outputs: { user_embedding: 'user_fc1', item_embedding: 'item_fc1' },
+  }
+  /** 学習用の利用者 6 人と品物 4 つ (config の割合で分けた) */
+  const reactions: DatasetInfo = {
+    path: '/proj/data/reactions.csv',
+    inputs: [
+      { name: 'user', shape: [4, 6], dtype: 'float32', dataset_shape: [null, 6] },
+      { name: 'item', shape: [4, 4], dtype: 'float32', dataset_shape: [null, 4] },
+    ],
+    outputs: null,
+    rank: {
+      users: 6,
+      items: 4,
+      rows: { train: 31, valid: 4, test: 4 },
+      valid: 0.1,
+      test: 0.1,
+      notes: ['反応の強さ (qty) が 0 以下か数でない 1 行を除きました'],
+      problem: '会員の品',
+    },
+  }
+
+  it('入力 user と item の大きさを学習用の利用者と品物の数にし, 決め方を初めに知らせる', () => {
+    const { spec, notes } = applyDatasetInputs(tower, reactions, units)
+    expect(spec.inputs.user).toMatchObject({ shape: [4, 6], dtype: 'float32' })
+    expect(spec.inputs.item).toMatchObject({ shape: [4, 4], dtype: 'float32' })
+    expect(spec.nodes.user_fc1!.params).toMatchObject({ in_features: 6, out_features: 32 })
+    expect(spec.nodes.item_fc1!.params).toMatchObject({ in_features: 4, out_features: 32 })
+    expect(notes[0]).toBe(
+      '問題の設定 会員の品 が並べるなので, 入力 user の大きさを学習用の利用者の数 6, ' +
+        'item の大きさを学習用の品物の数 4 にしました (反応を時刻の順に分けた学習用の反応 31 行に出る数. ' +
+        '分ける割合はプロジェクトの config の検証用 0.1 とテスト用 0.1. ' +
+        '検証用とテスト用にだけ出る利用者と品物は数えません)',
+    )
+    expect(notes[1]).toBe('反応の強さ (qty) が 0 以下か数でない 1 行を除きました')
+    expect(notes).toContain(
+      '出力 score は利用者と品物の全ての組の点数の表なので, 出力の大きさは変えていません',
+    )
+    expect(datasetSummary(reactions)).toBe('反応の表から入れました: 入力 user [4, 6], item [4, 4]')
+  })
+
+  it('config に割合が無ければ既定の割合と知らせる', () => {
+    const rank = { ...reactions.rank!, valid: null, test: null, problem: null }
+    const { notes } = applyDatasetInputs(tower, { ...reactions, rank }, units)
+    expect(notes[0]).toContain('並べるの問題の設定なので')
+    expect(notes[0]).toContain('分ける割合は学習のスクリプトの既定.')
+  })
+})
