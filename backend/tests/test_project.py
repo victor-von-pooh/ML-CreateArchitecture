@@ -1514,19 +1514,25 @@ def rank_problem(quest: Any) -> dict[str, Any]:
     Returns
     ----------
     problem: dict[str, Any]
-        問題の設定 (雛形は two_tower_retrieval)
+        問題の設定 (雛形は two_tower_retrieval. 反応の表の列は member,
+        item_id, ts, qty)
     """
     # 見本の受け持ちを作り直す (ML-Quest のテストの受け持ちの入れ替えと同じ)
     problem = quest.example_problem(next(iter(quest.EXAMPLES)))
     problem["ml"]["parts"] = [{}]
     for key in ("decision", "basis", "current"):
         problem["action"].pop(key, None)
+    problem = quest.answer(
+        problem, "information.columns", ["member", "item_id", "ts", "qty"]
+    )
     answers = [
         ("role", "rank"), ("what", "試しの出力"), ("item", "1 件"),
         ("baseline", "今のやり方"), ("evaluation.link", "良くなると損が減る"),
         ("unit", "query"), ("output", "ranking"),
         ("target.source", "feedback"), ("method", "scratch"),
-        ("evaluation.metric", "ndcg")
+        ("evaluation.metric", "ndcg"), ("rank.user", "member"),
+        ("rank.item", "item_id"), ("rank.time", "ts"),
+        ("rank.reaction", "qty"), ("rank.k", 5)
     ]
     for key, value in answers:
         problem = quest.answer(problem, f"ml.parts.0.{key}", value)
@@ -1805,3 +1811,179 @@ def test_dataset_inputs_table_generation(
     )
     assert response.status_code == 422
     assert "目的の列" in response.json()["detail"]
+
+
+def test_dataset_inputs_rank(client: TestClient, tmp_path: Path) -> None:
+    """
+    並べるの問題の設定と反応の表を渡すと, 入力 user と item の大きさを
+    学習用の利用者と品物の数にし, 割合はプロジェクトの config から読む
+    ことを確かめる関数 (ML-EDA と rank_encoding のある ML-Quest が無ければ
+    飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 読み込みに要るライブラリ
+    pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    if not hasattr(ml_quest, "rank_encoding"):
+        pytest.skip("ML-Quest に rank_encoding がありません")
+
+    # 利用者 6 人と品物 4 つの 40 行 (時刻の順で, 新しい 4 行だけに出る
+    # 利用者 m9 と品物 i9. 反応の強さ 0 の行を 1 つ)
+    rows = [
+        {"member": f"m{number % 6}", "item_id": f"i{number % 4}",
+         "ts": number, "qty": 0 if number == 3 else 1}
+        for number in range(36)
+    ] + [{"member": "m9", "item_id": "i9", "ts": 36 + number, "qty": 1}
+         for number in range(4)]
+    source = tmp_path / "reactions.csv"
+    pd.DataFrame(rows).to_csv(source, index=False)
+    problem = ml_quest.attach_data(
+        rank_problem(ml_quest), str(source), copy_to=str(tmp_path / "copies")
+    )
+    project = tmp_path / "proj"
+    ml_quest.make_project(problem, project)
+    problem = ml_quest.record_project(problem, project)
+    place = tmp_path / "problem.yaml"
+    ml_quest.save_problem(problem, place)
+    dataset = problem["project"]["dataset"]
+
+    # 骨組みの config の割合 (検証用とテスト用が 1 割ずつ) では m9 と i9
+    # は学習用にいない
+    response = client.post(
+        "/api/dataset/inputs", json={"path": dataset, "problem": str(place)}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [(item["name"], item["shape"], item["dataset_shape"])
+            for item in body["inputs"]] == [
+        ("user", [4, 6], [None, 6]), ("item", [4, 4], [None, 4])
+    ]
+    assert body["outputs"] is None and body["table"] is None
+    rank = body["rank"]
+    assert (rank["users"], rank["items"]) == (6, 4)
+    assert (rank["valid"], rank["test"]) == (0.1, 0.1)
+    assert sum(rank["rows"].values()) == 39
+    assert rank["problem"] == problem["name"]
+    assert any("反応の強さ" in note for note in rank["notes"])
+
+    # config の割合を小さくすると, 学習用に m9 と i9 も入る
+    config_path = project / "configs" / "default" / "train.yaml"
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config["data"].update(valid=0.02, test=0.0)
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    response = client.post(
+        "/api/dataset/inputs", json={"path": dataset, "problem": str(place)}
+    )
+    assert response.status_code == 200, response.text
+    rank = response.json()["rank"]
+    assert (rank["users"], rank["items"]) == (7, 5)
+    assert (rank["valid"], rank["test"]) == (0.02, 0.0)
+    assert set(rank["rows"]) == {"train", "valid"}
+
+    # config に割合が無ければ学習のスクリプトの既定 (無し と返す)
+    del config["data"]["valid"], config["data"]["test"]
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    response = client.post(
+        "/api/dataset/inputs", json={"path": dataset, "problem": str(place)}
+    )
+    assert response.status_code == 200, response.text
+    rank = response.json()["rank"]
+    assert (rank["users"], rank["items"]) == (6, 4)
+    assert (rank["valid"], rank["test"]) == (None, None)
+
+    # 反応の表の無い場所は 404, 分けられない割合は 422
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(tmp_path / "none.csv"), "problem": str(place)}
+    )
+    assert response.status_code == 404
+    config["data"].update(valid=0.0)
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    response = client.post(
+        "/api/dataset/inputs", json={"path": dataset, "problem": str(place)}
+    )
+    assert response.status_code == 422
+    assert "data.valid" in response.json()["detail"]
+
+    # 学習の設定が壊れていて読めなければ, 既定の割合に戻して知らせる
+    config_path.write_text("data: [", encoding="utf-8")
+    response = client.post(
+        "/api/dataset/inputs", json={"path": dataset, "problem": str(place)}
+    )
+    assert response.status_code == 200, response.text
+    rank = response.json()["rank"]
+    assert (rank["users"], rank["items"]) == (6, 4)
+    assert (rank["valid"], rank["test"]) == (None, None)
+    assert rank["notes"][0] == (
+        "学習の設定 (configs/default/train.yaml) を読めないので, 分ける割合"
+        "は既定の値です"
+    )
+
+
+def test_dataset_inputs_without_rank_encoding(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    rank_encoding の無い古い ML-Quest でも, 並べる以外の問題の設定は 501
+    にならず, 並べるの問題の設定だけが 501 になることを確かめる関数
+    (ML-EDA と ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        ML-Quest の rank_encoding を外す
+
+    Returns
+    ----------
+    None
+    """
+    # 目的の列の無い表のデータセットと, 表の生成, 列の予測, 並べるの
+    # 問題の設定
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    frame = pd.DataFrame({"age": np.arange(30.0), "city": ["a", "b"] * 15})
+    source = tmp_path / "table.csv"
+    frame.to_csv(source, index=False)
+    dataset = tmp_path / "ds"
+    ml_eda.export_dataset(ml_eda.load_data(source), {
+        "task": "none", "steps": [],
+        "split": {"method": "random", "valid": 0.2, "test": 0.2}
+    }, dataset)
+    places = {}
+    for name, problem in (
+        ("table", table_generation_problem(ml_quest)),
+        ("column", ml_quest.example_problem("総菜の作る量")),
+        ("rank", rank_problem(ml_quest)),
+    ):
+        places[name] = tmp_path / f"{name}.yaml"
+        ml_quest.save_problem(problem, places[name])
+
+    # rank_encoding が無くても, 並べる以外はそのまま読む
+    monkeypatch.delattr(ml_quest, "rank_encoding")
+    for name in ("table", "column"):
+        response = client.post(
+            "/api/dataset/inputs",
+            json={"path": str(dataset), "problem": str(places[name])}
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["rank"] is None
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(dataset), "problem": str(places["rank"])}
+    )
+    assert response.status_code == 501
+    assert "rank_encoding" in response.json()["detail"]

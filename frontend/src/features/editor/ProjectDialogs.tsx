@@ -302,7 +302,7 @@ function DatasetSection({
   disabled: string | null
   /** 学習のスクリプトが読むデータセットの場所 (問題の設定の記録か, 無ければ config の data.dataset. この欄に打つ前か, 一覧から問題の設定を選んだ場合に入れる) */
   suggested: Suggestion | null
-  /** 最後に保存先を確かめた問題の設定のファイル (表の生成なら幅を符号化した行の幅にするため. 無ければ null) */
+  /** 最後に保存先を確かめた問題の設定のファイル (表の生成なら幅を符号化した行の幅に, 並べるなら入力の大きさを学習用の利用者と品物の数にするため. 無ければ null) */
   problem: string | null
   /** 読んだ結果を定義に入れ, 知らせる文を返す */
   onApply: (info: DatasetInputs) => string[]
@@ -361,7 +361,7 @@ function DatasetSection({
       >
         <PathField
           label="データセットのディレクトリ"
-          hint="ML-Fathom (ML-EDA) で書き出したディレクトリ (dataset.yaml を持つもの) の絶対のパス. 入力の名前, 形, 型と出力の大きさを定義に入れます (元に戻すで戻せます)"
+          hint="ML-Fathom (ML-EDA) で書き出したディレクトリ (dataset.yaml を持つもの) の絶対のパス. 並べるの問題の設定では, 学習のスクリプトが読む反応の表のファイル. 入力の名前, 形, 型と出力の大きさを定義に入れます (元に戻すで戻せます)"
           value={path}
           onChange={(value) => {
             setTouched(true)
@@ -373,7 +373,8 @@ function DatasetSection({
           <p className="text-[11px] text-ink-3">
             問題の設定 <span className="font-mono break-all">{problem}</span> も渡します.
             表の生成なら, 入力と出力の幅を, 学習で使う 1 行の長さにします (数の項目は 1 つずつ,
-            分類の項目は選べる値の数の合計)
+            分類の項目は選べる値の数の合計). 並べるなら, 入力 user と item の大きさを,
+            反応を時刻の順に分けた学習用の反応にいる利用者と品物の数にします
           </p>
         )}
         <Button

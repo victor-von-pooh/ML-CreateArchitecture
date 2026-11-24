@@ -78,7 +78,9 @@ class DatasetBody(BaseModel):
     problem: Optional[str] = Field(
         default=None,
         description="問題の設定のファイルの絶対のパス (表の生成なら, 入力と"
-        "出力の幅を ML-Quest の table_encoding の符号化した行の幅にする)"
+        "出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. "
+        "並べるなら, path は反応の表のファイルで, 入力 user と item の大きさ"
+        "を ML-Quest の rank_encoding の学習用の利用者と品物の数にする)"
     )
 
 
@@ -121,6 +123,32 @@ class TableWidth(BaseModel):
     )
 
 
+class RankSize(BaseModel):
+    # 並べるの学習用の利用者と品物の数と, その決め方 (ML-Quest の
+    # rank_encoding)
+    users: int = Field(description="学習用の利用者の数 (入力 user の大きさ)")
+    items: int = Field(description="学習用の品物の数 (入力 item の大きさ)")
+    rows: dict[str, int] = Field(
+        description="分割の名前から反応の行の数 (時刻の順に分けたもの)"
+    )
+    valid: Optional[float] = Field(
+        default=None,
+        description="プロジェクトの config の検証用の反応の行の割合 (書いて"
+        "いなければ無し. 学習のスクリプトの既定)"
+    )
+    test: Optional[float] = Field(
+        default=None,
+        description="プロジェクトの config のテスト用の反応の行の割合 (書いて"
+        "いなければ無し. 学習のスクリプトの既定)"
+    )
+    notes: list[str] = Field(
+        default_factory=list, description="除いた行の知らせ"
+    )
+    problem: Optional[str] = Field(
+        default=None, description="問題の設定の名前"
+    )
+
+
 class DatasetInputs(BaseModel):
     # データセットの場所と, ML-EDA の model_inputs の結果
     path: str
@@ -137,6 +165,11 @@ class DatasetInputs(BaseModel):
         default=None,
         description="表の生成の問題の設定で, 入力と出力の幅にした符号化した"
         "行の幅 (他は無し)"
+    )
+    rank: Optional[RankSize] = Field(
+        default=None,
+        description="並べるの問題の設定で, 入力 user と item の大きさにした"
+        "学習用の利用者と品物の数 (他は無し)"
     )
 
 
@@ -355,14 +388,69 @@ def example_shape(shape: Any) -> list[int]:
     return example
 
 
-def table_width(problem_path: Path, dataset: Path) -> Optional[TableWidth]:
+def read_problem(problem_path: Path) -> Any:
     """
-    表の生成の問題の設定なら, データセットの符号化した行の幅を求める関数
+    データセットから入力と出力を作るときに渡された問題の設定を読む関数
 
     Parameters
     ----------
     problem_path: Path
         問題の設定のファイル
+
+    Returns
+    ----------
+    problem: Any
+        ML-Quest の load_problem で読んだ問題の設定
+
+    Raises
+    ----------
+    HTTPException
+        ML-Quest が無い場合は 501, ファイルが無い場合は 404, 読めない場合は
+        422
+    """
+    # 読み方と版の確かめは ML-Quest に任せる
+    if not problem_path.is_file():
+        raise HTTPException(404, f"問題の設定 {problem_path} がありません")
+    quest = load_library("ml_quest", "load_problem")
+    try:
+        problem = quest.load_problem(problem_path)
+    except READ_ERRORS as error:
+        raise HTTPException(
+            422, f"問題の設定を読めません: {error}"
+        ) from error
+
+    return problem
+
+
+def problem_name(problem: Any) -> Optional[str]:
+    """
+    問題の設定の名前を返す関数
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定
+
+    Returns
+    ----------
+    name: Optional[str]
+        名前 (文字でなければ None)
+    """
+    # 手で崩した値は使わない
+    value = problem.get("name") if isinstance(problem, dict) else None
+    name = value if isinstance(value, str) else None
+
+    return name
+
+
+def table_width(problem: Any, dataset: Path) -> Optional[TableWidth]:
+    """
+    表の生成の問題の設定なら, データセットの符号化した行の幅を求める関数
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
     dataset: Path
         データセットのディレクトリ
 
@@ -374,21 +462,12 @@ def table_width(problem_path: Path, dataset: Path) -> Optional[TableWidth]:
     Raises
     ----------
     HTTPException
-        ML-Quest が無いか古い場合は 501, 問題の設定のファイルが無い場合は
-        404, 問題の設定を読めない場合と, 幅を求められない場合 (目的の列か
-        欠損のある列がある, 種類の値が多すぎる列があるなど) は 422
+        ML-Quest が古い場合は 501, 幅を求められない場合 (目的の列か欠損の
+        ある列がある, 種類の値が多すぎる列があるなど) は 422
     """
-    # 読み方と列の符号化の決まりは ML-Quest に任せる (学習のスクリプトと
-    # 同じ幅にするため)
-    if not problem_path.is_file():
-        raise HTTPException(404, f"問題の設定 {problem_path} がありません")
+    # 列の符号化の決まりは ML-Quest に任せる (学習のスクリプトと同じ幅に
+    # するため)
     quest = load_library("ml_quest", "table_encoding")
-    try:
-        problem = quest.load_problem(problem_path)
-    except READ_ERRORS as error:
-        raise HTTPException(
-            422, f"問題の設定を読めません: {error}"
-        ) from error
     try:
         encoding = quest.table_encoding(problem, dataset)
     except READ_ERRORS as error:
@@ -408,12 +487,10 @@ def table_width(problem_path: Path, dataset: Path) -> Optional[TableWidth]:
             len(column["categories"]) for column in columns
             if column["type"] == "category"
         )
-        name = problem.get("name") if isinstance(problem, dict) else None
         table = TableWidth(
             width=encoding["width"], numbers=encoding["numbers"],
             categories=encoding["categories"], values=values,
-            columns=len(columns),
-            problem=name if isinstance(name, str) else None
+            columns=len(columns), problem=problem_name(problem)
         )
     except (*READ_ERRORS, ValidationError) as error:
         raise HTTPException(
@@ -430,6 +507,190 @@ def table_width(problem_path: Path, dataset: Path) -> Optional[TableWidth]:
     return table
 
 
+def split_rates(problem: Any) -> tuple[dict[str, float], list[str]]:
+    """
+    問題の設定が記録したプロジェクトの config から, 反応を時刻の順に分ける
+    割合を読む関数
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+
+    Returns
+    ----------
+    rates: dict[str, float]
+        valid と test のうち config に数で書いてあるもの (プロジェクトの
+        記録か config が無いか読めなければ空. 学習のスクリプトの既定に
+        任せる)
+    notes: list[str]
+        config があるのに読めない場合の, 既定の割合に戻した知らせ (他は
+        空)
+    """
+    # 既定に任せるだけなので, 読めない config は止めずに知らせる
+    quest = load_library("ml_quest", "project_of")
+    try:
+        place = quest.project_of(problem).get("path")
+    except READ_ERRORS:
+        place = None
+    rates: dict[str, float] = {}
+    notes: list[str] = []
+    if not isinstance(place, str) or not (
+        Path(place) / PROJECT_CONFIG
+    ).is_file():
+        return rates, notes
+    try:
+        config = yaml.safe_load(
+            (Path(place) / PROJECT_CONFIG).read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        config = None
+    if not isinstance(config, dict):
+        notes.append(
+            f"学習の設定 ({PROJECT_CONFIG}) を読めないので, 分ける割合は"
+            "既定の値です"
+        )
+        return rates, notes
+    data = section(config, "data")
+    for key in ("valid", "test"):
+        value = data.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            rates[key] = float(value)
+
+    return rates, notes
+
+
+def is_rank(problem: Any) -> bool:
+    """
+    問題の設定の受け持ちが並べるかを返す関数
+
+    並べる以外では rank_encoding を求めない (rank_encoding の無い古い
+    ML-Quest でも, 表の生成や列の予測を止めないため)
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+
+    Returns
+    ----------
+    rank: bool
+        受け持ちの答えが並べる (rank) か (要らなくなった問いの古い答えは
+        除外. 読めなければ False)
+    """
+    # 答えの読み方は ML-Quest に任せる
+    quest = load_library("ml_quest", "active_value")
+    try:
+        role = quest.active_value(problem, f"{quest.PART}.role")
+    except READ_ERRORS:
+        role = None
+    rank = bool(isinstance(role, str) and role == "rank")
+
+    return rank
+
+
+def rank_size(problem: Any, dataset: Path) -> Optional[RankSize]:
+    """
+    並べるの問題の設定なら, 反応の表から学習用の利用者と品物の数を求める
+    関数
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+    dataset: Path
+        反応の表のファイル (学習のスクリプトの config の data.dataset)
+
+    Returns
+    ----------
+    rank: Optional[RankSize]
+        学習用の利用者と品物の数と決め方 (並べるでなければ None. 並べるの
+        受け持ちかは is_rank で先に見て, 並べる以外では ML-Quest の
+        rank_encoding を読まない)
+
+    Raises
+    ----------
+    HTTPException
+        並べるで ML-Quest が古い場合は 501, 反応の表が無い場合は 404,
+        数を求められない場合 (列が無い, 時刻を読めない, 学習用か検証用が
+        空になるなど) は 422
+    """
+    # 読み方, 分割と番号の決まりは ML-Quest に任せる (学習のスクリプトと
+    # 同じ数にするため). 割合はプロジェクトの config にあればそれ
+    if not is_rank(problem):
+        rank = None
+        return rank
+    quest = load_library("ml_quest", "rank_encoding")
+    rates, notes = split_rates(problem)
+    try:
+        encoding = quest.rank_encoding(problem, dataset, **rates)
+    except FileNotFoundError as error:
+        raise HTTPException(
+            404, f"反応の表がありません: {error}"
+        ) from error
+    except READ_ERRORS as error:
+        raise HTTPException(
+            422,
+            "並べるの, 学習用の利用者と品物の数 (入力 user と item の大きさ)"
+            f" を求められません: {error}"
+        ) from error
+    if encoding is None:
+        rank = None
+        return rank
+
+    # 数と決め方 (形の崩れた値は 422)
+    try:
+        rank = RankSize(
+            users=encoding["users"], items=encoding["items"],
+            rows=encoding["rows"], valid=rates.get("valid"),
+            test=rates.get("test"),
+            notes=[*notes, *(encoding.get("notes") or [])],
+            problem=problem_name(problem)
+        )
+    except (*READ_ERRORS, ValidationError) as error:
+        raise HTTPException(
+            422,
+            f"学習用の利用者と品物の数を読めません: {error}"
+        ) from error
+    if rank.users < 1 or rank.items < 1:
+        raise HTTPException(
+            422, "学習用の反応に利用者か品物がいません"
+        )
+
+    return rank
+
+
+def rank_inputs(path: Path, rank: RankSize) -> DatasetInputs:
+    """
+    並べるの 2 塔のモデルの入力 (利用者と品物の番号のワンホット) を作る
+    関数
+
+    Parameters
+    ----------
+    path: Path
+        反応の表のファイル
+    rank: RankSize
+        学習用の利用者と品物の数
+
+    Returns
+    ----------
+    result: DatasetInputs
+        入力 user ((件数, 利用者の数)) と item ((件数, 品物の数)) の
+        float32 (出す値の数は無し. 出力は全ての組の点数の表)
+    """
+    # 名前は学習のスクリプトと同梱の例 two_tower_retrieval の入力
+    inputs = [
+        DatasetInput(
+            name=name, shape=[EXAMPLE_SIZE, size], dtype="float32",
+            dataset_shape=[None, size]
+        )
+        for name, size in (("user", rank.users), ("item", rank.items))
+    ]
+    result = DatasetInputs(path=str(path), inputs=inputs, rank=rank)
+
+    return result
+
+
 @router.post("/dataset/inputs")
 def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     """
@@ -437,30 +698,43 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
 
     問題の設定を渡し, それが表の生成なら, 入力の最後の次元と出す値の数を
     符号化した行の幅 (ML-Quest の table_encoding) にする (学習のスクリプト
-    が学ぶ行の幅. 列の数とは違う)
+    が学ぶ行の幅. 列の数とは違う). 並べるなら, 場所は反応の表のファイルで,
+    入力 user と item の大きさを学習用の利用者と品物の数 (ML-Quest の
+    rank_encoding) にする
 
     Parameters
     ----------
     body: DatasetBody
-        データセットのディレクトリと, 問題の設定のファイル (任意)
+        データセットのディレクトリ (並べるなら反応の表のファイル) と,
+        問題の設定のファイル (任意)
 
     Returns
     ----------
     result: DatasetInputs
         入力 (形はバッチの次元を例の大きさにしたものと, データセットの
         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
-        符号化した行の幅
+        符号化した行の幅, 並べるの学習用の利用者と品物の数
 
     Raises
     ----------
     HTTPException
         ML-EDA か ML-Quest が要るのに無い場合は 501, ディレクトリ, 説明か
         問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の
-        組など) と, 表の生成の幅を求められない場合と, 表の生成で入力が
-        表の行 (バッチと列の 2 次元の 1 つ) でない場合は 422
+        組など) と, 表の生成の幅か並べるの数を求められない場合と, 表の生成
+        で入力が表の行 (バッチと列の 2 次元の 1 つ) でない場合は 422.
+        並べるで反応の表が無い場合は 404
     """
-    # 説明の版と読み方は ML-EDA に任せる
+    # 並べるは反応の表のファイルから 2 塔の入力を作る
     path = absolute_path(body.path)
+    problem = None
+    if body.problem and body.problem.strip():
+        problem = read_problem(absolute_path(body.problem))
+        rank = rank_size(problem, path)
+        if rank is not None:
+            result = rank_inputs(path, rank)
+            return result
+
+    # 説明の版と読み方は ML-EDA に任せる
     if not path.is_dir():
         raise HTTPException(404, f"{path} にディレクトリがありません")
     eda = load_library("ml_eda", "model_inputs")
@@ -497,9 +771,7 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
 
     # 表の生成は, 入力 (バッチと列の 2 次元) の列の次元と出す値の数を
     # 符号化した行の幅に
-    table = None
-    if body.problem and body.problem.strip():
-        table = table_width(absolute_path(body.problem), path)
+    table = None if problem is None else table_width(problem, path)
     if table is not None:
         if len(inputs) != 1 or len(inputs[0].shape) != 2:
             raise HTTPException(
