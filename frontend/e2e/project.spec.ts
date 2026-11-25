@@ -12,6 +12,9 @@ const project = fileURLToPath(new URL('.work/project', import.meta.url))
 const modelFile = `${project}/models/model.yaml`
 // 受け持ちに合う雛形 (two_tower_retrieval) のある問題の設定のプロジェクト
 const rankProject = fileURLToPath(new URL('.work/rank_project', import.meta.url))
+// 異常の検知の問題の設定のプロジェクト (雛形 tabular_autoencoder は e2e/serve_app.py が
+// ML-Quest の受け渡しに足す)
+const anomalyProject = fileURLToPath(new URL('.work/anomaly_project', import.meta.url))
 
 // プロジェクトへの保存は 2 回目に上書きを確かめるので, 書いた順に実行
 test.describe.configure({ mode: 'serial' })
@@ -356,6 +359,37 @@ test('雛形のある問題の設定を新しく始めるときに選ぶと雛�
   )
   await page.close({ runBeforeUnload: true })
   expect(await unload).toBe('beforeunload')
+})
+
+test('異常の検知の問題の設定を新しく始めるときに選ぶと, 自己符号化器の雛形を開く', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const dialog = await openDialog(page)
+  const anomaly = dialog
+    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('button', { name: /e2e の異常の検知/ })
+  await expect(anomaly).toContainText('雛形: tabular_autoencoder')
+
+  // 新規の画面で選ぶと雛形を開き, 保存先は記録の場所
+  await anomaly.click()
+  const note = dialog.getByRole('region', { name: '受け持ちに合う雛形' })
+  await expect(note.getByRole('status')).toContainText(
+    '問題の設定 e2e の異常の検知 の受け持ちに合う雛形 tabular_autoencoder を開きました',
+  )
+  await expect(note.getByRole('button')).toHaveCount(0)
+  await expect(
+    dialog
+      .getByRole('region', { name: 'プロジェクトに保存' })
+      .getByRole('group', { name: '保存先' }),
+  ).toContainText(`${anomalyProject}/models/model.yaml`)
+  await dialog.getByRole('button', { name: '閉じる' }).click()
+
+  // 誤り 0 件は確認の結果が届く前にも出るので, 雛形に固有の形を先に待つ
+  await expect(page.locator('[data-id="enc2"]')).toContainText('[8, 4]', { timeout: 20_000 })
+  await expect(page.locator('[data-id="dec2"]')).toContainText('[8, 16]')
+  await expect(page.locator('header')).toContainText('誤り 0 件')
+  await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
 })
 
 test('並べるの問題の設定を選んで入力と出力を作ると, 入力の大きさを学習用の利用者と品物の数にし, 決め方を出す', async ({

@@ -7,6 +7,7 @@ cd "$(dirname "$0")"
 WORK="$PWD/.work"
 MODULES="$PWD/custom_modules"
 FIXTURES="$PWD/make_fixtures.py"
+APP="$PWD/serve_app.py"
 PORT="${E2E_PORT:-8792}"
 
 # 前回の結果を消して, 決まったトークンで起動. 学習済みの重みのライセンスなどで
@@ -25,8 +26,10 @@ torch.save({'model.fc.weight': torch.ones(4, 16),
 # データセット, 学習のプロジェクトと ML-Pathfinder の置き場
 uv run python "$FIXTURES" "$WORK"
 # 自作の部品は, 起動の設定 (ML_CREATEARCHITECTURE_MODULES) に書いた見本の
-# モジュールだけを読み込む. 問題の設定の一覧は作業用の ML-Pathfinder の置き場
+# モジュールだけを読み込む. 問題の設定の一覧は作業用の ML-Pathfinder の置き場.
+# 異常の検知の問題の設定の雛形の名前は, serve_app.py が ML-Quest の受け渡しに
+# 足す
 ML_PATHFINDER_HOME="$WORK/pathfinder" \
   ML_CREATEARCHITECTURE_HOME="$WORK/home" ML_CREATEARCHITECTURE_TOKEN=e2e-token \
   ML_CREATEARCHITECTURE_MODULES=e2e_lab_units PYTHONPATH="$MODULES" \
-  HF_HUB_OFFLINE=1 exec uv run ml-createarchitecture --port "$PORT"
+  HF_HUB_OFFLINE=1 exec uv run python "$APP" --port "$PORT"

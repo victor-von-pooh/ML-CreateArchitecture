@@ -137,7 +137,8 @@ def rank_problem() -> dict:
 
 
 def make_store(
-    path: Path, project: Path, dataset: Path, rank_project: Path
+    path: Path, project: Path, dataset: Path, rank_project: Path,
+    anomaly_project: Path
 ) -> None:
     """
     ML-Pathfinder の置き場に, プロジェクトを書き出した問題の設定と, まだ
@@ -154,6 +155,9 @@ def make_store(
     rank_project: Path
         雛形のある問題の設定のプロジェクトのディレクトリ (並べるの骨組みを
         書き出し, 反応の表を置く)
+    anomaly_project: Path
+        異常の検知の問題の設定のプロジェクトのディレクトリ (雛形の名前は
+        serve_app.py が受け渡しに足す)
 
     Returns
     ----------
@@ -193,6 +197,16 @@ def make_store(
     reactions.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_csv(reactions, index=False)
     ml_quest.save_problem(ranked, path / "problems" / "rank")
+
+    # 異常の検知の問題の設定 (ML-Quest が異常の検知の受け持ちを書けるまでは,
+    # 見本の骨組みを名前で見分け, serve_app.py が雛形の名前を足す. 他の
+    # テストが書く定義と重ならないように別のプロジェクト)
+    anomaly = {**problem, "name": "e2e の異常の検知"}
+    ml_quest.make_project(anomaly, anomaly_project)
+    ml_quest.save_problem(
+        ml_quest.record_project(anomaly, anomaly_project),
+        path / "problems" / "anomaly"
+    )
 
 
 def make_experiment(project: Path) -> None:
@@ -250,5 +264,5 @@ if __name__ == "__main__":
     make_experiment(work / "project")
     make_store(
         work / "pathfinder", work / "project", work / "dataset",
-        work / "rank_project"
+        work / "rank_project", work / "anomaly_project"
     )

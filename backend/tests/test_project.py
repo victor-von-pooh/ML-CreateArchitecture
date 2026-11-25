@@ -844,14 +844,17 @@ def test_problem_record(
     assert response.json()["path"] == str(project / "models" / "cnn.yaml")
     assert response.json()["problem"] == "sales"
 
-    # 受け持ちに合う雛形の名前を渡す (名前の保存先でも). 同梱の例に無い名前と
-    # 名前でない値は渡さない (開けない雛形を出さないため)
-    record["model"]["example"] = "unet_segmentation"
-    for name in (None, "cnn"):
-        response = client.post(
-            "/api/project/target", json={"path": str(problem), "name": name}
-        )
-        assert response.json()["example"] == "unet_segmentation"
+    # 受け持ちに合う雛形の名前を渡す (名前の保存先でも. 異常の検知の
+    # 自己符号化器も). 同梱の例に無い名前と名前でない値は渡さない (開けない
+    # 雛形を出さないため)
+    for example in ("unet_segmentation", "tabular_autoencoder"):
+        record["model"]["example"] = example
+        for name in (None, "cnn"):
+            response = client.post(
+                "/api/project/target",
+                json={"path": str(problem), "name": name}
+            )
+            assert response.json()["example"] == example
     for value in ("no_such_example", 3, ["unet_segmentation"]):
         record["model"]["example"] = value
         response = client.post(
