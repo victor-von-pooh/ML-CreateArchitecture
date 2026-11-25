@@ -849,12 +849,14 @@ def test_problem_record(
     # 雛形を出さないため)
     for example in ("unet_segmentation", "tabular_autoencoder"):
         record["model"]["example"] = example
-        for name in (None, "cnn"):
+        for name, path in ((None, spec_path),
+                           ("cnn", project / "models" / "cnn.yaml")):
             response = client.post(
                 "/api/project/target",
                 json={"path": str(problem), "name": name}
             )
             assert response.json()["example"] == example
+            assert response.json()["path"] == str(path)
     for value in ("no_such_example", 3, ["unet_segmentation"]):
         record["model"]["example"] = value
         response = client.post(
