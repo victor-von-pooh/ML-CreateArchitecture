@@ -484,3 +484,73 @@ describe('applyDatasetInputs (並べる)', () => {
     expect(notes[0]).toContain('分ける割合は学習のスクリプトの既定.')
   })
 })
+
+describe('applyDatasetInputs (異常の検知)', () => {
+  /** 同梱の例 tabular_autoencoder の形 (16 列を縮めた幅 4 を通して戻す) */
+  const autoencoder: Spec = {
+    ...emptySpec(),
+    inputs: { x: { shape: [8, 16] } },
+    nodes: {
+      enc1: { unit: 'nn.Linear', params: { in_features: 16, out_features: 8 }, inputs: 'x' },
+      enc2: { unit: 'nn.Linear', params: { in_features: 8, out_features: 4 }, inputs: 'enc1' },
+      dec1: { unit: 'nn.Linear', params: { in_features: 4, out_features: 8 }, inputs: 'enc2' },
+      dec2: { unit: 'nn.Linear', params: { in_features: 8, out_features: 16 }, inputs: 'dec1' },
+    },
+    outputs: { recon: 'dec2' },
+  }
+  /** 学習に使う 3 列と, 異常の行にだけ印のある正解の列の表 */
+  const readings: DatasetInfo = {
+    path: '/data/readings',
+    inputs: [{ name: 'x', shape: [4, 3], dtype: 'float32', dataset_shape: [null, 3] }],
+    task: 'anomaly',
+    target: 'is_anomaly',
+    classes: null,
+    outputs: 3,
+    anomaly: { columns: 3, target: 'is_anomaly', score: 'autoencoder', problem: '機械の異常' },
+  }
+
+  it('入力と出力の幅を学習に使う列の数にし, 縮めた幅は変えず, 決め方を初めに知らせる', () => {
+    const { spec, notes } = applyDatasetInputs(autoencoder, readings, units)
+    expect(spec.inputs.x!.shape).toEqual([4, 3])
+    expect(spec.nodes.enc1!.params).toEqual({ in_features: 3, out_features: 8 })
+    expect(spec.nodes.dec2!.params).toEqual({ in_features: 8, out_features: 3 })
+    expect(spec.nodes.enc2!.params).toEqual({ in_features: 8, out_features: 4 })
+    expect(spec.nodes.dec1!.params).toEqual({ in_features: 4, out_features: 8 })
+    expect(notes[0]).toBe(
+      '問題の設定 機械の異常 が異常の検知 (自己符号化器)なので, 入力と出力の幅を, 学習に使う列の数 3 にしました ' +
+        '(自己符号化器は入力を作り直すので, 出力を入力と同じ幅にします. 正解の列 is_anomaly は数えません)',
+    )
+    expect(notes).toContain('dec2 の out_features を 3 にしました')
+    expect(datasetSummary(readings)).toBe(
+      'データセットから入れました: 入力 x [4, 3], タスク anomaly, 目的の列 is_anomaly, 出す値 3',
+    )
+  })
+
+  it('正解の無い表で問題の設定を渡さなければ, データセットから決めたと知らせる', () => {
+    const plain: DatasetInfo = {
+      ...readings,
+      target: null,
+      anomaly: { columns: 3, target: null, score: null, problem: null },
+    }
+    const { spec, notes } = applyDatasetInputs(autoencoder, plain, units)
+    expect(spec.nodes.dec2!.params).toMatchObject({ out_features: 3 })
+    expect(notes[0]).toBe(
+      '異常の検知のデータセットなので, 入力と出力の幅を, 学習に使う列の数 3 にしました ' +
+        '(自己符号化器は入力を作り直すので, 出力を入力と同じ幅にします)',
+    )
+  })
+
+  it('距離に基づく度合いの問題の設定では, モデルの定義が要らないと知らせて何も変えない', () => {
+    const distance: DatasetInfo = {
+      ...readings,
+      anomaly: { ...readings.anomaly!, score: 'distance' },
+    }
+    const { spec, notes } = applyDatasetInputs(autoencoder, distance, units)
+    expect(spec).toBe(autoencoder)
+    expect(notes).toEqual([
+      '問題の設定 機械の異常 の度合いの決め方は距離に基づく度合い (学習しない) なので, ' +
+        'モデルの定義は要りません. 何も変えていません',
+    ])
+    expect(datasetSummary(distance)).toMatch(/^データセットを読みました: /)
+  })
+})

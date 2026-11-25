@@ -362,7 +362,8 @@ export interface paths {
          *     符号化した行の幅 (ML-Quest の table_encoding) にする (学習のスクリプト
          *     が学ぶ行の幅. 列の数とは違う). 並べるなら, 場所は反応の表のファイルで,
          *     入力 user と item の大きさを学習用の利用者と品物の数 (ML-Quest の
-         *     rank_encoding) にする
+         *     rank_encoding) にする. 異常の検知のデータセットでは, 学習に使う列の数
+         *     (ML-EDA の outputs) と, 問題の設定の度合いの決め方も返す
          *
          *     Parameters
          *     ----------
@@ -375,7 +376,8 @@ export interface paths {
          *     result: DatasetInputs
          *         入力 (形はバッチの次元を例の大きさにしたものと, データセットの
          *         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
-         *         符号化した行の幅, 並べるの学習用の利用者と品物の数
+         *         符号化した行の幅, 並べるの学習用の利用者と品物の数, 異常の検知の
+         *         学習に使う列の数と度合いの決め方
          *
          *     Raises
          *     ----------
@@ -383,7 +385,8 @@ export interface paths {
          *         ML-EDA か ML-Quest が要るのに無い場合は 501, ディレクトリ, 説明か
          *         問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の
          *         組など) と, 表の生成の幅か並べるの数を求められない場合と, 表の生成
-         *         で入力が表の行 (バッチと列の 2 次元の 1 つ) でない場合は 422.
+         *         で入力が表の行 (バッチと列の 2 次元の 1 つ) でない場合と, 異常の
+         *         検知の問題の設定でデータセットが異常の検知の表でない場合は 422.
          *         並べるで反応の表が無い場合は 404
          */
         post: operations["read_dataset_inputs"];
@@ -566,6 +569,29 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AnomalyWidth */
+        AnomalyWidth: {
+            /**
+             * Columns
+             * @description 学習に使う列の数 (自己符号化器の入力と出力の幅. 正解の列と行の id の列は数えない)
+             */
+            columns: number | null;
+            /**
+             * Target
+             * @description 異常の正解の列 (正解の無い表は無し)
+             */
+            target?: string | null;
+            /**
+             * Score
+             * @description 問題の設定の度合いの決め方 (autoencoder か distance. 問題の設定を渡していなければ無し)
+             */
+            score?: string | null;
+            /**
+             * Problem
+             * @description 問題の設定の名前
+             */
+            problem?: string | null;
+        };
         /** CheckResult */
         CheckResult: {
             /** Issues */
@@ -622,7 +648,7 @@ export interface components {
             path: string;
             /**
              * Problem
-             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. 並べるなら, path は反応の表のファイルで, 入力 user と item の大きさを ML-Quest の rank_encoding の学習用の利用者と品物の数にする)
+             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. 並べるなら, path は反応の表のファイルで, 入力 user と item の大きさを ML-Quest の rank_encoding の学習用の利用者と品物の数にする. 異常の検知なら, 度合いの決め方を受け持ちの答えから読む)
              */
             problem?: string | null;
         };
@@ -668,6 +694,8 @@ export interface components {
             table?: components["schemas"]["TableWidth"] | null;
             /** @description 並べるの問題の設定で, 入力 user と item の大きさにした学習用の利用者と品物の数 (他は無し) */
             rank?: components["schemas"]["RankSize"] | null;
+            /** @description 異常の検知のデータセットか問題の設定で, 入力と出力の幅にした学習に使う列の数と度合いの決め方 (他は無し) */
+            anomaly?: components["schemas"]["AnomalyWidth"] | null;
         };
         /** ExampleSummary */
         ExampleSummary: {

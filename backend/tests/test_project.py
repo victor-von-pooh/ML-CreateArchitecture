@@ -1992,3 +1992,259 @@ def test_dataset_inputs_without_rank_encoding(
     )
     assert response.status_code == 501
     assert "rank_encoding" in response.json()["detail"]
+
+
+def anomaly_problem(
+    ml_quest: Any, source: str = "few", score: str = "autoencoder"
+) -> dict[str, Any]:
+    """
+    見本の課題から, 異常の検知の問題の設定を作る関数
+
+    Parameters
+    ----------
+    ml_quest: Any
+        ML-Quest のモジュール
+    source: str = "few"
+        正解の出どころ (few か none)
+    score: str = "autoencoder"
+        度合いの決め方 (autoencoder か distance)
+
+    Returns
+    ----------
+    problem: dict[str, Any]
+        予測するで正解の種類が異常の問題の設定 (度合いに使う列は temp,
+        vibration, current. ML-Quest のテストの受け持ちの入れ替えと同じ)
+    """
+    # 見本の受け持ちを作り直す
+    problem = ml_quest.example_problem("解約の引き止め")
+    problem["ml"]["parts"] = [{}]
+    for key in ("decision", "basis", "current"):
+        problem["action"].pop(key, None)
+    problem = ml_quest.answer(
+        problem, "information.columns",
+        ["reading_id", "temp", "vibration", "current", "is_anomaly"]
+    )
+    answers: list[tuple[str, Any]] = [
+        ("role", "predict"), ("unit", "row"), ("output", "value"),
+        ("target.source", source), ("method", "scratch"),
+        ("target.kind", "anomaly"), ("what", "機械の異常の度合い"),
+        ("item", "1 回の計測"), ("baseline", "決まった値を超えたら"),
+        ("anomaly.id", "reading_id"),
+        ("anomaly.columns", ["temp", "vibration", "current"]),
+        ("anomaly.score", score), ("anomaly.capacity", 5)
+    ]
+    if source == "few":
+        answers.append(("anomaly.label", "is_anomaly"))
+    if score == "autoencoder":
+        answers += [
+            ("evaluation.metric",
+             "average_precision" if source == "few" else "loss"),
+            ("evaluation.link", "上位に異常が多いほど見逃しが減る")
+        ]
+    for key, value in answers:
+        problem = ml_quest.answer(problem, f"ml.parts.0.{key}", value)
+
+    return problem
+
+
+def write_anomaly_dataset(
+    ml_eda: Any, root: Path, labeled: bool
+) -> Path:
+    """
+    センサの 3 列の異常の検知の表 (task: anomaly) を書き出す関数
+
+    Parameters
+    ----------
+    ml_eda: Any
+        ML-EDA のモジュール
+    root: Path
+        書き出す場所の親
+    labeled: bool
+        異常の行にだけ印のある正解の列 is_anomaly を持つか
+
+    Returns
+    ----------
+    dataset: Path
+        書き出したデータセット (学習に使う列は temp, vibration, current)
+    """
+    # 正解の列と行の id の列は学習に使う列に数えない
+    rng = np.random.default_rng(0)
+    rows = 40
+    frame = pd.DataFrame({
+        "reading_id": [f"r{number:02d}" for number in range(rows)],
+        "temp": rng.normal(size=rows), "vibration": rng.normal(size=rows),
+        "current": rng.normal(size=rows)
+    })
+    recipe: dict[str, Any] = {
+        "task": "anomaly", "id": "reading_id", "steps": [],
+        "split": {"method": "random", "valid": 0.2, "test": 0.2}
+    }
+    if labeled:
+        frame["is_anomaly"] = [
+            1 if number >= rows - 4 else None for number in range(rows)
+        ]
+        recipe["target"] = "is_anomaly"
+        recipe["split"]["unlabeled"] = "normal"
+    name = "labeled" if labeled else "unlabeled"
+    source = root / f"{name}.csv"
+    frame.to_csv(source, index=False)
+    dataset = root / name
+    ml_eda.export_dataset(ml_eda.load_data(source), recipe, dataset)
+
+    return dataset
+
+
+def test_dataset_inputs_anomaly(client: TestClient, tmp_path: Path) -> None:
+    """
+    異常の検知のデータセットでは, 入力と出す値の数を学習に使う列の数 (正解
+    の列を除く) にし, 問題の設定の度合いの決め方を返すことを確かめる関数
+    (ML-EDA と ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 正解が少しある表と無い表, 自己符号化器と距離に基づく度合いの問題の
+    # 設定
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    places = {}
+    for name, problem in (
+        ("few", anomaly_problem(ml_quest)),
+        ("none", anomaly_problem(ml_quest, source="none")),
+        ("distance", anomaly_problem(ml_quest, score="distance")),
+        ("column", ml_quest.example_problem("総菜の作る量")),
+    ):
+        places[name] = tmp_path / f"{name}.yaml"
+        ml_quest.save_problem(problem, places[name])
+    labeled = write_anomaly_dataset(ml_eda, tmp_path, labeled=True)
+    unlabeled = write_anomaly_dataset(ml_eda, tmp_path, labeled=False)
+
+    # 正解が少しある表と無い表のどちらも, 入力と出す値の数は 3 列
+    for dataset, problem, target in (
+        (labeled, "few", "is_anomaly"), (unlabeled, "none", None)
+    ):
+        response = client.post(
+            "/api/dataset/inputs",
+            json={"path": str(dataset), "problem": str(places[problem])}
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["task"] == "anomaly"
+        assert body["inputs"] == [{
+            "name": "x", "shape": [4, 3], "dtype": "float32",
+            "dataset_shape": [None, 3], "vocabulary": None
+        }]
+        assert body["outputs"] == 3
+        assert body["anomaly"] == {
+            "columns": 3, "target": target, "score": "autoencoder",
+            "problem": "解約の引き止め"
+        }
+
+        # 雛形 tabular_autoencoder の入力と出力の幅に入れると, 形の推定が
+        # 誤り無く通り, 再構成は入力と同じ形 (縮めた幅は変えない)
+        spec = client.get("/api/examples/tabular_autoencoder").json()["spec"]
+        spec["inputs"]["x"]["shape"] = body["inputs"][0]["shape"]
+        spec["nodes"]["enc1"]["params"]["in_features"] = body["outputs"]
+        spec["nodes"]["dec2"]["params"]["out_features"] = body["outputs"]
+        result = client.post("/api/check", json={"spec": spec}).json()
+        assert result["issues"] == [] and result["inferred"]
+        assert result["nodes"]["dec2"]["outputs"]["out"]["shape"] == [4, 3]
+        assert result["nodes"]["enc2"]["outputs"]["out"]["shape"] == [4, 4]
+
+    # 距離に基づく度合いは決め方だけを返し, 問題の設定を渡さないか異常の
+    # 検知でない問題の設定なら, 決め方は無し
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(labeled), "problem": str(places["distance"])}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["anomaly"]["score"] == "distance"
+    for extra in ({}, {"problem": str(places["column"])}):
+        response = client.post(
+            "/api/dataset/inputs", json={"path": str(labeled), **extra}
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["anomaly"] == {
+            "columns": 3, "target": "is_anomaly", "score": None,
+            "problem": None
+        }
+
+    # 異常の検知でないデータセットは決め方が無く, 異常の検知の問題の設定を
+    # 渡すと 422
+    frame = pd.DataFrame({"age": np.arange(30.0), "visits": np.arange(30.0)})
+    frame.to_csv(tmp_path / "table.csv", index=False)
+    other = tmp_path / "other"
+    ml_eda.export_dataset(ml_eda.load_data(tmp_path / "table.csv"), {
+        "task": "none", "steps": [],
+        "split": {"method": "random", "valid": 0.2, "test": 0.2}
+    }, other)
+    response = client.post("/api/dataset/inputs", json={"path": str(other)})
+    assert response.status_code == 200, response.text
+    assert response.json()["anomaly"] is None
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(other), "problem": str(places["few"])}
+    )
+    assert response.status_code == 422
+    assert "task: anomaly" in response.json()["detail"]
+
+
+def test_problem_anomaly(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    異常の検知の問題の設定は, 自己符号化器なら雛形 tabular_autoencoder を
+    返し, 距離に基づく度合いなら定義が要らない理由で選べなくすることを
+    確かめる関数 (ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        環境変数の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    # どちらも骨組みを書き出したプロジェクトの記録を持つ
+    quest = pytest.importorskip("ml_quest")
+    home = tmp_path / "pathfinder"
+    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
+    places = {}
+    for score in ("autoencoder", "distance"):
+        problem = anomaly_problem(quest, score=score)
+        project = tmp_path / score
+        quest.make_project(problem, project)
+        places[score] = save_problem(
+            quest, home, score, quest.record_project(problem, project)
+        )
+    response = client.get("/api/problems")
+    assert response.status_code == 200, response.text
+    entries = {
+        Path(entry["path"]).parent.name: entry
+        for entry in response.json()["problems"]
+    }
+    assert entries["autoencoder"]["usable"] is True
+    assert entries["autoencoder"]["example"] == "tabular_autoencoder"
+    distance = entries["distance"]
+    assert distance["usable"] is False and distance["example"] is None
+    assert "モデルの定義は要りません" in distance["reason"]
+
+    # 保存先の確かめも同じ理由で 422
+    response = client.post(
+        "/api/project/target", json={"path": str(places["distance"])}
+    )
+    assert response.status_code == 422
+    assert "モデルの定義は要りません" in response.json()["detail"]

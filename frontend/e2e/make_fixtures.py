@@ -14,6 +14,9 @@ import numpy as np
 import pandas as pd
 import yaml
 
+# 異常の検知の表の列 (行の id, 度合いに使う 3 列, 異常の正解)
+READINGS = ["reading_id", "temp", "vibration", "current", "is_anomaly"]
+
 
 def make_dataset(path: Path) -> None:
     """
@@ -136,9 +139,88 @@ def rank_problem() -> dict:
     return problem
 
 
+def anomaly_problem(name: str, score: str) -> dict:
+    """
+    見本の課題から, 異常の検知の受け持ちを一から学ぶ問題の設定を作る関数
+
+    Parameters
+    ----------
+    name: str
+        問題の設定の名前
+    score: str
+        度合いの決め方 (autoencoder なら雛形は tabular_autoencoder,
+        distance なら雛形は無し)
+
+    Returns
+    ----------
+    problem: dict
+        問題の設定 (度合いに使う列は temp, vibration, current. 異常の正解の
+        列は is_anomaly, 行の id の列は reading_id)
+    """
+    # 見本の受け持ちを作り直す (ML-Quest のテストの受け持ちの入れ替えと同じ)
+    problem = ml_quest.example_problem("解約の引き止め")
+    problem["ml"]["parts"] = [{}]
+    for key in ("decision", "basis", "current"):
+        problem["action"].pop(key, None)
+    problem = ml_quest.answer(problem, "information.columns", READINGS)
+    answers = [
+        ("role", "predict"), ("unit", "row"), ("output", "value"),
+        ("target.source", "few"), ("method", "scratch"),
+        ("target.kind", "anomaly"), ("what", "機械の異常の度合い"),
+        ("item", "1 回の計測"), ("baseline", "決まった値を超えたら"),
+        ("anomaly.label", "is_anomaly"), ("anomaly.id", "reading_id"),
+        ("anomaly.columns", ["temp", "vibration", "current"]),
+        ("anomaly.score", score), ("anomaly.capacity", 5)
+    ]
+    if score == "autoencoder":
+        answers += [("evaluation.metric", "average_precision"),
+                    ("evaluation.link", "上位に異常が多いほど見逃しが減る")]
+    for key, value in answers:
+        problem = ml_quest.answer(problem, f"ml.parts.0.{key}", value)
+    problem["name"] = name
+
+    return problem
+
+
+def make_readings(path: Path) -> None:
+    """
+    センサの 3 列と, 異常の行にだけ印のある正解の列の表を, 異常の検知の表
+    (task: anomaly) として書き出す関数
+
+    Parameters
+    ----------
+    path: Path
+        書き出すディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 正解の列と行の id の列は学習に使う列に数えない (学習に使う列は 3)
+    rng = np.random.default_rng(0)
+    rows = 40
+    frame = pd.DataFrame({
+        "reading_id": [f"r{number:02d}" for number in range(rows)],
+        "temp": rng.normal(size=rows), "vibration": rng.normal(size=rows),
+        "current": rng.normal(size=rows),
+        "is_anomaly": [1 if number >= rows - 4 else None
+                       for number in range(rows)]
+    })
+    source = path.parent / "readings.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(source, index=False)
+    recipe = {
+        "task": "anomaly", "target": "is_anomaly", "id": "reading_id",
+        "steps": [],
+        "split": {"method": "random", "valid": 0.2, "test": 0.2,
+                  "unlabeled": "normal"}
+    }
+    ml_eda.export_dataset(ml_eda.load_data(source), recipe, path)
+
+
 def make_store(
     path: Path, project: Path, dataset: Path, rank_project: Path,
-    anomaly_project: Path
+    anomaly_project: Path, distance_project: Path
 ) -> None:
     """
     ML-Pathfinder の置き場に, プロジェクトを書き出した問題の設定と, まだ
@@ -156,8 +238,11 @@ def make_store(
         雛形のある問題の設定のプロジェクトのディレクトリ (並べるの骨組みを
         書き出し, 反応の表を置く)
     anomaly_project: Path
-        異常の検知の問題の設定のプロジェクトのディレクトリ (雛形の名前は
-        serve_app.py が受け渡しに足す)
+        異常の検知の問題の設定のプロジェクトのディレクトリ (自己符号化器の
+        骨組みを書き出し, 記録の場所に異常の検知の表を書き出す)
+    distance_project: Path
+        異常の検知の距離に基づく度合いの問題の設定のプロジェクトの
+        ディレクトリ
 
     Returns
     ----------
@@ -198,15 +283,18 @@ def make_store(
     pd.DataFrame(rows).to_csv(reactions, index=False)
     ml_quest.save_problem(ranked, path / "problems" / "rank")
 
-    # 異常の検知の問題の設定 (ML-Quest が異常の検知の受け持ちを書けるまでは,
-    # 見本の骨組みを名前で見分け, serve_app.py が雛形の名前を足す. 他の
-    # テストが書く定義と重ならないように別のプロジェクト)
-    anomaly = {**problem, "name": "e2e の異常の検知"}
-    ml_quest.make_project(anomaly, anomaly_project)
-    ml_quest.save_problem(
-        ml_quest.record_project(anomaly, anomaly_project),
-        path / "problems" / "anomaly"
-    )
+    # 異常の検知の問題の設定 (自己符号化器と距離に基づく度合い. 他のテストが
+    # 書く定義と重ならないように別のプロジェクト)
+    for name, score, place in (
+        ("e2e の異常の検知", "autoencoder", anomaly_project),
+        ("e2e の距離の度合い", "distance", distance_project),
+    ):
+        anomaly = anomaly_problem(name, score)
+        ml_quest.make_project(anomaly, place)
+        recorded = ml_quest.record_project(anomaly, place)
+        if score == "autoencoder":
+            make_readings(Path(recorded["project"]["dataset"]))
+        ml_quest.save_problem(recorded, path / "problems" / score)
 
 
 def make_experiment(project: Path) -> None:
@@ -264,5 +352,6 @@ if __name__ == "__main__":
     make_experiment(work / "project")
     make_store(
         work / "pathfinder", work / "project", work / "dataset",
-        work / "rank_project", work / "anomaly_project"
+        work / "rank_project", work / "anomaly_project",
+        work / "distance_project"
     )

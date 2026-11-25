@@ -12,8 +12,8 @@ const project = fileURLToPath(new URL('.work/project', import.meta.url))
 const modelFile = `${project}/models/model.yaml`
 // 受け持ちに合う雛形 (two_tower_retrieval) のある問題の設定のプロジェクト
 const rankProject = fileURLToPath(new URL('.work/rank_project', import.meta.url))
-// 異常の検知の問題の設定のプロジェクト (雛形 tabular_autoencoder は e2e/serve_app.py が
-// ML-Quest の受け渡しに足す)
+// 異常の検知 (自己符号化器) の問題の設定のプロジェクト (記録の場所に, 学習に使う 3 列と
+// 異常の行にだけ印のある正解の列の, 異常の検知の表がある)
 const anomalyProject = fileURLToPath(new URL('.work/anomaly_project', import.meta.url))
 
 // プロジェクトへの保存は 2 回目に上書きを確かめるので, 書いた順に実行
@@ -361,15 +361,19 @@ test('雛形のある問題の設定を新しく始めるときに選ぶと雛�
   expect(await unload).toBe('beforeunload')
 })
 
-test('異常の検知の問題の設定を新しく始めるときに選ぶと, 自己符号化器の雛形を開く', async ({
+test('異常の検知の問題の設定を新しく始めるときに選ぶと自己符号化器の雛形を開き, 入力と出力の幅を学習に使う列の数にする', async ({
   page,
 }) => {
   await page.goto('/')
   const dialog = await openDialog(page)
-  const anomaly = dialog
-    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
-    .getByRole('button', { name: /e2e の異常の検知/ })
+  const problems = dialog.getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+  const anomaly = problems.getByRole('button', { name: /e2e の異常の検知/ })
   await expect(anomaly).toContainText('雛形: tabular_autoencoder')
+
+  // 距離に基づく度合いは雛形の名前を出さず, 定義が要らない理由で選べない
+  const distance = problems.getByRole('listitem').filter({ hasText: 'e2e の距離の度合い' })
+  await expect(distance).toContainText('モデルの定義は要りません')
+  await expect(distance).not.toContainText('雛形:')
 
   // 新規の画面で選ぶと雛形を開き, 保存先は記録の場所
   await anomaly.click()
@@ -383,11 +387,29 @@ test('異常の検知の問題の設定を新しく始めるときに選ぶと, 
       .getByRole('region', { name: 'プロジェクトに保存' })
       .getByRole('group', { name: '保存先' }),
   ).toContainText(`${anomalyProject}/models/model.yaml`)
+
+  // 記録のデータセットから入力と出力を作ると, 幅を学習に使う 3 列にする (正解の列は数えない)
+  const data = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
+  await expect(data.getByLabel('データセットのディレクトリ')).toHaveValue(
+    `${anomalyProject}/outputs/dataset`,
+  )
+  await data.getByRole('button', { name: '入力と出力を作る' }).click()
+  const result = data.getByRole('status')
+  await expect(result).toContainText(
+    'データセットから入れました: 入力 x [4, 3], タスク anomaly, 目的の列 is_anomaly, 出す値 3',
+  )
+  await expect(result).toContainText(
+    '問題の設定 e2e の異常の検知 が異常の検知 (自己符号化器)なので, 入力と出力の幅を, 学習に使う列の数 3 にしました ' +
+      '(自己符号化器は入力を作り直すので, 出力を入力と同じ幅にします. 正解の列 is_anomaly は数えません)',
+  )
+  await expect(result).toContainText('enc1 の in_features を 3 にしました')
+  await expect(result).toContainText('dec2 の out_features を 3 にしました')
   await dialog.getByRole('button', { name: '閉じる' }).click()
 
-  // 誤り 0 件は確認の結果が届く前にも出るので, 雛形に固有の形を先に待つ
-  await expect(page.locator('[data-id="enc2"]')).toContainText('[8, 4]', { timeout: 20_000 })
-  await expect(page.locator('[data-id="dec2"]')).toContainText('[8, 16]')
+  // 縮めた幅は変えず, 再構成は入力と同じ形 (誤り 0 件は確認の結果が届く前にも出るので,
+  // 入れた後の形を先に待つ)
+  await expect(page.locator('[data-id="dec2"]')).toContainText('[4, 3]', { timeout: 20_000 })
+  await expect(page.locator('[data-id="enc2"]')).toContainText('[4, 4]')
   await expect(page.locator('header')).toContainText('誤り 0 件')
   await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
 })

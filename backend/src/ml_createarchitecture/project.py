@@ -80,7 +80,8 @@ class DatasetBody(BaseModel):
         description="問題の設定のファイルの絶対のパス (表の生成なら, 入力と"
         "出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. "
         "並べるなら, path は反応の表のファイルで, 入力 user と item の大きさ"
-        "を ML-Quest の rank_encoding の学習用の利用者と品物の数にする)"
+        "を ML-Quest の rank_encoding の学習用の利用者と品物の数にする. "
+        "異常の検知なら, 度合いの決め方を受け持ちの答えから読む)"
     )
 
 
@@ -149,6 +150,26 @@ class RankSize(BaseModel):
     )
 
 
+class AnomalyWidth(BaseModel):
+    # 異常の検知の入力と出力の幅 (学習に使う列の数) と, その決め方
+    columns: Optional[int] = Field(
+        description="学習に使う列の数 (自己符号化器の入力と出力の幅. 正解の"
+        "列と行の id の列は数えない)"
+    )
+    target: Optional[str] = Field(
+        default=None,
+        description="異常の正解の列 (正解の無い表は無し)"
+    )
+    score: Optional[str] = Field(
+        default=None,
+        description="問題の設定の度合いの決め方 (autoencoder か distance. "
+        "問題の設定を渡していなければ無し)"
+    )
+    problem: Optional[str] = Field(
+        default=None, description="問題の設定の名前"
+    )
+
+
 class DatasetInputs(BaseModel):
     # データセットの場所と, ML-EDA の model_inputs の結果
     path: str
@@ -170,6 +191,11 @@ class DatasetInputs(BaseModel):
         default=None,
         description="並べるの問題の設定で, 入力 user と item の大きさにした"
         "学習用の利用者と品物の数 (他は無し)"
+    )
+    anomaly: Optional[AnomalyWidth] = Field(
+        default=None,
+        description="異常の検知のデータセットか問題の設定で, 入力と出力の幅"
+        "にした学習に使う列の数と度合いの決め方 (他は無し)"
     )
 
 
@@ -589,6 +615,40 @@ def is_rank(problem: Any) -> bool:
     return rank
 
 
+def anomaly_score(problem: Any) -> Optional[str]:
+    """
+    問題の設定の受け持ちが異常の検知なら, 度合いの決め方を返す関数
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+
+    Returns
+    ----------
+    score: Optional[str]
+        度合いの決め方 (autoencoder か distance. 答えていなければ空の文字.
+        予測するで正解の種類が異常, 作り方が既製のモデルをそのままでない
+        受け持ちでなければ None. 要らなくなった問いの古い答えは除外)
+    """
+    # 答えの読み方は ML-Quest に任せる (受け持ちの見分け方は ML-Quest の
+    # 異常の検知の受け持ちと同じ)
+    quest = load_library("ml_quest", "active_value")
+    try:
+        role = quest.active_value(problem, f"{quest.PART}.role")
+        kind = quest.active_value(problem, f"{quest.PART}.target.kind")
+        method = quest.active_value(problem, f"{quest.PART}.method")
+        value = quest.active_value(problem, f"{quest.PART}.anomaly.score")
+    except READ_ERRORS:
+        role = kind = method = value = None
+    if role != "predict" or kind != "anomaly" or method == "pretrained":
+        score = None
+        return score
+    score = value if isinstance(value, str) else ""
+
+    return score
+
+
 def rank_size(problem: Any, dataset: Path) -> Optional[RankSize]:
     """
     並べるの問題の設定なら, 反応の表から学習用の利用者と品物の数を求める
@@ -700,7 +760,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     符号化した行の幅 (ML-Quest の table_encoding) にする (学習のスクリプト
     が学ぶ行の幅. 列の数とは違う). 並べるなら, 場所は反応の表のファイルで,
     入力 user と item の大きさを学習用の利用者と品物の数 (ML-Quest の
-    rank_encoding) にする
+    rank_encoding) にする. 異常の検知のデータセットでは, 学習に使う列の数
+    (ML-EDA の outputs) と, 問題の設定の度合いの決め方も返す
 
     Parameters
     ----------
@@ -713,7 +774,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     result: DatasetInputs
         入力 (形はバッチの次元を例の大きさにしたものと, データセットの
         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
-        符号化した行の幅, 並べるの学習用の利用者と品物の数
+        符号化した行の幅, 並べるの学習用の利用者と品物の数, 異常の検知の
+        学習に使う列の数と度合いの決め方
 
     Raises
     ----------
@@ -721,7 +783,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         ML-EDA か ML-Quest が要るのに無い場合は 501, ディレクトリ, 説明か
         問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の
         組など) と, 表の生成の幅か並べるの数を求められない場合と, 表の生成
-        で入力が表の行 (バッチと列の 2 次元の 1 つ) でない場合は 422.
+        で入力が表の行 (バッチと列の 2 次元の 1 つ) でない場合と, 異常の
+        検知の問題の設定でデータセットが異常の検知の表でない場合は 422.
         並べるで反応の表が無い場合は 404
     """
     # 並べるは反応の表のファイルから 2 塔の入力を作る
@@ -768,6 +831,26 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         raise HTTPException(422, "データセットに入力がありません")
     outputs = info.get("outputs")
     classes = info.get("classes")
+    task = optional_text(info, "task")
+    target = optional_text(info, "target")
+
+    # 異常の検知は, 入力と出力の幅を学習に使う列の数 (ML-EDA の outputs)
+    # に. 問題の設定が異常の検知なら, データセットも異常の検知の表に限る
+    score = None if problem is None else anomaly_score(problem)
+    anomaly = None
+    if score is not None and task != "anomaly":
+        raise HTTPException(
+            422,
+            "異常の検知の問題の設定ですが, データセットが異常の検知の表 "
+            "(task: anomaly) ではありません"
+        )
+    if task == "anomaly":
+        anomaly = AnomalyWidth(
+            columns=outputs if isinstance(outputs, int)
+            and not isinstance(outputs, bool) and outputs > 0 else None,
+            target=target, score=score or None,
+            problem=None if score is None else problem_name(problem)
+        )
 
     # 表の生成は, 入力 (バッチと列の 2 次元) の列の次元と出す値の数を
     # 符号化した行の幅に
@@ -786,13 +869,12 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         outputs = table.width
     try:
         result = DatasetInputs(
-            path=str(path), inputs=inputs, task=optional_text(info, "task"),
-            target=optional_text(info, "target"),
+            path=str(path), inputs=inputs, task=task, target=target,
             classes=list(classes) if isinstance(classes, list) else None,
             target_kind=optional_text(info, "target_kind"),
             outputs=outputs if isinstance(outputs, int)
             and not isinstance(outputs, bool) and outputs > 0 else None,
-            table=table
+            table=table, anomaly=anomaly
         )
     except ValidationError as error:
         raise HTTPException(
@@ -903,7 +985,8 @@ def missing_record(problem_path: Path) -> str:
     ----------
     reason: str
         プロジェクトを書き出していないか, 書き出したプロジェクトに定義の
-        置き場の記録が無いか
+        置き場の記録が無いか (異常の検知の距離に基づく度合いは, 定義が
+        要らないこと)
     """
     # プロジェクトの場所の記録の有無で分ける (読み直しの間に読めなくなった
     # 場合は, 記録の無い文に)
@@ -913,6 +996,14 @@ def missing_record(problem_path: Path) -> str:
     except READ_ERRORS:
         stages = {}
     project_path = section(stages, "project").get("path")
+
+    # 異常の検知の距離に基づく度合いは学習しないので, 定義が要らない
+    if section(stages, "anomaly").get("score") == "distance":
+        reason = (
+            "度合いの決め方が距離に基づく度合い (学習しない) なので, モデルの"
+            "定義は要りません"
+        )
+        return reason
     if project_path:
         reason = (
             f"プロジェクト {project_path} は書き出してありますが, モデルの"
