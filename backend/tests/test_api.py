@@ -253,9 +253,14 @@ def test_examples(client: TestClient) -> None:
     """
     # 一覧に例があり, 読み込むと定義, 無い名前は 404
     names = {item["name"] for item in client.get("/api/examples").json()}
-    assert "cnn_classifier" in names
+    assert {"cnn_classifier", "tabular_autoencoder"} <= names
     model = client.get("/api/examples/cnn_classifier").json()
     assert "conv1" in model["spec"]["nodes"]
+    # 異常の検知の自己符号化器は, 入力と同じ幅の再構成 recon を dec2 から出す
+    model = client.get("/api/examples/tabular_autoencoder").json()
+    assert model["spec"]["outputs"] == {"recon": "dec2"}
+    assert model["spec"]["nodes"]["dec2"]["params"]["out_features"] == 16
+    assert model["spec"]["inputs"]["x"]["shape"] == [8, 16]
     assert client.get("/api/examples/nope").status_code == 404
 
 
