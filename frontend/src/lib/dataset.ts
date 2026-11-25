@@ -45,6 +45,18 @@ export interface RankSize {
   problem?: string | null
 }
 
+/** 異常の検知の入力と出力の幅 (学習に使う列の数) と決め方 */
+export interface AnomalyWidth {
+  /** 学習に使う列の数 (正解の列と行の id の列は数えない) */
+  columns: number | null
+  /** 異常の正解の列 (正解の無い表は無い) */
+  target?: string | null
+  /** 問題の設定の度合いの決め方 (autoencoder か distance. 問題の設定を渡していなければ無い) */
+  score?: string | null
+  /** 問題の設定の名前 */
+  problem?: string | null
+}
+
 /** バックエンドが ML-EDA の model_inputs から返す値 */
 export interface DatasetInfo {
   path: string
@@ -59,6 +71,8 @@ export interface DatasetInfo {
   table?: TableWidth | null
   /** 並べるの問題の設定で, 入力 user と item の大きさにした学習用の利用者と品物の数 (他は無い) */
   rank?: RankSize | null
+  /** 異常の検知のデータセットで, 入力と出力の幅にした学習に使う列の数と度合いの決め方 (他は無い) */
+  anomaly?: AnomalyWidth | null
 }
 
 /** 入れた結果 (定義と, 知らせる文) */
@@ -194,6 +208,36 @@ export function rankSizeNote(rank: RankSize): string {
 }
 
 /**
+ * 異常の検知で, 入力と出力の幅をどう決めたかの文 (自己符号化器と言うのは, 問題の設定の
+ * 度合いの決め方が自己符号化器の場合だけ. 問題の設定が無いか決め方が未回答なら,
+ * データセットの出す値の数の決まりとして知らせる)
+ */
+export function anomalyWidthNote(anomaly: AnomalyWidth): string {
+  const autoencoder = anomaly.score === 'autoencoder'
+  const from = anomaly.problem
+    ? `問題の設定 ${anomaly.problem} が異常の検知${autoencoder ? ' (自己符号化器)' : ''}`
+    : '異常の検知のデータセット'
+  const reason = autoencoder
+    ? '自己符号化器は入力を作り直すので, 出力を入力と同じ幅にします'
+    : `${anomaly.problem ? '度合いの決め方にまだ答えていないので, ' : ''}` +
+      '出す値の数はデータセットの決まり (異常の検知は学習に使う列の数) のままです'
+  const target = anomaly.target ? `. 正解の列 ${anomaly.target} は数えません` : ''
+  return (
+    `${from}なので, 入力と出力の幅を, 学習に使う列の数 ${anomaly.columns ?? '?'} にしました ` +
+    `(${reason}${target})`
+  )
+}
+
+/** 異常の検知の距離に基づく度合いで, 何も変えない理由の文 */
+export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
+  const from = anomaly.problem ? `問題の設定 ${anomaly.problem} の` : '問題の設定の'
+  return (
+    `${from}度合いの決め方は距離に基づく度合い (学習しない) なので, モデルの定義は要りません. ` +
+    '何も変えていません'
+  )
+}
+
+/**
  * データセットの入力と出す値の数を定義に入れる
  *
  * 入力: 名前, 形, 型をデータセットに合わせる (1 つずつで名前が違えば名前を
@@ -211,18 +255,26 @@ export function rankSizeNote(rank: RankSize): string {
  * 符号化した行の幅なので, その決め方を初めに知らせる. 並べるの問題の設定
  * (info.rank) では, 入力 user と item の大きさが学習用の利用者と品物の数
  * なので, その決め方と除いた行の知らせを初めに知らせる (出力は全ての組の
- * 点数の表なので大きさを変えない)
+ * 点数の表なので大きさを変えない). 異常の検知のデータセット (info.anomaly)
+ * では, 入力と出力の幅が学習に使う列の数なので, その決め方を初めに知らせる.
+ * 問題の設定の度合いの決め方が距離に基づく度合いなら, モデルの定義が要らない
+ * ことを知らせて何も変えない
  */
 export function applyDatasetInputs(
   spec: Spec,
   info: DatasetInfo,
   units: Map<string, UnitSpec>,
 ): DatasetApplied {
+  if (info.anomaly?.score === 'distance') {
+    return { spec, notes: [anomalyDistanceNote(info.anomaly)] }
+  }
   const notes: string[] = info.table
     ? [tableWidthNote(info.table)]
     : info.rank
       ? [rankSizeNote(info.rank), ...(info.rank.notes ?? [])]
-      : []
+      : info.anomaly
+        ? [anomalyWidthNote(info.anomaly)]
+        : []
   let next = spec
   // ノードと同じ名前の入力は作らない (つなぎ先が入力を指すように変わるため)
   const clashes = info.inputs.filter((item) => item.name in spec.nodes)
@@ -405,5 +457,7 @@ export function datasetSummary(info: DatasetInfo): string {
   if (info.classes) parts.push(`クラス ${info.classes.length}`)
   if (info.outputs != null) parts.push(`出す値 ${info.outputs}`)
   const from = info.rank ? '反応の表' : 'データセット'
-  return `${from}から入れました: ${parts.join(', ')}`
+  // 距離に基づく度合いは何も入れないので, 読んだことだけを出す
+  const done = info.anomaly?.score === 'distance' ? 'を読みました' : 'から入れました'
+  return `${from}${done}: ${parts.join(', ')}`
 }
