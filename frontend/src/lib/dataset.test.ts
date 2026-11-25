@@ -536,7 +536,22 @@ describe('applyDatasetInputs (異常の検知)', () => {
     expect(spec.nodes.dec2!.params).toMatchObject({ out_features: 3 })
     expect(notes[0]).toBe(
       '異常の検知のデータセットなので, 入力と出力の幅を, 学習に使う列の数 3 にしました ' +
-        '(自己符号化器は入力を作り直すので, 出力を入力と同じ幅にします)',
+        '(出す値の数はデータセットの決まり (異常の検知は学習に使う列の数) のままです)',
+    )
+    expect(notes[0]).not.toContain('自己符号化器')
+  })
+
+  it('度合いの決め方に答えていない問題の設定では, 自己符号化器と言わずに未回答を知らせる', () => {
+    const unanswered: DatasetInfo = {
+      ...readings,
+      anomaly: { ...readings.anomaly!, score: null },
+    }
+    const { spec, notes } = applyDatasetInputs(autoencoder, unanswered, units)
+    expect(spec.nodes.dec2!.params).toMatchObject({ out_features: 3 })
+    expect(notes[0]).toBe(
+      '問題の設定 機械の異常 が異常の検知なので, 入力と出力の幅を, 学習に使う列の数 3 にしました ' +
+        '(度合いの決め方にまだ答えていないので, 出す値の数はデータセットの決まり (異常の検知は学習に使う列の数) のままです. ' +
+        '正解の列 is_anomaly は数えません)',
     )
   })
 

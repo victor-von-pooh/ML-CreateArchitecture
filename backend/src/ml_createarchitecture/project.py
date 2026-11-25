@@ -154,7 +154,7 @@ class AnomalyWidth(BaseModel):
     # 異常の検知の入力と出力の幅 (学習に使う列の数) と, その決め方
     columns: Optional[int] = Field(
         description="学習に使う列の数 (自己符号化器の入力と出力の幅. 正解の"
-        "列と行の id の列は数えない)"
+        "列と行の id の列は数えず, one_hot で増えた列は数える)"
     )
     target: Optional[str] = Field(
         default=None,
@@ -631,8 +631,8 @@ def anomaly_score(problem: Any) -> Optional[str]:
         予測するで正解の種類が異常, 作り方が既製のモデルをそのままでない
         受け持ちでなければ None. 要らなくなった問いの古い答えは除外)
     """
-    # 答えの読み方は ML-Quest に任せる (受け持ちの見分け方は ML-Quest の
-    # 異常の検知の受け持ちと同じ)
+    # ML-Quest の答えの読み方 (ML-Quest の異常の検知の受け持ちと同じ
+    # 見分け方)
     quest = load_library("ml_quest", "active_value")
     try:
         role = quest.active_value(problem, f"{quest.PART}.role")
@@ -834,15 +834,15 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     task = optional_text(info, "task")
     target = optional_text(info, "target")
 
-    # 異常の検知は, 入力と出力の幅を学習に使う列の数 (ML-EDA の outputs)
-    # に. 問題の設定が異常の検知なら, データセットも異常の検知の表に限る
+    # 異常の検知の入力と出力の幅 (ML-EDA の outputs) と, 問題の設定が
+    # 異常の検知の場合の表の種類の確かめ
     score = None if problem is None else anomaly_score(problem)
     anomaly = None
     if score is not None and task != "anomaly":
         raise HTTPException(
             422,
-            "異常の検知の問題の設定ですが, データセットが異常の検知の表 "
-            "(task: anomaly) ではありません"
+            "異常の検知の問題の設定ですが, データセットが ML-Fathom (ML-EDA) "
+            "で異常の検知として書き出した表ではありません"
         )
     if task == "anomaly":
         anomaly = AnomalyWidth(
@@ -997,7 +997,7 @@ def missing_record(problem_path: Path) -> str:
         stages = {}
     project_path = section(stages, "project").get("path")
 
-    # 異常の検知の距離に基づく度合いは学習しないので, 定義が要らない
+    # 定義の要らない異常の検知の距離に基づく度合い (学習しない)
     if section(stages, "anomaly").get("score") == "distance":
         reason = (
             "度合いの決め方が距離に基づく度合い (学習しない) なので, モデルの"

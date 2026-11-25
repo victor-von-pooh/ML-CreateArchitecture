@@ -207,15 +207,24 @@ export function rankSizeNote(rank: RankSize): string {
   )
 }
 
-/** 異常の検知で, 入力と出力の幅をどう決めたかの文 */
+/**
+ * 異常の検知で, 入力と出力の幅をどう決めたかの文 (自己符号化器と言うのは, 問題の設定の
+ * 度合いの決め方が自己符号化器の場合だけ. 問題の設定が無いか決め方が未回答なら,
+ * データセットの出す値の数の決まりとして知らせる)
+ */
 export function anomalyWidthNote(anomaly: AnomalyWidth): string {
+  const autoencoder = anomaly.score === 'autoencoder'
   const from = anomaly.problem
-    ? `問題の設定 ${anomaly.problem} が異常の検知 (自己符号化器)`
+    ? `問題の設定 ${anomaly.problem} が異常の検知${autoencoder ? ' (自己符号化器)' : ''}`
     : '異常の検知のデータセット'
+  const reason = autoencoder
+    ? '自己符号化器は入力を作り直すので, 出力を入力と同じ幅にします'
+    : `${anomaly.problem ? '度合いの決め方にまだ答えていないので, ' : ''}` +
+      '出す値の数はデータセットの決まり (異常の検知は学習に使う列の数) のままです'
   const target = anomaly.target ? `. 正解の列 ${anomaly.target} は数えません` : ''
   return (
     `${from}なので, 入力と出力の幅を, 学習に使う列の数 ${anomaly.columns ?? '?'} にしました ` +
-    `(自己符号化器は入力を作り直すので, 出力を入力と同じ幅にします${target})`
+    `(${reason}${target})`
   )
 }
 

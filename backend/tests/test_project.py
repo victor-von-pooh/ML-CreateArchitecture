@@ -2015,7 +2015,7 @@ def anomaly_problem(
         予測するで正解の種類が異常の問題の設定 (度合いに使う列は temp,
         vibration, current. ML-Quest のテストの受け持ちの入れ替えと同じ)
     """
-    # 見本の受け持ちを作り直す
+    # 見本の受け持ちの作り直し
     problem = ml_quest.example_problem("解約の引き止め")
     problem["ml"]["parts"] = [{}]
     for key in ("decision", "basis", "current"):
@@ -2067,7 +2067,7 @@ def write_anomaly_dataset(
     dataset: Path
         書き出したデータセット (学習に使う列は temp, vibration, current)
     """
-    # 正解の列と行の id の列は学習に使う列に数えない
+    # 学習に使う列から外す正解の列と行の id の列
     rng = np.random.default_rng(0)
     rows = 40
     frame = pd.DataFrame({
@@ -2148,8 +2148,8 @@ def test_dataset_inputs_anomaly(client: TestClient, tmp_path: Path) -> None:
             "problem": "解約の引き止め"
         }
 
-        # 雛形 tabular_autoencoder の入力と出力の幅に入れると, 形の推定が
-        # 誤り無く通り, 再構成は入力と同じ形 (縮めた幅は変えない)
+        # 雛形 tabular_autoencoder の入力と出力の幅に入れた定義の形の推定
+        # (誤り無し. 再構成は入力と同じ形で, 縮めた幅はそのまま)
         spec = client.get("/api/examples/tabular_autoencoder").json()["spec"]
         spec["inputs"]["x"]["shape"] = body["inputs"][0]["shape"]
         spec["nodes"]["enc1"]["params"]["in_features"] = body["outputs"]
@@ -2194,7 +2194,9 @@ def test_dataset_inputs_anomaly(client: TestClient, tmp_path: Path) -> None:
         json={"path": str(other), "problem": str(places["few"])}
     )
     assert response.status_code == 422
-    assert "task: anomaly" in response.json()["detail"]
+    assert "異常の検知として書き出した表ではありません" in (
+        response.json()["detail"]
+    )
 
 
 def test_problem_anomaly(
@@ -2218,7 +2220,7 @@ def test_problem_anomaly(
     ----------
     None
     """
-    # どちらも骨組みを書き出したプロジェクトの記録を持つ
+    # 骨組みを書き出したプロジェクトの記録を持つ 2 つの問題の設定
     quest = pytest.importorskip("ml_quest")
     home = tmp_path / "pathfinder"
     monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
@@ -2248,3 +2250,49 @@ def test_problem_anomaly(
     )
     assert response.status_code == 422
     assert "モデルの定義は要りません" in response.json()["detail"]
+
+
+def test_dataset_inputs_anomaly_one_hot(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    種類の列を one_hot にした異常の検知の表では, 入力と出す値の数が one_hot
+    で増えた列を数えた学習に使う列の数になることを確かめる関数 (ML-EDA が
+    無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 数の列 2 つと, 値の種類 3 の種類の列 (学習に使う列は 2 + 3 = 5)
+    ml_eda = pytest.importorskip("ml_eda")
+    rows = 30
+    rng = np.random.default_rng(0)
+    frame = pd.DataFrame({
+        "reading_id": [f"r{number:02d}" for number in range(rows)],
+        "temp": rng.normal(size=rows), "current": rng.normal(size=rows),
+        "line": np.array(["a", "b", "c"] * 10)
+    })
+    source = tmp_path / "lines.csv"
+    frame.to_csv(source, index=False)
+    dataset = tmp_path / "lines"
+    ml_eda.export_dataset(ml_eda.load_data(source), {
+        "task": "anomaly", "id": "reading_id",
+        "steps": [{"op": "one_hot", "columns": ["line"]}],
+        "split": {"method": "random", "valid": 0.2, "test": 0.2}
+    }, dataset)
+
+    # 種類の列の 1 列でなく, one_hot の 3 列を数える
+    response = client.post("/api/dataset/inputs", json={"path": str(dataset)})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["inputs"][0]["shape"] == [4, 5]
+    assert body["outputs"] == 5
+    assert body["anomaly"]["columns"] == 5

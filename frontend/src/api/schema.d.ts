@@ -573,7 +573,7 @@ export interface components {
         AnomalyWidth: {
             /**
              * Columns
-             * @description 学習に使う列の数 (自己符号化器の入力と出力の幅. 正解の列と行の id の列は数えない)
+             * @description 学習に使う列の数 (自己符号化器の入力と出力の幅. 正解の列と行の id の列は数えず, one_hot で増えた列は数える)
              */
             columns: number | null;
             /**

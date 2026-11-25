@@ -157,7 +157,7 @@ def anomaly_problem(name: str, score: str) -> dict:
         問題の設定 (度合いに使う列は temp, vibration, current. 異常の正解の
         列は is_anomaly, 行の id の列は reading_id)
     """
-    # 見本の受け持ちを作り直す (ML-Quest のテストの受け持ちの入れ替えと同じ)
+    # 見本の受け持ちの作り直し (ML-Quest のテストの受け持ちの入れ替えと同じ)
     problem = ml_quest.example_problem("解約の引き止め")
     problem["ml"]["parts"] = [{}]
     for key in ("decision", "basis", "current"):
@@ -196,7 +196,7 @@ def make_readings(path: Path) -> None:
     ----------
     None
     """
-    # 正解の列と行の id の列は学習に使う列に数えない (学習に使う列は 3)
+    # 学習に使う列から外す正解の列と行の id の列 (学習に使う列は 3)
     rng = np.random.default_rng(0)
     rows = 40
     frame = pd.DataFrame({
