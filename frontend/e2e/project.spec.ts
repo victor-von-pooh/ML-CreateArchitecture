@@ -507,10 +507,11 @@ test('異常の検知の問題の設定を新しく始めるときに選ぶと�
   ).toContainText(`${anomalyProject}/models/model.yaml`)
 
   // 雛形のままの幅 16 は骨組みが読む学習に使う列の数 3 と違うので, 直す場所を出して書かない.
-  // 書くかは利用者が選べる (直さずに保存)
+  // 再構成の幅は形の推定で求めて比べる. 書くかは利用者が選べる (直さずに保存)
   const anomalyFile = `${anomalyProject}/models/model.yaml`
   const findings = await expectContract(dialog, anomalyFile, [
     'inputs.x: 入力 x の最後の大きさを学習に使う列の数 3 にしてください (今は 16)',
+    'outputs.recon: 出力 recon の最後の大きさを学習に使う列の数 3 にしてください (今は 16)',
   ])
   await findings.getByRole('button', { name: '直さずに保存' }).click()
   await expect(
@@ -718,10 +719,11 @@ test('時間をまたぐ量の判断の問題の設定を新しく始めると�
       .getByRole('group', { name: '保存先' }),
   ).toContainText(`${demandProject}/models/model.yaml`)
 
-  // 雛形のままの幅は骨組みが読む数と違うので, 直す場所を出して書かない
+  // 雛形のままの幅と水準の数は骨組みが読む数と違うので, 直す場所を出して書かない
   const file = `${demandProject}/models/model.yaml`
   await expectContract(dialog, file, [
     'inputs.x: 入力 x の最後の大きさを学習に使う列の数 5 にしてください (今は 16)',
+    'outputs.quantiles: 出力 quantiles の最後の大きさを学ぶ水準の数 4 にしてください (今は 9)',
   ])
 
   // 記録のデータセットから入力と出力を作ると, 入力の幅を学習に使う 5 列にし, 出力 quantiles

@@ -6,6 +6,7 @@
 依存 project で入る
 """
 
+import copy
 import datetime as dt
 import functools
 import importlib
@@ -16,7 +17,7 @@ from typing import Any, Optional
 
 import yaml
 from fastapi import APIRouter, HTTPException
-from ml_modelcontrol import list_examples
+from ml_modelcontrol import infer, list_examples
 from pydantic import BaseModel, Field, ValidationError
 
 from ml_createarchitecture.settings import get_problems_dir
@@ -57,6 +58,11 @@ RESERVED_DIRS = {
     "data": "写したデータのディレクトリ",
     "outputs": "データセットと実験のディレクトリ",
 }
+
+# 出力を (件数,) か (件数, 数) に reshape して読む骨組みの型 (出力の大きさ
+# をバッチの次元を除いた積で比べる. 他の骨組みは出力をそのまま使うので,
+# (件数, 数) の 2 次元で比べる)
+RESHAPED_SKELETONS = frozenset({"uplift", "price", "demand"})
 
 # 書けるモデルの定義の拡張子
 SPEC_SUFFIXES = (".yaml", ".yml")
@@ -427,7 +433,8 @@ class ProjectSaved(BaseModel):
     notes: list[str] = Field(
         default_factory=list,
         description="骨組みの約束の確かめの知らせ (データセットを読めず, "
-        "入力の形の最後の大きさを確かめていないなど)"
+        "入力と出力の形の大きさを確かめていない, 出力の形を推定でき"
+        "ないなど)"
     )
 
 
@@ -2462,8 +2469,8 @@ def dataset_widths(
     # 確かめの助けなので, 読めない理由を問わず保存を止めない)
     note: Optional[str]
     if target.dataset is None:
-        note = ("問題の設定にデータセットの場所の記録が無いので, 入力の形の"
-                "最後の大きさは確かめていません")
+        note = ("問題の設定にデータセットの場所の記録が無いので, データ"
+                "セットで決まる形の最後の大きさは確かめていません")
         return {}, note
     try:
         info = read_dataset_inputs(DatasetBody(
@@ -2472,8 +2479,8 @@ def dataset_widths(
     except Exception as error:
         reason = (error.detail if isinstance(error, HTTPException)
                   else error)
-        note = (f"記録のデータセット {target.dataset} を読めないので, 入力の"
-                f"形の最後の大きさは確かめていません: {reason}")
+        note = (f"記録のデータセット {target.dataset} を読めないので, データ"
+                f"セットで決まる形の最後の大きさは確かめていません: {reason}")
         return {}, note
     widths = contract_widths(kind, info)
     note = None
@@ -2489,7 +2496,8 @@ def contract_findings(
     約束に合うかを確かめる関数
 
     約束は ML-Quest の model_contract と check_model_contract が持ち, この
-    アプリには写さない
+    アプリには写さない. 定義の出力は形を持たないので, 出力の形の大きさ
+    だけは, ML-ModelControl の形の推定の結果と約束の数をこのアプリで比べる
 
     Parameters
     ----------
@@ -2505,7 +2513,7 @@ def contract_findings(
     notes: list[str]
         確かめの知らせ (最後の大きさを確かめていない理由など)
     widths: dict[str, int]
-        比べた最後の大きさの数
+        比べた大きさの数 (データセットの数と学ぶ水準の数 levels)
 
     Raises
     ----------
@@ -2527,8 +2535,13 @@ def contract_findings(
     if contract is None:
         return [], [], {}
 
-    # 最後の大きさは, データセットから入力と出力を作るときと同じ数
-    widths, note = dataset_widths(target, str(contract.get("skeleton")))
+    # 最後の大きさは, データセットから入力と出力を作るときと同じ数. 学ぶ
+    # 水準の数はデータセットに依らず, 学習の設定か問題の設定から
+    kind = str(contract.get("skeleton"))
+    widths, note = dataset_widths(target, kind)
+    levels = learned_levels(problem) if kind == "demand" else None
+    if levels is not None:
+        widths["levels"] = levels
     try:
         found = quest.check_model_contract(problem, spec, widths)
     except READ_ERRORS as error:
@@ -2539,7 +2552,41 @@ def contract_findings(
     if note is None:
         notes += unchecked_widths(contract, widths)
 
-    return list(found), notes, widths
+    # 出力の形の大きさは, 定義の形の推定の結果と約束の比べ
+    sized, unsized = output_size_findings(contract, spec, widths)
+    found = [*found, *sized]
+    notes += unsized
+
+    return found, notes, widths
+
+
+def learned_levels(problem: Any) -> Optional[int]:
+    """
+    時間をまたぐ量の判断の学ぶ分位点の水準の数を, データセットに依らず
+    求める関数
+
+    「データセットから入力と出力を作る」と同じ決め方 (記録のプロジェクトの
+    学習の設定の demand.levels を先, 無ければ問題の設定の受け渡し)
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+
+    Returns
+    ----------
+    count: Optional[int]
+        水準の数 (時間をまたぐ量の判断でないか, どちらも読めなければ None.
+        その場合は約束の size で見る)
+    """
+    # 受け持ちの答えと, 学習の設定を先にした水準
+    answers = demand_answers(problem)
+    if answers is None:
+        return None
+    levels = demand_levels(problem, answers)[0]
+    count = None if levels is None else len(levels)
+
+    return count
 
 
 def unchecked_widths(contract: Any, widths: dict[str, int]) -> list[str]:
@@ -2557,20 +2604,300 @@ def unchecked_widths(contract: Any, widths: dict[str, int]) -> list[str]:
     Returns
     ----------
     notes: list[str]
-        確かめなかった入力ごとの知らせ (全て確かめたなら空)
+        確かめなかった入力と出力ごとの知らせ (全て確かめたなら空)
     """
-    # 約束の数も渡した数も無い, 鍵を持つ入力 (崩れた約束は知らせ無し)
-    items = contract.get("inputs") if isinstance(contract, dict) else None
-    notes = [
-        f"{item.get('label') or item['width']} をデータセットから求められ"
-        f"ないので, 入力 {item.get('name') or item.get('text')} の形の最後の"
-        "大きさは確かめていません"
-        for item in items or []
-        if isinstance(item, dict) and item.get("width")
-        and item.get("size") is None and item["width"] not in widths
-    ]
+    # 約束の数も渡した数も無い, 鍵を持つ入力と出力 (崩れた約束は知らせ
+    # 無し)
+    notes = []
+    for key, word in (("inputs", "入力"), ("outputs", "出力")):
+        items = contract.get(key) if isinstance(contract, dict) else None
+        notes += [
+            f"{item.get('label') or item['width']} をデータセットから求め"
+            f"られないので, {word} {item.get('name') or item.get('text')} "
+            "の形の最後の大きさは確かめていません"
+            for item in (items if isinstance(items, list) else [])
+            if isinstance(item, dict) and item.get("width")
+            and item.get("size") is None and item["width"] not in widths
+        ]
 
     return notes
+
+
+def output_pairs(
+    contract: Any, outputs: dict[str, Any]
+) -> list[tuple[dict[str, Any], str]]:
+    """
+    大きさの決まる約束の出力の項目に, 定義の出力の名前を当てる関数
+
+    Parameters
+    ----------
+    contract: Any
+        骨組みの約束 (ML-Quest の model_contract)
+    outputs: dict[str, Any]
+        定義の出力 (名前から出どころ)
+
+    Returns
+    ----------
+    pairs: list[tuple[dict[str, Any], str]]
+        項目と定義の出力の名前の組 (定義に無い名前と, 数が合わず当てられ
+        ない名前を問わない項目は除く. 名前と数の誤りは約束の比べが出す)
+    """
+    # 名前を決めた項目は同じ名前, 名前を問わない項目は他の出力に順に当て
+    # (数が合う場合だけ)
+    listed = contract.get("outputs") if isinstance(contract, dict) else None
+    items = [item for item in (listed if isinstance(listed, list) else [])
+             if isinstance(item, dict)]
+    names = [item.get("name") for item in items if item.get("name")]
+    pairs = [(item, str(item["name"])) for item in items
+             if item.get("name") and item["name"] in outputs]
+    free = [item for item in items if not item.get("name")]
+    rest = [str(name) for name in outputs if name not in names]
+    if free and len(free) == len(rest):
+        pairs += list(zip(free, rest, strict=True))
+    pairs = [(item, name) for item, name in pairs
+             if item.get("width") or item.get("size") is not None]
+
+    return pairs
+
+
+def inferred_shapes(spec: dict[str, Any]) -> dict[str, Any]:
+    """
+    定義の形を推定する関数
+
+    Parameters
+    ----------
+    spec: dict[str, Any]
+        保存する定義
+
+    Returns
+    ----------
+    result: dict[str, Any]
+        ML-ModelControl の infer の結果 (推定で起きた誤りは, issues の
+        1 件の誤りにした空の結果)
+    """
+    # 推定は定義を書き換えるので写しで (推定で起きた誤りは, 確かめの助け
+    # なので保存を止めない)
+    try:
+        result: dict[str, Any] = infer(copy.deepcopy(spec))
+    except Exception as error:
+        result = {
+            "issues": [{"severity": "error", "node": None,
+                        "message": f"{type(error).__name__}: {error}"}],
+            "nodes": {}, "outputs": {}, "estimated_only": False,
+            "params": None
+        }
+
+    return result
+
+
+def unsized_reason(result: dict[str, Any], ref: Any, name: str) -> str:
+    """
+    出力の形を推定できなかった理由を, 出力の出どころのノードの結果と推定
+    の上限から選ぶ関数
+
+    Parameters
+    ----------
+    result: dict[str, Any]
+        形の推定の結果 (inferred_shapes)
+    ref: Any
+        出力の出どころ (定義の outputs の値. ノードの名前と出力の名前)
+    name: str
+        出力の名前
+
+    Returns
+    ----------
+    reason: str
+        理由の文
+    """
+    # 出力そのものの誤り, 出どころのノードの誤り, 推定の上限, 定義の誤りの
+    # 順
+    value = result["outputs"].get(name)
+    node = result["nodes"].get(str(ref).partition(":")[0])
+    issues = result["issues"]
+    limits = [str(issue.get("message")) for issue in issues
+              if issue.get("code") == "input_too_large"]
+    errors = [str(issue.get("message")) for issue in issues
+              if issue.get("severity") == "error"]
+    if isinstance(value, dict) and value.get("error"):
+        reason = str(value["error"])
+    elif isinstance(node, dict) and node.get("error"):
+        reason = str(node["error"])
+    elif result.get("estimated_only"):
+        reason = (f"パラメータ数 ({result.get('params')}) が形の推定の上限"
+                  "を超えるので, 形を推定しません")
+    elif limits:
+        reason = limits[0]
+    elif errors:
+        reason = errors[0]
+    else:
+        reason = "形を推定できません"
+
+    return reason
+
+
+def shape_reason(value: Any) -> Optional[str]:
+    """
+    推定した出力の値が, バッチの次元を持つテンソルでない理由を返す関数
+
+    Parameters
+    ----------
+    value: Any
+        出力の形の推定の結果 (infer の outputs の値)
+
+    Returns
+    ----------
+    reason: Optional[str]
+        理由の文 (バッチの次元を持つテンソルなら None)
+    """
+    # テンソルでない値と, 次元の無いテンソル
+    kind = value.get("kind") if isinstance(value, dict) else None
+    shape = value.get("shape") if isinstance(value, dict) else None
+    reason = None
+    if kind != "tensor" or not isinstance(shape, list):
+        reason = f"出力がテンソルではありません (種類 {kind})"
+    elif not shape:
+        reason = "出力がバッチの次元を持たないテンソルです (形 [])"
+
+    return reason
+
+
+def batch_free_size(shape: list[int]) -> int:
+    """
+    バッチの次元を除いた大きさ (残りの次元の大きさの積) を求める関数
+
+    出力を (件数,) か (件数, 数) に reshape して読む骨組み
+    (RESHAPED_SKELETONS) では, 最後の大きさでなく積で比べる ((件数,) は 1)
+
+    Parameters
+    ----------
+    shape: list[int]
+        出力の形 (最初がバッチの次元)
+
+    Returns
+    ----------
+    size: int
+        バッチの次元を除いた大きさ
+    """
+    # 残りの次元の積
+    size = 1
+    for value in shape[1:]:
+        size *= value
+
+    return size
+
+
+def output_size_findings(
+    contract: Any, spec: dict[str, Any], widths: dict[str, int]
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """
+    定義の出力の形の大きさを, 形の推定で求めて約束の数と比べる関数
+
+    定義の出力は形を持たないので, 定義の入力の形から ML-ModelControl の
+    形の推定で求める (入力の形の誤りは入力の比べが出すので, 入力の形は
+    定義のまま)
+
+    Parameters
+    ----------
+    contract: Any
+        骨組みの約束 (ML-Quest の model_contract)
+    spec: dict[str, Any]
+        保存する定義
+    widths: dict[str, int]
+        データセットから求めた最後の大きさの鍵から数
+
+    Returns
+    ----------
+    found: list[dict[str, Any]]
+        合わない所 (level, id, message. id は outputs.<名前>)
+    notes: list[str]
+        形を推定できず確かめなかった出力ごとの知らせ
+    """
+    # 渡した数を約束の数より先に (入力の比べと同じ). 数の無い出力は確かめ
+    # 無し (知らせは unchecked_widths)
+    listed = spec.get("outputs")
+    outputs = listed if isinstance(listed, dict) else {}
+    pairs: list[tuple[dict[str, Any], str, int]] = []
+    for item, name in output_pairs(contract, outputs):
+        size = widths.get(str(item.get("width")), item.get("size"))
+        if isinstance(size, int):
+            pairs.append((item, name, size))
+    if not pairs:
+        return [], []
+
+    # 推定した形の大きさと約束の数の比べ (reshape して読む骨組みはバッチの
+    # 次元を除いた積)
+    reshaped = contract.get("skeleton") in RESHAPED_SKELETONS
+    result = inferred_shapes(spec)
+    found = []
+    notes = []
+    for item, name, size in pairs:
+        value = result["outputs"].get(name)
+        if value is None or (isinstance(value, dict) and "error" in value):
+            why = unsized_reason(result, outputs[name], name)
+            notes.append(f"出力 {name} の形を推定できないので, 大きさは確か"
+                         f"めていません: {why}")
+            continue
+        why_not = shape_reason(value)
+        if why_not is not None:
+            notes.append(f"出力 {name} の大きさは確かめていません: "
+                         f"{why_not}")
+            continue
+        found += size_findings(item, name, size, value["shape"], reshaped)
+
+    return found, notes
+
+
+def size_findings(
+    item: dict[str, Any], name: str, size: int, shape: list[int],
+    reshaped: bool
+) -> list[dict[str, Any]]:
+    """
+    出力の形の大きさを, 約束の数と比べる関数
+
+    Parameters
+    ----------
+    item: dict[str, Any]
+        約束の出力の項目
+    name: str
+        定義の出力の名前
+    size: int
+        骨組みが読む数
+    shape: list[int]
+        推定した出力の形 (最初がバッチの次元)
+    reshaped: bool
+        骨組みが出力を reshape して読むか (真ならバッチの次元を除いた積,
+        偽なら (件数, 数) の 2 次元で比べる)
+
+    Returns
+    ----------
+    found: list[dict[str, Any]]
+        合わない所 (合えば空. 2 次元は最後の大きさ, 他は形を添えた文)
+    """
+    # reshape して読む骨組みは積, 他は (件数, 数) の形
+    label = item.get("label")
+    expected = f"{label} {size}" if label else f" {size}"
+    actual: Optional[int]
+    if reshaped:
+        actual = batch_free_size(shape)
+        message = (
+            f"出力 {name} のバッチの次元を除いた大きさ (残りの次元の積) "
+            f"を{expected} にしてください (今は形 {shape} で {actual})"
+        )
+    else:
+        actual = shape[-1] if len(shape) == 2 else None
+        message = (
+            f"出力 {name} を (件数, {expected.strip()}) の 2 次元の形に"
+            "してください (骨組みは出力をそのまま使います. 今は形 "
+            f"{shape})"
+        )
+    if actual == size:
+        return []
+    if len(shape) == 2:
+        message = (f"出力 {name} の最後の大きさを{expected} にしてください "
+                   f"(今は {shape[-1]})")
+    found = [{"level": "error", "id": f"outputs.{name}", "message": message}]
+
+    return found
 
 
 @router.put("/project/model")
