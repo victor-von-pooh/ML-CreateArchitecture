@@ -3522,9 +3522,191 @@ def test_project_save_output_not_inferred(
     notes = response.json()["notes"]
     assert len(notes) == 1, notes
     assert notes[0].startswith(
-        "出力 recon の形を推定できないので, 最後の大きさは確かめていません"
+        "出力 recon の形を推定できないので, 大きさは確かめていません: "
     )
+    assert "in_features" in notes[0]
     assert Path(target["path"]).exists()
+
+
+def adapted_spec(
+    client: TestClient, place: Path, example: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    記録のデータセットから入力と出力を作った雛形を返す関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    place: Path
+        問題の設定のファイル
+    example: str
+        雛形の名前
+
+    Returns
+    ----------
+    spec: dict[str, Any]
+        書き換えた雛形の定義
+    target: dict[str, Any]
+        保存先 (POST /api/project/target の結果)
+    """
+    # 保存先, データセットの入力と出力, 雛形の書き換え
+    target = client.post(
+        "/api/project/target", json={"path": str(place)}
+    ).json()
+    info = client.post(
+        "/api/dataset/inputs",
+        json={"path": target["dataset"], "problem": str(place)}
+    ).json()
+    template = client.get(f"/api/examples/{example}").json()["spec"]
+    spec = client.post("/api/templates/adapt", json={
+        "spec": template, "name": example, "values": template_values(info)
+    }).json()["spec"]
+
+    return spec, target
+
+
+def reshaped(
+    spec: dict[str, Any], output: str, shape: list[int]
+) -> dict[str, Any]:
+    """
+    出力の出どころの後に, バッチの次元を残して形を変えるノードを足す関数
+
+    Parameters
+    ----------
+    spec: dict[str, Any]
+        定義 (その場で書き換える)
+    output: str
+        出力の名前
+    shape: list[int]
+        バッチの次元を除いた形
+
+    Returns
+    ----------
+    spec: dict[str, Any]
+        書き換えた定義
+    """
+    # op.Reshape のノードを出力の出どころにする
+    node = f"{output}_reshape"
+    spec["nodes"][node] = {"unit": "op.Reshape", "params": {"shape": shape},
+                           "inputs": spec["outputs"][output]}
+    spec["outputs"][output] = node
+
+    return spec
+
+
+def test_project_save_output_batch_shapes(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    骨組みが reshape して読む出力は, 最後の大きさでなくバッチの次元を
+    除いた大きさで比べることを確かめる関数 (ML-EDA と check_model_contract
+    のある ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 効果の見積もりの (件数,) と (件数, 1, 1) の出力は 1 として通す
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    if not hasattr(ml_quest, "check_model_contract"):
+        pytest.skip("ML-Quest に check_model_contract がありません")
+    place = contract_problem(ml_eda, ml_quest, "uplift", tmp_path / "u")
+    spec, _ = adapted_spec(client, place, "tabular_uplift")
+    reshaped(spec, "treated", [])
+    reshaped(spec, "control", [1, 1])
+    response = client.put(
+        "/api/project/model", json={"path": str(place), "spec": spec}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["notes"] == []
+
+    # 時間をまたぐ量の判断の (件数, 水準の数, 1) は水準の数として通し, 違う
+    # 数は形と積を添えた直す場所
+    place = contract_problem(ml_eda, ml_quest, "demand", tmp_path / "d")
+    spec, _ = adapted_spec(client, place, "tabular_demand")
+    levels = spec["nodes"]["demand2"]["params"]["out_features"]
+    batch = spec["inputs"]["x"]["shape"][0]
+    reshaped(spec, "quantiles", [-1, 1])
+    response = client.put(
+        "/api/project/model", json={"path": str(place), "spec": spec}
+    )
+    assert response.status_code == 200, response.text
+    spec["nodes"]["demand2"]["params"]["out_features"] = levels + 1
+    response = client.put("/api/project/model", json={
+        "path": str(place), "spec": spec, "overwrite": True
+    })
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["findings"] == [{
+        "level": "error", "id": "outputs.quantiles",
+        "message": "出力 quantiles のバッチの次元を除いた大きさ (残りの次元"
+                   f"の積) を学ぶ水準の数 {levels} にしてください (今は形 "
+                   f"[{batch}, {levels + 1}, 1] で {levels + 1})"
+    }]
+
+
+def test_project_save_levels_without_dataset(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    記録のデータセットを読めなくても, 出力 quantiles の値の数を学習の設定
+    の学ぶ水準の数と比べることを確かめる関数 (ML-EDA と
+    check_model_contract のある ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 学習の設定の水準を, 問題の設定と違う 3 つにして消したデータセット
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    if not hasattr(ml_quest, "check_model_contract"):
+        pytest.skip("ML-Quest に check_model_contract がありません")
+    place = contract_problem(ml_eda, ml_quest, "demand", tmp_path)
+    spec, target = adapted_spec(client, place, "tabular_demand")
+    config_path = tmp_path / "project" / "configs" / "default" / "train.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["demand"]["levels"] = [0.25, 0.5, 0.75]
+    config_path.write_text(yaml.safe_dump(config))
+    shutil.rmtree(target["dataset"])
+
+    # 問題の設定の水準の数の定義は, 学習の設定の数 3 との直す場所
+    response = client.put(
+        "/api/project/model", json={"path": str(place), "spec": spec}
+    )
+    assert response.status_code == 409, response.text
+    detail = response.json()["detail"]
+    assert detail["widths"] == {"levels": 3}
+    assert [item["id"] for item in detail["findings"]] == [
+        "outputs.quantiles"
+    ]
+    assert "学ぶ水準の数 3 にしてください" in (
+        detail["findings"][0]["message"]
+    )
+
+    # 学習の設定の数の定義は, データセットを読めない知らせだけで書き込み
+    spec["nodes"]["demand2"]["params"]["out_features"] = 3
+    response = client.put(
+        "/api/project/model", json={"path": str(place), "spec": spec}
+    )
+    assert response.status_code == 200, response.text
+    notes = response.json()["notes"]
+    assert len(notes) == 1 and "読めないので" in notes[0]
 
 
 def test_project_save_contract_without_dataset(
