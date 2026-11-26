@@ -1,3 +1,4 @@
+import copy
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -2804,3 +2805,356 @@ def test_problem_price(
     }
     assert entries["price"]["usable"] is True, entries["price"]
     assert entries["price"]["example"] == "tabular_price"
+
+
+def demand_problem(ml_quest: Any) -> dict[str, Any]:
+    """
+    見本の課題から, 商品ごとの日ごとの売れた数の記録から発注の数を決める
+    問題の設定を作る関数
+
+    Parameters
+    ----------
+    ml_quest: Any
+        ML-Quest のモジュール
+
+    Returns
+    ----------
+    problem: dict[str, Any]
+        予測するで正解の種類が先の期間の需要の問題の設定 (商品の id の列は
+        product_id, 日付の列は date, 売れた数の列は units, 在庫の数の列は
+        stock, 行の id の列は record_id, 商品の特徴の列は size. 学ぶ水準の
+        答えは 0.1 と 0.9 で, 品切れの損 3 と売れ残りの損 1 の水準 τ 0.75
+        と 0.5 を足した 4 つを学ぶ. ML-Quest のテストの受け持ちの入れ替えと
+        同じ)
+    """
+    # 見本の受け持ちの作り直し
+    problem = ml_quest.example_problem("解約の引き止め")
+    problem["ml"]["parts"] = [{}]
+    for key in ("decision", "basis", "current"):
+        problem["action"].pop(key, None)
+    problem = ml_quest.answer(
+        problem, "information.columns",
+        ["record_id", "product_id", "date", "size", "units", "stock"]
+    )
+    answers: list[tuple[str, Any]] = [
+        ("role", "predict"), ("unit", "row"), ("output", "distribution"),
+        ("target.kind", "demand"), ("target.source", "column"),
+        ("method", "scratch"), ("what", "先の 7 日の売れる数"),
+        ("item", "商品と発注を決める日ごとの 1 行"),
+        ("baseline", "前の 7 日と同じ数を発注する"),
+        ("demand.product", "product_id"), ("demand.date", "date"),
+        ("demand.units", "units"), ("demand.stock", "stock"),
+        ("demand.id", "record_id"), ("demand.columns", ["size"]),
+        ("demand.levels", [0.1, 0.9]),
+        ("evaluation.metric", "loss"),
+        ("evaluation.link", "分位点の損失が小さいほど発注の数の損の見込みが"
+         "当たる")
+    ]
+    for key, value in answers:
+        problem = ml_quest.answer(problem, f"ml.parts.0.{key}", value)
+    problem = ml_quest.answer(problem, "action.decision", {
+        "type": "order", "shortage_cost": 3, "holding_cost": 1,
+        "max_order": 60
+    })
+
+    return problem
+
+
+def write_demand_dataset(
+    ml_eda: Any, root: Path, name: str = "demand", stock: bool = True
+) -> Path:
+    """
+    商品ごとの日ごとの売れた数の記録を, 需要の記録の表 (task: demand) と
+    して書き出す関数
+
+    Parameters
+    ----------
+    ml_eda: Any
+        ML-EDA のモジュール
+    root: Path
+        書き出す場所の親
+    name: str
+        書き出すデータセットの名前
+    stock: bool
+        在庫の数の列を書くか (偽なら, 在庫の数の列の無い表)
+
+    Returns
+    ----------
+    dataset: Path
+        書き出したデータセット (学習に使う列は size, 過去の売れた数の 1 日
+        前と 7 日前と 7 日の移動平均, 曜日の 5 列)
+    """
+    # 学習に使う列から外す列 (売れた数, 商品の id, 日付, 在庫の数, 行の id
+    # の列)
+    days, products = 84, 3
+    dates = pd.date_range("2024-01-01", periods=days, freq="D")
+    frame = pd.DataFrame({
+        "record_id": [f"r{number:04d}" for number in range(days * products)],
+        "product_id": [f"p{number // days}"
+                       for number in range(days * products)],
+        "date": list(dates) * products,
+        "size": [float(number // days) for number in range(days * products)],
+        "units": [5 + (number % 7) for number in range(days * products)]
+    })
+    recipe: dict[str, Any] = {
+        "task": "demand", "target": "units", "product": "product_id",
+        "date": "date", "horizon": 7, "id": "record_id",
+        "steps": [
+            {"op": "lag", "columns": ["units"], "lags": [1, 7],
+             "windows": [7], "by": ["product_id"], "time": "date",
+             "freq": "1D"},
+            {"op": "datetime_parts", "columns": ["date"],
+             "parts": ["weekday"]},
+            {"op": "standardize", "columns": "auto"}
+        ],
+        "split": {"method": "time", "valid": 0.2, "test": 0.2}
+    }
+    if stock:
+        frame["stock"] = 3.0
+        recipe["stock"] = "stock"
+    source = root / f"{name}.csv"
+    frame.to_csv(source, index=False)
+    dataset = root / name
+    ml_eda.export_dataset(ml_eda.load_data(source), recipe, dataset)
+
+    return dataset
+
+
+def test_dataset_inputs_demand(client: TestClient, tmp_path: Path) -> None:
+    """
+    需要の記録の表では, 入力 x の幅を学習に使う列の数にし, 時間をまたぐ量の
+    判断の問題の設定なら出す値の数を学ぶ分位点の水準の数にし, 数えない列を
+    返すことを確かめる関数 (ML-EDA と ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 時間をまたぐ量の判断, 値段を変える判断と列の予測の問題の設定
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    places = {}
+    for name, problem in (
+        ("demand", demand_problem(ml_quest)),
+        ("price", price_problem(ml_quest)),
+        ("column", ml_quest.example_problem("総菜の作る量")),
+    ):
+        places[name] = tmp_path / f"{name}.yaml"
+        ml_quest.save_problem(problem, places[name])
+    dataset = write_demand_dataset(ml_eda, tmp_path)
+
+    # 入力 x の 5 列と, 出す値の数は問題の設定の学ぶ水準の数 4 (答えた
+    # 0.1 と 0.9 に, 0.5 と水準 τ 0.75 を足したもの)
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(dataset), "problem": str(places["demand"])}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["task"] == "demand" and body["target"] == "demand"
+    assert body["inputs"] == [{
+        "name": "x", "shape": [4, 5], "dtype": "float32",
+        "dataset_shape": [None, 5], "vocabulary": None
+    }]
+    assert body["outputs"] == 4
+    assert body["price"] is None
+    assert body["demand"] == {
+        "columns": 5, "units": "units", "product": "product_id",
+        "date": "date", "stock": "stock", "id": "record_id",
+        "levels": [0.1, 0.5, 0.75, 0.9], "levels_from": "problem",
+        "notes": [], "problem": "解約の引き止め"
+    }
+
+    # 雛形 tabular_demand の入力の幅と水準の数に入れた定義の形の推定 (誤り
+    # 無し. 出力は (バッチ, 水準の数). 隠れ層の幅はそのまま)
+    spec = client.get("/api/examples/tabular_demand").json()["spec"]
+    spec["inputs"]["x"]["shape"] = body["inputs"][0]["shape"]
+    spec["nodes"]["demand1"]["params"]["in_features"] = 5
+    spec["nodes"]["demand2"]["params"]["out_features"] = 4
+    result = client.post("/api/check", json={"spec": spec}).json()
+    assert result["issues"] == [] and result["inferred"]
+    assert result["nodes"]["demand_cumsum"]["outputs"]["out"]["shape"] == [
+        4, 4
+    ]
+    assert result["nodes"]["demand1"]["outputs"]["out"]["shape"] == [4, 32]
+
+    # 問題の設定を渡さないか時間をまたぐ量の判断でない問題の設定では, 水準
+    # が分からないので出す値の数は無し (列の名前はデータセットの説明)
+    for extra in ({}, {"problem": str(places["column"])}):
+        response = client.post(
+            "/api/dataset/inputs", json={"path": str(dataset), **extra}
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["outputs"] is None
+        assert response.json()["demand"] == {
+            "columns": 5, "units": "units", "product": "product_id",
+            "date": "date", "stock": "stock", "id": "record_id",
+            "levels": None, "levels_from": None, "notes": [],
+            "problem": None
+        }
+
+    # 在庫の数の列の無い表の, 問題の設定の答えに依らない在庫の数の無し
+    # (説明の null は列が無い印)
+    bare = write_demand_dataset(ml_eda, tmp_path, "bare", stock=False)
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(bare), "problem": str(places["demand"])}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["demand"]["stock"] is None
+
+    # 時間をまたぐ量の判断の問題の設定に値段を変えた記録の表を渡した場合と,
+    # 値段を変える判断の問題の設定に需要の記録の表を渡した場合の 422
+    price = write_price_dataset(ml_eda, tmp_path)
+    for path, problem, message in (
+        (price, "demand", "需要の記録の表として書き出したものでは"),
+        (dataset, "price", "値段を変えた記録の表として書き出したものでは"),
+    ):
+        response = client.post(
+            "/api/dataset/inputs",
+            json={"path": str(path), "problem": str(places[problem])}
+        )
+        assert response.status_code == 422
+        assert message in response.json()["detail"]
+
+
+def test_dataset_inputs_demand_levels(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    時間をまたぐ量の判断の学ぶ水準を, 記録のプロジェクトの学習の設定から
+    先に読み, 問題の設定と数が違うか, 学習の設定を読めないか, 問題の設定を
+    受け渡しにできない場合に知らせることを確かめる関数 (ML-EDA と ML-Quest
+    が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 骨組みを書き出したプロジェクトの記録を持つ問題の設定 (学習の設定の
+    # demand.levels は受け渡しの水準)
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    problem = demand_problem(ml_quest)
+    project = tmp_path / "project"
+    ml_quest.make_project(problem, project)
+    place = tmp_path / "problem.yaml"
+    recorded = ml_quest.record_project(problem, project)
+    ml_quest.save_problem(recorded, place)
+    dataset = write_demand_dataset(ml_eda, tmp_path)
+    config_path = project / "configs" / "default" / "train.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    assert config["demand"]["levels"] == [0.1, 0.5, 0.75, 0.9]
+
+    def read() -> dict[str, Any]:
+        response = client.post(
+            "/api/dataset/inputs",
+            json={"path": str(dataset), "problem": str(place)}
+        )
+        assert response.status_code == 200, response.text
+        body: dict[str, Any] = response.json()
+        return body
+
+    # 同じ水準は学習の設定から, 知らせ無し
+    body = read()
+    assert body["outputs"] == 4
+    assert body["demand"]["levels"] == [0.1, 0.5, 0.75, 0.9]
+    assert body["demand"]["levels_from"] == "config"
+    assert body["demand"]["notes"] == []
+
+    # 数の違う学習の設定の水準は, 学習の設定の数にして食い違いを知らせる
+    config["demand"]["levels"] = [0.25, 0.5, 0.75]
+    config_path.write_text(yaml.safe_dump(config))
+    body = read()
+    assert body["outputs"] == 3
+    assert body["demand"]["levels"] == [0.25, 0.5, 0.75]
+    assert body["demand"]["levels_from"] == "config"
+    assert body["demand"]["notes"] == [
+        "学習の設定 (configs/default/train.yaml) の学ぶ水準の数 3 は, 問題"
+        "の設定の水準の数 4 と違います. 学習のスクリプトが読む学習の設定の"
+        "水準の数にしました (問題の設定に合わせるなら, 学習の設定の "
+        "demand.levels を直してください)"
+    ]
+
+    # 読めない水準と読めない学習の設定は, 問題の設定の水準にして知らせる
+    for text in (
+        yaml.safe_dump({**config, "demand": {"levels": [0, 2]}}),
+        "demand: [",
+    ):
+        config_path.write_text(text)
+        body = read()
+        assert body["outputs"] == 4
+        assert body["demand"]["levels_from"] == "problem"
+        assert len(body["demand"]["notes"]) == 1
+        assert "demand.levels) を読めないので, 問題の設定の水準" in (
+            body["demand"]["notes"][0]
+        )
+
+    # 受け渡しにできない問題の設定 (発注の判断の上限が無い) は, 水準が
+    # 分からないことを知らせる
+    broken = copy.deepcopy(recorded)
+    broken["action"]["decision"].pop("max_order")
+    config_path.unlink()
+    ml_quest.save_problem(broken, place)
+    body = read()
+    assert body["outputs"] is None
+    assert body["demand"]["levels"] is None
+    assert body["demand"]["levels_from"] is None
+    assert body["demand"]["notes"][0].startswith(
+        "問題の設定の学ぶ水準を読めません ("
+    )
+    assert body["demand"]["problem"] == "解約の引き止め"
+
+
+def test_problem_demand(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    骨組みを書き出した時間をまたぐ量の判断の問題の設定が選べて, 雛形
+    tabular_demand を返すことを確かめる関数 (ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        環境変数の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    # 骨組みを書き出したプロジェクトの記録を持つ問題の設定
+    quest = pytest.importorskip("ml_quest")
+    home = tmp_path / "pathfinder"
+    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
+    problem = demand_problem(quest)
+    project = tmp_path / "demand"
+    quest.make_project(problem, project)
+    save_problem(
+        quest, home, "demand", quest.record_project(problem, project)
+    )
+    response = client.get("/api/problems")
+    assert response.status_code == 200, response.text
+    entries = {
+        Path(entry["path"]).parent.name: entry
+        for entry in response.json()["problems"]
+    }
+    assert entries["demand"]["usable"] is True, entries["demand"]
+    assert entries["demand"]["example"] == "tabular_demand"

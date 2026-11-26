@@ -25,6 +25,10 @@ COUPONS = ["customer_id", "age", "visits", "coupon", "purchased"]
 SALES = ["record_id", "product_id", "size", "weekday", "price", "units",
          "unit_cost"]
 
+# 需要の記録の表の列 (行の id, 商品の id, 日付, 商品の特徴, 日ごとの売れた
+# 数, 在庫の数)
+DEMANDS = ["record_id", "product_id", "date", "size", "units", "stock"]
+
 
 def make_dataset(path: Path) -> None:
     """
@@ -390,10 +394,106 @@ def make_sales(path: Path) -> None:
     ml_eda.export_dataset(ml_eda.load_data(source), recipe, path)
 
 
+def demand_problem() -> dict:
+    """
+    見本の課題から, 商品ごとの日ごとの売れた数の記録から発注の数を決める
+    問題の設定を作る関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    problem: dict
+        予測するで正解の種類が先の期間の需要の問題の設定 (商品の id の列は
+        product_id, 日付の列は date, 売れた数の列は units, 在庫の数の列は
+        stock, 行の id の列は record_id, 商品の特徴の列は size. 学ぶ水準の
+        答えは 0.1 と 0.9 で, 品切れの損 3 と売れ残りの損 1 の水準 τ 0.75
+        と 0.5 を足した 4 つを学ぶ)
+    """
+    # 見本の受け持ちの作り直し (ML-Quest のテストの受け持ちの入れ替えと同じ)
+    problem = ml_quest.example_problem("解約の引き止め")
+    problem["ml"]["parts"] = [{}]
+    for key in ("decision", "basis", "current"):
+        problem["action"].pop(key, None)
+    problem = ml_quest.answer(problem, "information.columns", DEMANDS)
+    answers = [
+        ("role", "predict"), ("unit", "row"), ("output", "distribution"),
+        ("target.kind", "demand"), ("target.source", "column"),
+        ("method", "scratch"), ("what", "先の 7 日の売れる数"),
+        ("item", "商品と発注を決める日ごとの 1 行"),
+        ("baseline", "前の 7 日と同じ数を発注する"),
+        ("demand.product", "product_id"), ("demand.date", "date"),
+        ("demand.units", "units"), ("demand.stock", "stock"),
+        ("demand.id", "record_id"), ("demand.columns", ["size"]),
+        ("demand.levels", [0.1, 0.9]),
+        ("evaluation.metric", "loss"),
+        ("evaluation.link", "分位点の損失が小さいほど発注の数の損の見込みが"
+         "当たる")
+    ]
+    for key, value in answers:
+        problem = ml_quest.answer(problem, f"ml.parts.0.{key}", value)
+    problem = ml_quest.answer(problem, "action.decision", {
+        "type": "order", "shortage_cost": 3, "holding_cost": 1,
+        "max_order": 60
+    })
+    problem["name"] = "e2e の発注の見直し"
+
+    return problem
+
+
+def make_demands(path: Path) -> None:
+    """
+    商品ごとの日ごとの売れた数の記録を, 需要の記録の表 (task: demand) と
+    して書き出す関数
+
+    Parameters
+    ----------
+    path: Path
+        書き出すディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 学習に使う列は, 商品の特徴の 1 列, 過去の売れた数の 1 日前と 7 日前と
+    # 7 日の移動平均, 曜日の 5 列 (売れた数, 商品の id, 日付, 在庫の数, 行の
+    # id の列は数えない)
+    days, products = 84, 3
+    rows = days * products
+    frame = pd.DataFrame({
+        "record_id": [f"r{number:04d}" for number in range(rows)],
+        "product_id": [f"p{number // days}" for number in range(rows)],
+        "date": list(pd.date_range("2024-01-01", periods=days, freq="D"))
+        * products,
+        "size": [float(number // days) for number in range(rows)],
+        "units": [5 + number % 7 for number in range(rows)],
+        "stock": 3.0
+    })
+    source = path.parent / "demands.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(source, index=False)
+    recipe = {
+        "task": "demand", "target": "units", "product": "product_id",
+        "date": "date", "stock": "stock", "horizon": 7, "id": "record_id",
+        "steps": [
+            {"op": "lag", "columns": ["units"], "lags": [1, 7],
+             "windows": [7], "by": ["product_id"], "time": "date",
+             "freq": "1D"},
+            {"op": "datetime_parts", "columns": ["date"],
+             "parts": ["weekday"]},
+            {"op": "standardize", "columns": "auto"}
+        ],
+        "split": {"method": "time", "valid": 0.2, "test": 0.2}
+    }
+    ml_eda.export_dataset(ml_eda.load_data(source), recipe, path)
+
+
 def make_store(
     path: Path, project: Path, dataset: Path, rank_project: Path,
     anomaly_project: Path, distance_project: Path, uplift_project: Path,
-    price_project: Path
+    price_project: Path, demand_project: Path
 ) -> None:
     """
     ML-Pathfinder の置き場に, プロジェクトを書き出した問題の設定と, まだ
@@ -422,6 +522,10 @@ def make_store(
     price_project: Path
         値段を変える判断の問題の設定のプロジェクトのディレクトリ (値段を
         変える判断の骨組みを書き出し, 記録の場所に値段を変えた記録の表を
+        書き出す)
+    demand_project: Path
+        時間をまたぐ量の判断の問題の設定のプロジェクトのディレクトリ (時間を
+        またぐ量の判断の骨組みを書き出し, 記録の場所に需要の記録の表を
         書き出す)
 
     Returns
@@ -490,6 +594,13 @@ def make_store(
     make_sales(Path(recorded["project"]["dataset"]))
     ml_quest.save_problem(recorded, path / "problems" / "price")
 
+    # 時間をまたぐ量の判断の問題の設定 (他のテストが書く定義と重ならない
+    # ように別のプロジェクト)
+    ml_quest.make_project(demand_problem(), demand_project)
+    recorded = ml_quest.record_project(demand_problem(), demand_project)
+    make_demands(Path(recorded["project"]["dataset"]))
+    ml_quest.save_problem(recorded, path / "problems" / "demand")
+
 
 def make_experiment(project: Path) -> None:
     """
@@ -548,5 +659,5 @@ if __name__ == "__main__":
         work / "pathfinder", work / "project", work / "dataset",
         work / "rank_project", work / "anomaly_project",
         work / "distance_project", work / "uplift_project",
-        work / "price_project"
+        work / "price_project", work / "demand_project"
     )

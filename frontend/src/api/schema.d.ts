@@ -368,7 +368,12 @@ export interface paths {
          *     処置の列と行の id の列 (データセットの説明を先, 無ければ問題の設定の
          *     答え) も返す. 値段を変える判断のデータセットでは, 特徴の列と値段の列の
          *     数 (ML-EDA の入力 x の幅) と, 値段, 売れた数, 原価, 商品の id と行の id
-         *     の列 (データセットの説明を先, 説明に無ければ問題の設定の答え) も返す
+         *     の列 (データセットの説明を先, 説明に無ければ問題の設定の答え) も返す.
+         *     需要の記録のデータセットでは, 学習に使う列の数 (ML-EDA の入力 x の
+         *     幅), 数えない列 (データセットの説明を先, 説明に無ければ問題の設定の
+         *     答え) と, 時間をまたぐ量の判断の問題の設定なら学ぶ分位点の水準 (記録の
+         *     プロジェクトの学習の設定を先, 無ければ問題の設定の受け渡し) も返し,
+         *     出す値の数を水準の数にする (水準が分からなければ無し)
          *
          *     Parameters
          *     ----------
@@ -383,7 +388,8 @@ export interface paths {
          *         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
          *         符号化した行の幅, 並べるの学習用の利用者と品物の数, 異常の検知の
          *         学習に使う列の数と度合いの決め方, 効果を見積もるの学習に使う列の数と
-         *         数えない列, 値段を変える判断の特徴の列と値段の列の数と列の名前
+         *         数えない列, 値段を変える判断の特徴の列と値段の列の数と列の名前,
+         *         需要の学習に使う列の数, 数えない列と学ぶ分位点の水準
          *
          *     Raises
          *     ----------
@@ -395,7 +401,8 @@ export interface paths {
          *         検知の問題の設定でデータセットが異常の検知の表でない場合と, 効果を
          *         見積もるの問題の設定でデータセットが介入の記録の表でない場合と, 値段
          *         を変える判断の問題の設定でデータセットが値段を変えた記録の表でない
-         *         場合は 422.
+         *         場合と, 時間をまたぐ量の判断の問題の設定でデータセットが需要の記録の
+         *         表でない場合は 422.
          *         並べるで反応の表が無い場合は 404
          */
         post: operations["read_dataset_inputs"];
@@ -657,7 +664,7 @@ export interface components {
             path: string;
             /**
              * Problem
-             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. 並べるなら, path は反応の表のファイルで, 入力 user と item の大きさを ML-Quest の rank_encoding の学習用の利用者と品物の数にする. 異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を見積もるなら, データセットの説明に無い処置の列と行の id の列を受け持ちの答えから読む. 値段を変える判断なら, データセットの説明に無い値段, 原価, 商品の id と行の id の列を受け持ちの答えから読む)
+             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. 並べるなら, path は反応の表のファイルで, 入力 user と item の大きさを ML-Quest の rank_encoding の学習用の利用者と品物の数にする. 異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を見積もるなら, データセットの説明に無い処置の列と行の id の列を受け持ちの答えから読む. 値段を変える判断なら, データセットの説明に無い値段, 原価, 商品の id と行の id の列を受け持ちの答えから読む. 時間をまたぐ量の判断なら, 出す値の数を学ぶ分位点の水準の数 (記録のプロジェクトの学習の設定の demand.levels. 無ければ受け渡しの demand.levels) にする)
              */
             problem?: string | null;
         };
@@ -709,6 +716,61 @@ export interface components {
             uplift?: components["schemas"]["UpliftWidth"] | null;
             /** @description 値段を変える判断のデータセットか問題の設定で, 入力 x の幅にした特徴の列と値段の列の数と列の名前 (他は無し) */
             price?: components["schemas"]["PriceWidth"] | null;
+            /** @description 需要の記録のデータセットか時間をまたぐ量の判断の問題の設定で, 入力 x の幅にした学習に使う列の数, 数えない列と, 出力の値の数にした学ぶ分位点の水準 (他は無し) */
+            demand?: components["schemas"]["DemandWidth"] | null;
+        };
+        /** DemandWidth */
+        DemandWidth: {
+            /**
+             * Columns
+             * @description 学習に使う列の数 (入力 x の幅. 日ごとの売れた数, 先の期間と前の期間の合計, 商品の id, 日付, 在庫の数と行の id の列は数えず, one_hot で増えた列は数える)
+             */
+            columns: number | null;
+            /**
+             * Units
+             * @description 日ごとの売れた数の列 (データセットの説明の demand.units. 説明に無ければ問題の設定の答え. どちらにも無ければ無し)
+             */
+            units?: string | null;
+            /**
+             * Product
+             * @description 商品の id の列 (データセットの説明の demand.product. 説明に無ければ問題の設定の答え. どちらにも無ければ無し)
+             */
+            product?: string | null;
+            /**
+             * Date
+             * @description 日付の列 (データセットの説明の demand.date. 説明に無ければ問題の設定の答え. どちらにも無ければ無し)
+             */
+            date?: string | null;
+            /**
+             * Stock
+             * @description 在庫の数の列 (データセットの説明の demand.stock. 説明に項目が無ければ問題の設定の答え. 説明が null か, どちらにも無ければ無し)
+             */
+            stock?: string | null;
+            /**
+             * Id
+             * @description 行の id の列 (データセットの説明の demand.id. 説明に無ければ問題の設定の答え. どちらにも無ければ無し)
+             */
+            id?: string | null;
+            /**
+             * Levels
+             * @description 学ぶ分位点の水準 (出力 quantiles の列の順. 記録のプロジェクトの学習の設定の demand.levels を先, 無ければ問題の設定の受け渡しの demand.levels. 時間をまたぐ量の判断の問題の設定を渡していないか, どちらも読めなければ無し)
+             */
+            levels?: number[] | null;
+            /**
+             * Levels From
+             * @description 水準をどこから読んだか (config は学習の設定, problem は問題の設定. 水準が無ければ無し)
+             */
+            levels_from?: string | null;
+            /**
+             * Notes
+             * @description 水準の決め方の知らせ (学習の設定と問題の設定の水準の数の食い違い, 学習の設定や問題の設定を読めないことなど)
+             */
+            notes?: string[];
+            /**
+             * Problem
+             * @description 問題の設定の名前
+             */
+            problem?: string | null;
         };
         /** ExampleSummary */
         ExampleSummary: {

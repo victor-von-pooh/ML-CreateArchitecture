@@ -36,6 +36,7 @@ const units = new Map([
   ['nn.Conv2d', unit('nn.Conv2d', ['in_channels', 'out_channels', 'kernel_size'])],
   ['op.Reshape', unit('op.Reshape', ['shape'])],
   ['nn.Embedding', unit('nn.Embedding', ['num_embeddings', 'embedding_dim'])],
+  ['op.CumSum', unit('op.CumSum', ['dim'])],
 ])
 
 /** 7 列の表の 3 クラスの分類 */
@@ -755,5 +756,136 @@ describe('applyDatasetInputs (値段を変える判断)', () => {
     const { spec, notes } = applyDatasetInputs(sales, regression, units)
     expect(spec.nodes.units2!.params).toEqual({ in_features: 32, out_features: 1 })
     expect(notes).toContain('出力の大きさ 1 は, 最後の部品の引数に手で入れてください')
+  })
+})
+
+describe('applyDatasetInputs (時間をまたぐ量の判断)', () => {
+  /** 同梱の例 tabular_demand の形 (16 列を通し, 9 つの水準の値に softplus をかけて前から足す) */
+  const quantiles: Spec = {
+    ...emptySpec(),
+    inputs: { x: { shape: [8, 16] } },
+    nodes: {
+      demand1: { unit: 'nn.Linear', params: { in_features: 16, out_features: 32 }, inputs: 'x' },
+      demand_act: { unit: 'nn.ReLU', inputs: 'demand1' },
+      demand2: {
+        unit: 'nn.Linear',
+        params: { in_features: 32, out_features: 9 },
+        inputs: 'demand_act',
+      },
+      demand_softplus: { unit: 'nn.Softplus', inputs: 'demand2' },
+      demand_cumsum: { unit: 'op.CumSum', params: { dim: 1 }, inputs: 'demand_softplus' },
+    },
+    outputs: { quantiles: 'demand_cumsum' },
+  }
+  /** 学習に使う 5 列の需要の記録の表と, 問題の設定の 4 つの水準 */
+  const record: DatasetInfo = {
+    path: '/data/demand',
+    inputs: [{ name: 'x', shape: [4, 5], dtype: 'float32', dataset_shape: [null, 5] }],
+    task: 'demand',
+    target: 'demand',
+    classes: null,
+    outputs: 4,
+    demand: {
+      columns: 5,
+      units: 'units',
+      product: 'product_id',
+      date: 'date',
+      stock: 'stock',
+      id: 'record_id',
+      levels: [0.1, 0.5, 0.75, 0.9],
+      levels_from: 'problem',
+      notes: [],
+      problem: '発注の見直し',
+    },
+  }
+
+  it('入力の幅を学習に使う列の数にし, 出力の値の数を水準の数にして, 決め方を知らせる', () => {
+    const { spec, notes } = applyDatasetInputs(quantiles, record, units)
+    expect(spec.inputs.x!.shape).toEqual([4, 5])
+    expect(spec.nodes.demand1!.params).toEqual({ in_features: 5, out_features: 32 })
+    expect(spec.nodes.demand2!.params).toEqual({ in_features: 32, out_features: 4 })
+    expect(spec.nodes.demand_cumsum!.params).toEqual({ dim: 1 })
+    expect(notes[0]).toBe(
+      '問題の設定 発注の見直し が時間をまたぐ量の判断なので, ' +
+        '入力の幅を, 学習に使う 5 列にしました ' +
+        '(商品の特徴, 過去の売れた数のずらしと移動平均, 曜日などの列). ' +
+        '次の列は入力に入れません: ' +
+        '日ごとの売れた数 (先の期間の合計が予測する値) の列 units, ' +
+        '商品の id (発注の数を決める単位) の列 product_id, 日付 (発注を決める日) の列 date, ' +
+        '在庫の数 (発注の数から引く) の列 stock, 行を見分ける id の列 record_id',
+    )
+    expect(notes).toContain('demand1 の in_features を 5 にしました')
+    expect(notes.at(-1)).toBe(
+      '出力 quantiles の値の数を, 学ぶ分位点の水準 0.1, 0.5, 0.75, 0.9 の数 4 ' +
+        '(問題の設定 発注の見直し の水準. 水準ごとに 1 つの値) にしました ' +
+        '(demand2 の out_features を 9 から 4 に)',
+    )
+    expect(datasetSummary(record)).toBe(
+      'データセットから入れました: 入力 x [4, 5], タスク demand, 目的の列 demand, 出す値 4',
+    )
+  })
+
+  it('学習の設定の水準と食い違いの知らせを入れ, 同じ数なら値の数を変えずに知らせる', () => {
+    const configured: DatasetInfo = {
+      ...record,
+      outputs: 3,
+      demand: {
+        ...record.demand!,
+        levels: [0.25, 0.5, 0.75],
+        levels_from: 'config',
+        notes: ['学習の設定の水準の数 3 は, 問題の設定の水準の数 4 と違います'],
+      },
+    }
+    const three: Spec = {
+      ...quantiles,
+      nodes: {
+        ...quantiles.nodes,
+        demand2: { ...quantiles.nodes.demand2!, params: { in_features: 32, out_features: 3 } },
+      },
+    }
+    const { spec, notes } = applyDatasetInputs(three, configured, units)
+    expect(spec.nodes.demand2!.params).toEqual({ in_features: 32, out_features: 3 })
+    expect(notes[1]).toBe('学習の設定の水準の数 3 は, 問題の設定の水準の数 4 と違います')
+    expect(notes.at(-1)).toBe(
+      '出力 quantiles の値の数は, 学ぶ分位点の水準 0.25, 0.5, 0.75 の数 3 ' +
+        '(プロジェクトの学習の設定の水準. 水準ごとに 1 つの値) のままです (demand2 の out_features)',
+    )
+  })
+
+  it('水準が分からなければ出力の値の数を変えず, 無い在庫の数の列と分からない名前は出さない', () => {
+    const bare: DatasetInfo = {
+      ...record,
+      outputs: null,
+      demand: { columns: null, units: 'units', stock: null, levels: null, notes: [] },
+    }
+    const { spec, notes } = applyDatasetInputs(quantiles, bare, units)
+    expect(spec.nodes.demand2!.params).toEqual({ in_features: 32, out_features: 9 })
+    expect(notes[0]).toBe(
+      '需要の記録のデータセットなので, 入力の幅は, データセットの入力の幅のままにしました ' +
+        '(商品の特徴, 過去の売れた数のずらしと移動平均, 曜日などの列). ' +
+        '次の列は入力に入れません: ' +
+        '日ごとの売れた数 (先の期間の合計が予測する値) の列 units, ' +
+        '商品の id (発注の数を決める単位) の列, 日付 (発注を決める日) の列, 行を見分ける id の列',
+    )
+    expect(notes.at(-1)).toBe(
+      '学ぶ分位点の水準の数は問題の設定が決めるので, 出力の値の数は変えていません. ' +
+        '時間をまたぐ量の判断の問題の設定から保存先を確かめてから入れ直すと, 水準の数にします',
+    )
+  })
+
+  it('形を変える部品の後ろの出力は, 手で入れるよう知らせる', () => {
+    const reshaped: Spec = {
+      ...quantiles,
+      nodes: {
+        ...quantiles.nodes,
+        demand_cumsum: { unit: 'op.Reshape', params: { shape: [9] }, inputs: 'demand_softplus' },
+      },
+    }
+    const { spec, notes } = applyDatasetInputs(reshaped, record, units)
+    expect(spec.nodes.demand2!.params).toEqual({ in_features: 32, out_features: 9 })
+    expect(notes.at(-1)).toBe(
+      '出力の値の数 4 (学ぶ分位点の水準 0.1, 0.5, 0.75, 0.9 の数. 問題の設定 発注の見直し の水準) は, ' +
+        '最後の部品の引数に手で入れてください',
+    )
   })
 })

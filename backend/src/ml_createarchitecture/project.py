@@ -84,7 +84,10 @@ class DatasetBody(BaseModel):
         "異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を"
         "見積もるなら, データセットの説明に無い処置の列と行の id の列を受け"
         "持ちの答えから読む. 値段を変える判断なら, データセットの説明に無い"
-        "値段, 原価, 商品の id と行の id の列を受け持ちの答えから読む)"
+        "値段, 原価, 商品の id と行の id の列を受け持ちの答えから読む. 時間を"
+        "またぐ量の判断なら, 出す値の数を学ぶ分位点の水準の数 (記録の"
+        "プロジェクトの学習の設定の demand.levels. 無ければ受け渡しの "
+        "demand.levels) にする)"
     )
 
 
@@ -235,6 +238,63 @@ class PriceWidth(BaseModel):
     )
 
 
+class DemandWidth(BaseModel):
+    # 時間をまたぐ量の判断の入力の幅 (学習に使う列の数), 数えない列と,
+    # 出力 quantiles の値の数にする学ぶ分位点の水準
+    columns: Optional[int] = Field(
+        description="学習に使う列の数 (入力 x の幅. 日ごとの売れた数, 先の"
+        "期間と前の期間の合計, 商品の id, 日付, 在庫の数と行の id の列は"
+        "数えず, one_hot で増えた列は数える)"
+    )
+    units: Optional[str] = Field(
+        default=None,
+        description="日ごとの売れた数の列 (データセットの説明の "
+        "demand.units. 説明に無ければ問題の設定の答え. どちらにも無ければ"
+        "無し)"
+    )
+    product: Optional[str] = Field(
+        default=None,
+        description="商品の id の列 (データセットの説明の demand.product. "
+        "説明に無ければ問題の設定の答え. どちらにも無ければ無し)"
+    )
+    date: Optional[str] = Field(
+        default=None,
+        description="日付の列 (データセットの説明の demand.date. 説明に"
+        "無ければ問題の設定の答え. どちらにも無ければ無し)"
+    )
+    stock: Optional[str] = Field(
+        default=None,
+        description="在庫の数の列 (データセットの説明の demand.stock. 説明"
+        "に項目が無ければ問題の設定の答え. 説明が null か, どちらにも無け"
+        "れば無し)"
+    )
+    id: Optional[str] = Field(
+        default=None,
+        description="行の id の列 (データセットの説明の demand.id. 説明に"
+        "無ければ問題の設定の答え. どちらにも無ければ無し)"
+    )
+    levels: Optional[list[float]] = Field(
+        default=None,
+        description="学ぶ分位点の水準 (出力 quantiles の列の順. 記録の"
+        "プロジェクトの学習の設定の demand.levels を先, 無ければ問題の設定の"
+        "受け渡しの demand.levels. 時間をまたぐ量の判断の問題の設定を渡して"
+        "いないか, どちらも読めなければ無し)"
+    )
+    levels_from: Optional[str] = Field(
+        default=None,
+        description="水準をどこから読んだか (config は学習の設定, problem "
+        "は問題の設定. 水準が無ければ無し)"
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="水準の決め方の知らせ (学習の設定と問題の設定の水準の数"
+        "の食い違い, 学習の設定や問題の設定を読めないことなど)"
+    )
+    problem: Optional[str] = Field(
+        default=None, description="問題の設定の名前"
+    )
+
+
 class DatasetInputs(BaseModel):
     # データセットの場所と, ML-EDA の model_inputs の結果
     path: str
@@ -271,6 +331,12 @@ class DatasetInputs(BaseModel):
         default=None,
         description="値段を変える判断のデータセットか問題の設定で, 入力 x "
         "の幅にした特徴の列と値段の列の数と列の名前 (他は無し)"
+    )
+    demand: Optional[DemandWidth] = Field(
+        default=None,
+        description="需要の記録のデータセットか時間をまたぐ量の判断の問題の"
+        "設定で, 入力 x の幅にした学習に使う列の数, 数えない列と, 出力の"
+        "値の数にした学ぶ分位点の水準 (他は無し)"
     )
 
 
@@ -608,6 +674,43 @@ def table_width(problem: Any, dataset: Path) -> Optional[TableWidth]:
     return table
 
 
+def project_config(problem: Any) -> tuple[bool, Optional[dict[str, Any]]]:
+    """
+    問題の設定が記録したプロジェクトの学習の設定 (config) を読む関数
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+
+    Returns
+    ----------
+    found: bool
+        記録のプロジェクトに config のファイルがあるか
+    config: Optional[dict[str, Any]]
+        config の中身 (無いか, 読めないか, 辞書でなければ None)
+    """
+    # プロジェクトの場所は ML-Quest の記録の読み方に任せる
+    quest = load_library("ml_quest", "project_of")
+    try:
+        place = quest.project_of(problem).get("path")
+    except READ_ERRORS:
+        place = None
+    if not isinstance(place, str) or not (
+        Path(place) / PROJECT_CONFIG
+    ).is_file():
+        return False, None
+    try:
+        loaded = yaml.safe_load(
+            (Path(place) / PROJECT_CONFIG).read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        loaded = None
+    config = loaded if isinstance(loaded, dict) else None
+
+    return True, config
+
+
 def split_rates(problem: Any) -> tuple[dict[str, float], list[str]]:
     """
     問題の設定が記録したプロジェクトの config から, 反応を時刻の順に分ける
@@ -629,24 +732,12 @@ def split_rates(problem: Any) -> tuple[dict[str, float], list[str]]:
         空)
     """
     # 既定に任せるだけなので, 読めない config は止めずに知らせる
-    quest = load_library("ml_quest", "project_of")
-    try:
-        place = quest.project_of(problem).get("path")
-    except READ_ERRORS:
-        place = None
+    found, config = project_config(problem)
     rates: dict[str, float] = {}
     notes: list[str] = []
-    if not isinstance(place, str) or not (
-        Path(place) / PROJECT_CONFIG
-    ).is_file():
+    if not found:
         return rates, notes
-    try:
-        config = yaml.safe_load(
-            (Path(place) / PROJECT_CONFIG).read_text(encoding="utf-8")
-        )
-    except (OSError, UnicodeDecodeError, yaml.YAMLError):
-        config = None
-    if not isinstance(config, dict):
+    if config is None:
         notes.append(
             f"学習の設定 ({PROJECT_CONFIG}) を読めないので, 分ける割合は"
             "既定の値です"
@@ -902,6 +993,42 @@ def dataset_uplift(path: Path) -> dict[str, Optional[str]]:
     return columns
 
 
+def described_names(
+    written: dict[str, Any], answers: Optional[dict[str, Any]],
+    keys: tuple[str, ...]
+) -> dict[str, Optional[str]]:
+    """
+    列の名前を, データセットの説明を先に, 説明に項目が無ければ問題の設定の
+    答えから決める関数
+
+    Parameters
+    ----------
+    written: dict[str, Any]
+        データセットの説明の項目 (price, demand など. 無ければ空)
+    answers: Optional[dict[str, Any]]
+        問題の設定の答え (その受け持ちの問題の設定でなければ None)
+    keys: tuple[str, ...]
+        列の名前の場所 (説明と答えで同じ名前)
+
+    Returns
+    ----------
+    columns: dict[str, Optional[str]]
+        場所から列の名前 (無ければ None. 説明の値が null の項目は, その列
+        が無いので答えで埋めない)
+    """
+    # 説明にある項目の説明の値 (null は列が無い印) と, 説明に無い項目の
+    # 問題の設定の答え
+    columns = {
+        key: (
+            column_names(written, {key: key})[key] if key in written
+            else column_names(answers or {}, {key: key})[key]
+        )
+        for key in keys
+    }
+
+    return columns
+
+
 def price_names(
     written: dict[str, Any], answers: Optional[dict[str, Optional[str]]]
 ) -> dict[str, Optional[str]]:
@@ -923,17 +1050,149 @@ def price_names(
         price, cost, product, id の列の名前 (無ければ None. 説明の値が null
         の項目は, その列が無いので答えで埋めない)
     """
-    # 説明にある項目の説明の値 (null は列が無い印) と, 説明に無い項目の
-    # 問題の設定の答え
-    columns = {
-        key: (
-            column_names(written, {key: key})[key] if key in written
-            else (answers or {}).get(key)
-        )
-        for key in ("price", "cost", "product", "id")
-    }
+    columns = described_names(
+        written, answers, ("price", "cost", "product", "id")
+    )
 
     return columns
+
+
+def demand_answers(problem: Any) -> Optional[dict[str, Any]]:
+    """
+    問題の設定の受け持ちが時間をまたぐ量の判断なら, 列の答えと学ぶ分位点の
+    水準を返す関数
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+
+    Returns
+    ----------
+    answers: Optional[dict[str, Any]]
+        product, date, units, stock, id (列の答え. 答えていなければ None),
+        levels (受け渡しの demand.levels. 受け渡しにできなければ None) と
+        error (受け渡しにできない理由. できれば None). 予測するで正解の
+        種類が先の期間の需要, 作り方が既製のモデルをそのままでない受け
+        持ちでなければ None. 要らなくなった問いの古い答えは除外
+    """
+    # 受け持ちの見分け方は ML-Quest の時間をまたぐ量の判断の受け持ちと同じ
+    quest = load_library("ml_quest", "active_value")
+    names = ("product", "date", "units", "stock", "id")
+    try:
+        role = quest.active_value(problem, f"{quest.PART}.role")
+        kind = quest.active_value(problem, f"{quest.PART}.target.kind")
+        method = quest.active_value(problem, f"{quest.PART}.method")
+        answers: Optional[dict[str, Any]] = {
+            name: quest.active_value(problem, f"{quest.PART}.demand.{name}")
+            for name in names
+        }
+    except READ_ERRORS:
+        role = kind = method = None
+        answers = None
+    if role != "predict" or kind != "demand" or method == "pretrained" \
+            or answers is None:
+        return None
+
+    # 学ぶ水準は ML-Quest の受け渡しが決める (答えた水準に 0.5 と水準 τ を
+    # 足したもの. 骨組みの config の demand.levels と同じ)
+    answers.update(levels=None, error=None)
+    try:
+        levels = section(quest.handoff(problem), "demand").get("levels")
+    except READ_ERRORS as error:
+        answers["error"] = str(error)
+        return answers
+    if isinstance(levels, list) and levels and all(
+        isinstance(level, (int, float)) and not isinstance(level, bool)
+        for level in levels
+    ):
+        answers["levels"] = [float(level) for level in levels]
+
+    return answers
+
+
+def config_levels(config: dict[str, Any]) -> Optional[list[float]]:
+    """
+    学習の設定の demand.levels を読む関数
+
+    Parameters
+    ----------
+    config: dict[str, Any]
+        学習の設定 (project_config)
+
+    Returns
+    ----------
+    levels: Optional[list[float]]
+        水準の並び (無いか, 空か, 0 より大きく 1 より小さい数の並びでなけ
+        れば None)
+    """
+    # 骨組みの学習のスクリプトが止める値は使わない
+    value = section(config, "demand").get("levels")
+    if not isinstance(value, list) or not value or not all(
+        isinstance(level, (int, float)) and not isinstance(level, bool)
+        and 0 < level < 1 for level in value
+    ):
+        return None
+    levels = [float(level) for level in value]
+
+    return levels
+
+
+def demand_levels(
+    problem: Any, answers: dict[str, Any]
+) -> tuple[Optional[list[float]], Optional[str], list[str]]:
+    """
+    時間をまたぐ量の判断の学ぶ分位点の水準を, 記録のプロジェクトの学習の
+    設定を先に, 無ければ問題の設定の受け渡しから決める関数
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem. 時間をまたぐ量の判断)
+    answers: dict[str, Any]
+        問題の設定の答えと受け渡しの水準 (demand_answers)
+
+    Returns
+    ----------
+    levels: Optional[list[float]]
+        学ぶ水準 (どちらも読めなければ None)
+    origin: Optional[str]
+        config (学習の設定) か problem (問題の設定) (水準が無ければ None)
+    notes: list[str]
+        決め方の知らせ (水準の数の食い違い, 読めない学習の設定や問題の
+        設定)
+    """
+    # 骨組みの学習のスクリプトが読むのは学習の設定の demand.levels なので,
+    # 書いてあればそれを使い, 問題の設定と数が違えば知らせる
+    notes: list[str] = []
+    found, config = project_config(problem)
+    written = None if config is None else config_levels(config)
+    asked = answers.get("levels")
+    if written is not None:
+        if asked is not None and len(asked) != len(written):
+            notes.append(
+                f"学習の設定 ({PROJECT_CONFIG}) の学ぶ水準の数 "
+                f"{len(written)} は, 問題の設定の水準の数 {len(asked)} と"
+                "違います. 学習のスクリプトが読む学習の設定の水準の数にし"
+                "ました (問題の設定に合わせるなら, 学習の設定の "
+                "demand.levels を直してください)"
+            )
+        return written, "config", notes
+    if found:
+        notes.append(
+            f"学習の設定 ({PROJECT_CONFIG}) の学ぶ水準 (demand.levels) を"
+            "読めないので, 問題の設定の水準にしました (学習のスクリプトは"
+            "読めない水準で止まるので, 学習の設定を直してください)"
+        )
+    if asked is None:
+        reason = answers.get("error")
+        notes.append(
+            "問題の設定の学ぶ水準を読めません"
+            + (f" ({reason})" if reason else "")
+        )
+        return None, None, notes
+
+    return asked, "problem", notes
 
 
 def rank_size(problem: Any, dataset: Path) -> Optional[RankSize]:
@@ -1053,7 +1312,12 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     処置の列と行の id の列 (データセットの説明を先, 無ければ問題の設定の
     答え) も返す. 値段を変える判断のデータセットでは, 特徴の列と値段の列の
     数 (ML-EDA の入力 x の幅) と, 値段, 売れた数, 原価, 商品の id と行の id
-    の列 (データセットの説明を先, 説明に無ければ問題の設定の答え) も返す
+    の列 (データセットの説明を先, 説明に無ければ問題の設定の答え) も返す.
+    需要の記録のデータセットでは, 学習に使う列の数 (ML-EDA の入力 x の
+    幅), 数えない列 (データセットの説明を先, 説明に無ければ問題の設定の
+    答え) と, 時間をまたぐ量の判断の問題の設定なら学ぶ分位点の水準 (記録の
+    プロジェクトの学習の設定を先, 無ければ問題の設定の受け渡し) も返し,
+    出す値の数を水準の数にする (水準が分からなければ無し)
 
     Parameters
     ----------
@@ -1068,7 +1332,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
         符号化した行の幅, 並べるの学習用の利用者と品物の数, 異常の検知の
         学習に使う列の数と度合いの決め方, 効果を見積もるの学習に使う列の数と
-        数えない列, 値段を変える判断の特徴の列と値段の列の数と列の名前
+        数えない列, 値段を変える判断の特徴の列と値段の列の数と列の名前,
+        需要の学習に使う列の数, 数えない列と学ぶ分位点の水準
 
     Raises
     ----------
@@ -1080,7 +1345,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         検知の問題の設定でデータセットが異常の検知の表でない場合と, 効果を
         見積もるの問題の設定でデータセットが介入の記録の表でない場合と, 値段
         を変える判断の問題の設定でデータセットが値段を変えた記録の表でない
-        場合は 422.
+        場合と, 時間をまたぐ量の判断の問題の設定でデータセットが需要の記録の
+        表でない場合は 422.
         並べるで反応の表が無い場合は 404
     """
     # 並べるは反応の表のファイルから 2 塔の入力を作る
@@ -1194,6 +1460,38 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
             problem=None if answers is None else problem_name(problem)
         )
 
+    # 時間をまたぐ量の判断の入力 x の幅 (ML-EDA の入力 x の最後の次元),
+    # 数えない列の名前 (データセットの説明を先, 説明に無ければ問題の設定の
+    # 答え), 出す値の数にする学ぶ分位点の水準の数 (ML-EDA の outputs は
+    # 水準 1 つあたりの 1) と, 問題の設定が時間をまたぐ量の判断の場合の表の
+    # 種類の確かめ
+    needs = None if problem is None else demand_answers(problem)
+    demand = None
+    if needs is not None and task != "demand":
+        raise HTTPException(
+            422,
+            "時間をまたぐ量の判断の問題の設定ですが, データセットが "
+            "ML-Fathom (ML-EDA) で需要の記録の表として書き出したものでは"
+            "ありません"
+        )
+    if task == "demand":
+        last = inputs[0].dataset_shape[-1:] if len(inputs) == 1 else []
+        levels, origin, notes = (
+            (None, None, []) if needs is None
+            else demand_levels(problem, needs)
+        )
+        demand = DemandWidth(
+            columns=last[0] if last and isinstance(last[0], int)
+            and last[0] > 0 else None,
+            **described_names(
+                dataset_section(path, "demand"), needs,
+                ("units", "product", "date", "stock", "id")
+            ),
+            levels=levels, levels_from=origin, notes=notes,
+            problem=None if needs is None else problem_name(problem)
+        )
+        outputs = None if levels is None else len(levels)
+
     # 表の生成は, 入力 (バッチと列の 2 次元) の列の次元と出す値の数を
     # 符号化した行の幅に
     table = None if problem is None else table_width(problem, path)
@@ -1217,7 +1515,7 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
             outputs=outputs if isinstance(outputs, int)
             and not isinstance(outputs, bool) and outputs > 0 else None,
             table=table, anomaly=anomaly, uplift=uplift,
-            price=price
+            price=price, demand=demand
         )
     except ValidationError as error:
         raise HTTPException(
