@@ -36,7 +36,7 @@ import {
   subgraphCheckTarget,
   writeSubgraph,
 } from './lib/subgraph'
-import { applyDatasetInputs, datasetSummary } from './lib/dataset'
+import { applyDatasetInputs, datasetSummary, sameDefinition } from './lib/dataset'
 import { useDebounced } from './lib/debounce'
 import { clearDraft, readDraft, tabId, writeDraft, type Draft } from './lib/draft'
 import { useHistory } from './lib/history'
@@ -711,16 +711,28 @@ function Editor() {
           }}
           onUndo={previous ? undoSpec : undefined}
           onRedo={following ? redoSpec : undefined}
-          onDataset={(info) => {
+          onDataset={(info, template) => {
             // 本体の定義に 1 回の変更として入れ, 部品の一覧の上にも知らせる
             const current = latest.current
-            const applied = applyDatasetInputs(current, info, unitsFor(current))
+            // 読む間 (雛形を書き換える間) に定義が変わっていれば入れない (変えた定義を, 読む前の
+            // 定義から作った結果で戻さないため)
+            if (!sameDefinition(template.base, current)) {
+              const lines = [
+                '入力と出力を作る間に定義が変わったので, 何も変えていません. もう一度「入力と出力を作る」を押してください',
+              ]
+              notify(lines[0]!)
+              return lines
+            }
+            const adapted = template.applied
+              ? { ...template.applied, spec: { ...template.applied.spec, name: current.name } }
+              : null
+            const applied = applyDatasetInputs(current, info, unitsFor(current), adapted)
             setHistory(applied.spec)
             // 置いた head と出力も見えるように表示の範囲を合わせる
             window.requestAnimationFrame(
               () => void flow.fitView({ duration: 200, maxZoom: 1, padding: 0.1 }),
             )
-            const lines = [datasetSummary(info), ...applied.notes]
+            const lines = [datasetSummary(info), ...applied.notes, ...template.notes]
             notify(lines.join('. '))
             return lines
           }}

@@ -22,6 +22,8 @@ export type ProblemList = Schemas['ProblemList']
 export type ExperimentList = Schemas['ExperimentList']
 export type ExperimentEntry = Schemas['ExperimentEntry']
 export type ExperimentSpec = Schemas['ExperimentSpec']
+export type TemplateMatch = Schemas['TemplateMatch']
+export type TemplateAdapted = Schemas['TemplateAdapted']
 
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
@@ -100,6 +102,18 @@ export const api = {
     request<DatasetInputs>('/api/dataset/inputs', {
       method: 'POST',
       body: JSON.stringify({ path, problem }),
+    }),
+  /** 定義が書き換えられる雛形のままなら, 雛形と引数の今の値と場所 (雛形でなければ null) */
+  matchTemplate: (spec: Spec) =>
+    request<TemplateMatch | null>('/api/templates/match', {
+      method: 'POST',
+      body: JSON.stringify({ spec }),
+    }),
+  /** 雛形のままの定義の引数を ML-ModelControl の adapt_example で書き換える (書かない引数は今の値) */
+  adaptTemplate: (spec: Spec, name: string, values: Record<string, number>) =>
+    request<TemplateAdapted>('/api/templates/adapt', {
+      method: 'POST',
+      body: JSON.stringify({ spec, name, values }),
     }),
   /** ML-Pathfinder の置き場の問題の設定 (更新の新しい順. 使えないものは理由付き) */
   listProblems: () => request<ProblemList>('/api/problems'),

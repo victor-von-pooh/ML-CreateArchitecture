@@ -25,7 +25,7 @@ import { danglingNodes, emptySpec, freshName, type Spec, type UnitSpec } from '.
 import { subgraphCheckTarget } from '../../lib/subgraph'
 import { useTheme } from '../../lib/themeContext'
 import { startsFresh } from '../../lib/template'
-import { ExperimentCopies, ProjectDialog } from './ProjectDialogs'
+import { ExperimentCopies, ProjectDialog, type DatasetTemplate } from './ProjectDialogs'
 
 /** 文字の内容を表示し, コピーできる枠 */
 function TextView({ text, fileName }: { text: string; fileName?: string }) {
@@ -235,8 +235,8 @@ export function Toolbar({
   onNameChange?: (name: string) => void
   /** 保存しているか (保存の間は下書きを戻す操作を止めるため) */
   onSavingChange?: (saving: boolean) => void
-  /** データセットから読んだ入力と出す値の数を本体の定義に入れ, 知らせる文を返す */
-  onDataset: (info: DatasetInputs) => string[]
+  /** データセットから読んだ入力と出す値の数 (と雛形のままの定義を書き換えた結果) を本体の定義に入れ, 知らせる文を返す */
+  onDataset: (info: DatasetInputs, template: DatasetTemplate) => string[]
   /** 定義をプロジェクトに書いた (書いたファイルの場所) */
   onProjectSaved: (path: string) => void
   /** 問題の設定の受け持ちに合う雛形の定義を開く */

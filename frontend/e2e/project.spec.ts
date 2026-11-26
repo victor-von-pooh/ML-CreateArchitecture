@@ -8,6 +8,8 @@ import { expect, test, type Page } from '@playwright/test'
 const dataset = fileURLToPath(new URL('.work/dataset', import.meta.url))
 // 灰色の画像と背景を含む 3 クラスの領域のファイルの組 (版 3. 高さと幅は決まらない)
 const masks = fileURLToPath(new URL('.work/masks', import.meta.url))
+// 128 点の観測の点群から 64 点の点群を当てるファイルの組 (版 2)
+const clouds = fileURLToPath(new URL('.work/clouds', import.meta.url))
 const project = fileURLToPath(new URL('.work/project', import.meta.url))
 const modelFile = `${project}/models/model.yaml`
 // 受け持ちに合う雛形 (two_tower_retrieval) のある問題の設定のプロジェクト
@@ -87,13 +89,64 @@ test('同梱の U-Net の例を, ファイルの組のデータセットのチ�
   const result = section.getByRole('status')
   await expect(result).toContainText('入力 image [4, 1, ?, ?]')
   await expect(result).toContainText('正解 mask (mask), クラス 3, 出す値 3')
-  await expect(result).toContainText('enc1a の in_channels を 1 にしました')
-  await expect(result).toContainText('head の out_channels を 3 にしました')
+  await expect(result).toContainText(
+    '定義は雛形 unet_segmentation のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+  )
+  await expect(result).toContainText(
+    '雛形の引数 channels (チャンネル数) を 3 から 1 にしました (入力 image の形の 2 番目, enc1a の in_channels)',
+  )
+  await expect(result).toContainText(
+    '雛形の引数 classes (クラス数 (背景を含む)) を 2 から 3 にしました (head の out_channels)',
+  )
   await dialog.getByRole('button', { name: '閉じる' }).click()
   await expect(page.locator('[data-id="head"]')).toContainText('[4, 3, 32, 32]', {
     timeout: 20_000,
   })
   await expect(page.locator('header')).toContainText('誤り 0 件')
+})
+
+test('同梱の点群の例を, ファイルの組のデータセットの入力の点の数と出す点の数に合わせる', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く', exact: true }).click()
+  await page.getByRole('button', { name: 'point_cloud_predictor', exact: true }).click()
+  await expect(page.locator('[data-id="cloud"]')).toContainText('[4, 256, 3]', {
+    timeout: 20_000,
+  })
+
+  const dialog = await openDialog(page)
+  const section = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
+  await section.getByLabel('データセットのディレクトリ').fill(clouds)
+  await section.getByRole('button', { name: '入力と出力を作る' }).click()
+
+  // 入力の点の数 128 と出す点の数 64 を, 雛形の書き換えで関わる場所にそろえて入れる
+  const result = section.getByRole('status')
+  await expect(result).toContainText('入力 observed [4, 128, 3]')
+  await expect(result).toContainText(
+    '定義は雛形 point_cloud_predictor のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+  )
+  await expect(result).toContainText(
+    '雛形の引数 points_in (入力の点の数) を 512 から 128 にしました (入力 observed の形の 2 番目)',
+  )
+  await expect(result).toContainText(
+    '雛形の引数 points_out (出す点の数) を 256 から 64 にしました (decode2 の out_features (× 3), cloud の shape の 1 番目)',
+  )
+  await dialog.getByRole('button', { name: '閉じる' }).click()
+  await expect(page.locator('[data-id="cloud"]')).toContainText('[4, 64, 3]', {
+    timeout: 20_000,
+  })
+  await expect(page.locator('header')).toContainText('誤り 0 件')
+
+  // 入れた後の雛形にも, 入れ直せる (今の値を雛形の引数として読む)
+  const again = await openDialog(page)
+  const retry = again.getByRole('region', { name: 'データセットから入力と出力を作る' })
+  await retry.getByLabel('データセットのディレクトリ').fill(clouds)
+  await retry.getByRole('button', { name: '入力と出力を作る' }).click()
+  await expect(retry.getByRole('status')).toContainText(
+    '雛形の引数 points_out (出す点の数) は 64 のままです',
+  )
+  await again.getByRole('button', { name: '閉じる' }).click()
 })
 
 test('同梱の拡散の例に表のデータセットを入れると, 残す時刻の入力のバッチをそろえて形が出る', async ({
@@ -114,6 +167,15 @@ test('同梱の拡散の例に表のデータセットを入れると, 残す時
   await expect(result).toContainText('入力 x [4, 3]')
   await expect(result).toContainText(
     '入力 t はデータセットに無いですが, つないでいるので残し, 最初の次元 (バッチ) を例の大きさ 4 にしました ([4])',
+  )
+  await expect(result).toContainText(
+    '定義は雛形 diffusion_denoiser のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+  )
+  await expect(result).toContainText(
+    '雛形の引数 features (特徴の数) を 16 から 3 にしました (入力 x の形の 2 番目, x_fc の in_features, head の out_features)',
+  )
+  await expect(result).toContainText(
+    'データセットの出す値の数 3 は使っていません (雛形 diffusion_denoiser の出力の大きさは雛形の決まりで決まります.',
   )
   await dialog.getByRole('button', { name: '閉じる' }).click()
 
@@ -411,8 +473,12 @@ test('異常の検知の問題の設定を新しく始めるときに選ぶと�
     '問題の設定 e2e の異常の検知 が異常の検知 (自己符号化器)なので, 入力と出力の幅を, 学習に使う列の数 3 にしました ' +
       '(自己符号化器は入力を作り直すので, 出力を入力と同じ幅にします. 正解の列 is_anomaly は数えません)',
   )
-  await expect(result).toContainText('enc1 の in_features を 3 にしました')
-  await expect(result).toContainText('dec2 の out_features を 3 にしました')
+  await expect(result).toContainText(
+    '定義は雛形 tabular_autoencoder のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+  )
+  await expect(result).toContainText(
+    '雛形の引数 features (特徴の数) を 16 から 3 にしました (入力 x の形の 2 番目, enc1 の in_features, dec2 の out_features)',
+  )
   await dialog.getByRole('button', { name: '閉じる' }).click()
 
   // 縮めた幅は変えず, 再構成は入力と同じ形 (誤り 0 件は確認の結果が届く前にも出るので,
@@ -465,10 +531,13 @@ test('効果の見積もりの問題の設定を新しく始めるときに選�
       '効果の見積もりの 2 つの出力 (処置したときの結果の予測と, しないときの結果の予測) は, ' +
       'どちらも 1 行に 1 つの値を出します',
   )
-  await expect(result).toContainText('treated1 の in_features を 2 にしました')
-  await expect(result).toContainText('control1 の in_features を 2 にしました')
-  await expect(result).toContainText('treated2 の out_features を 1 にしました')
-  await expect(result).toContainText('control2 の out_features を 1 にしました')
+  await expect(result).toContainText(
+    '定義は雛形 tabular_uplift のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+  )
+  await expect(result).toContainText(
+    '雛形の引数 features (特徴の数) を 16 から 2 にしました (入力 x の形の 2 番目, treated1 の in_features, control1 の in_features)',
+  )
+  await expect(result).toContainText('出力 treated と control の値の数は, 雛形の 1 のままです')
   await dialog.getByRole('button', { name: '閉じる' }).click()
 
   // 隠れ層の幅は変えず, 2 つの出力はどちらも (バッチ, 1) (誤り 0 件は確認の結果が届く前にも
@@ -524,7 +593,12 @@ test('値段を変える判断の問題の設定を新しく始めるときに�
       '原価 (仕入れか作るのにかかる値段. 利益の計算に使う) の列 unit_cost, ' +
       '商品の id (値段を選ぶ単位) の列 product_id, 行を見分ける id の列 record_id',
   )
-  await expect(result).toContainText('units1 の in_features を 3 にしました')
+  await expect(result).toContainText(
+    '定義は雛形 tabular_price のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+  )
+  await expect(result).toContainText(
+    '雛形の引数 features (特徴の数) を 17 から 3 にしました (入力 x の形の 2 番目, units1 の in_features)',
+  )
   await expect(result).toContainText(
     '出力の値の数は変えていません (売れた数の予測は 1 行に 1 つの値なので, 雛形の 1 のまま使います)',
   )
@@ -583,11 +657,16 @@ test('時間をまたぐ量の判断の問題の設定を新しく始めると�
       '商品の id (発注の数を決める単位) の列 product_id, 日付 (発注を決める日) の列 date, ' +
       '在庫の数 (発注の数から引く) の列 stock, 行を見分ける id の列 record_id',
   )
-  await expect(result).toContainText('demand1 の in_features を 5 にしました')
+  await expect(result).toContainText(
+    '定義は雛形 tabular_demand のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+  )
+  await expect(result).toContainText(
+    '雛形の引数 features (特徴の数) を 16 から 5 にしました (入力 x の形の 2 番目, demand1 の in_features)',
+  )
   await expect(result).toContainText(
     '出力 quantiles の値の数を, 学ぶ分位点の水準 0.1, 0.5, 0.75, 0.9 の数 4 ' +
       '(プロジェクトの学習の設定の水準. 水準ごとに 1 つの値) にしました ' +
-      '(demand2 の out_features を 9 から 4 に)',
+      '(雛形の引数 levels を 9 から 4 に: demand2 の out_features)',
   )
   await dialog.getByRole('button', { name: '閉じる' }).click()
 
@@ -632,8 +711,15 @@ test('並べるの問題の設定を選んで入力と出力を作ると, 入力
   await expect(result).toContainText(
     '(学習用の反応の行の数 32 (時刻の順に分けたもの). 分ける割合はプロジェクトの学習の設定の検証用 0.1 とテスト用 0.1',
   )
-  await expect(result).toContainText('user_fc1 の in_features を 6 にしました')
-  await expect(result).toContainText('item_fc1 の in_features を 4 にしました')
+  await expect(result).toContainText(
+    '定義は雛形 two_tower_retrieval のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+  )
+  await expect(result).toContainText(
+    '雛形の引数 users (利用者の数) を 12 から 6 にしました (入力 user の形の 2 番目, user_fc1 の in_features)',
+  )
+  await expect(result).toContainText(
+    '雛形の引数 items (品物の数) を 20 から 4 にしました (入力 item の形の 2 番目, item_fc1 の in_features)',
+  )
   await dialog.getByRole('button', { name: '閉じる' }).click()
   await expect(page.locator('[data-id="user_fc1"]')).toBeVisible({ timeout: 20_000 })
   await expect(page.locator('header')).toContainText('誤り 0 件', { timeout: 20_000 })

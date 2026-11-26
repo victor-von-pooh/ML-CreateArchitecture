@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyDatasetInputs, datasetSummary, type DatasetInfo } from './dataset'
+import {
+  applyDatasetInputs,
+  datasetSummary,
+  sameDefinition,
+  templateValues,
+  type DatasetInfo,
+  type TemplateMatch,
+  type TemplatePlace,
+} from './dataset'
 import { emptySpec, type Spec, type UnitSpec } from './graph'
 
 /** テスト用の部品の定義 (引数の名前だけを持つ) */
@@ -38,6 +46,77 @@ const units = new Map([
   ['nn.Embedding', unit('nn.Embedding', ['num_embeddings', 'embedding_dim'])],
   ['op.CumSum', unit('op.CumSum', ['dim'])],
 ])
+
+/** 雛形の引数ごとの書き換える場所 (ML-ModelControl の TEMPLATE_ARGS の形) */
+type Places = Record<string, TemplatePlace[]>
+
+/** 入力の形の軸の場所 */
+function inputAt(owner: string, key: number): TemplatePlace {
+  return { kind: 'input', owner, key, scale: 1 }
+}
+
+/** ノードの引数の場所 */
+function paramAt(owner: string, key: string, scale = 1): TemplatePlace {
+  return { kind: 'param', owner, key, scale }
+}
+
+/** 場所の今の値 (倍率で割る) */
+function readPlace(spec: Spec, place: TemplatePlace): number {
+  const key = place.key
+  const raw =
+    place.kind === 'input'
+      ? spec.inputs[place.owner]!.shape![key as number]!
+      : place.kind === 'shape'
+        ? (spec.nodes[place.owner]!.params!.shape as number[])[key as number]!
+        : (spec.nodes[place.owner]!.params![key] as number)
+  return raw / place.scale
+}
+
+/** ML-ModelControl の adapt_example の代わりに, 引数の全ての場所に値を書いた定義 */
+function writePlaces(spec: Spec, places: Places, values: Record<string, number>): Spec {
+  const next = structuredClone(spec)
+  for (const [arg, value] of Object.entries(values)) {
+    for (const place of places[arg]!) {
+      const written = value * place.scale
+      if (place.kind === 'input') next.inputs[place.owner]!.shape![place.key as number] = written
+      else if (place.kind === 'shape') {
+        ;(next.nodes[place.owner]!.params!.shape as number[])[place.key as number] = written
+      } else next.nodes[place.owner]!.params![place.key as string] = written
+    }
+  }
+  return next
+}
+
+/**
+ * 雛形のままの定義として入れた結果 (バックエンドの照らし合わせと書き換えの代わりに,
+ * 場所から今の値を読み, データセットから決めた値を書いた定義を渡す)
+ */
+function viaTemplate(name: string, spec: Spec, places: Places, info: DatasetInfo) {
+  const match: TemplateMatch = {
+    name,
+    args: Object.entries(places).map(([arg, found]) => ({
+      name: arg,
+      value: readPlace(spec, found[0]!),
+      places: found,
+    })),
+  }
+  const { values, notes } = templateValues(match, spec, info)
+  const args = match.args
+    .filter((arg) => arg.name in values)
+    .map((arg) => ({
+      name: arg.name,
+      before: arg.value,
+      after: values[arg.name]!,
+      places: arg.places,
+    }))
+  const applied = applyDatasetInputs(spec, info, units, {
+    name,
+    spec: writePlaces(spec, places, values),
+    args,
+    notes,
+  })
+  return { ...applied, values }
+}
 
 /** 7 列の表の 3 クラスの分類 */
 const table: DatasetInfo = {
@@ -332,6 +411,25 @@ describe('applyDatasetInputs (表の生成)', () => {
     expect(notes).toContain('head の out_features を 8 にしました')
   })
 
+  it('雛形 diffusion_denoiser のままなら, 書き換えた雛形に入れて今と同じ定義にする', () => {
+    const places: Places = {
+      features: [inputAt('x', 1), paramAt('x_fc', 'in_features'), paramAt('head', 'out_features')],
+    }
+    const { spec, notes, values } = viaTemplate('diffusion_denoiser', denoiser, places, generated)
+    expect(values).toEqual({ features: 8 })
+    expect(spec).toEqual(applyDatasetInputs(denoiser, generated, units).spec)
+    expect(notes[0]).toContain('問題の設定 顧客の表 が表の生成なので')
+    expect(notes).toContain(
+      '定義は雛形 diffusion_denoiser のままなので, データに合わせる引数を ML-ModelControl の書き換え ' +
+        '(adapt_example) で, 関わるノードの引数と入力の形をそろえて書き換えました',
+    )
+    expect(notes.at(-1)).toBe(
+      '雛形の引数 features (特徴の数) を 16 から 8 にしました ' +
+        '(入力 x の形の 2 番目, x_fc の in_features, head の out_features)',
+    )
+    expect(notes.join('\n')).not.toContain('head の out_features を 8 にしました')
+  })
+
   it('最初の次元が入力ごとに違えば, 残す入力の形を変えない', () => {
     const fixed: Spec = {
       ...denoiser,
@@ -479,6 +577,23 @@ describe('applyDatasetInputs (並べる)', () => {
     expect(datasetSummary(reactions)).toBe('反応の表から入れました: 入力 user [4, 6], item [4, 4]')
   })
 
+  it('雛形 two_tower_retrieval のままなら, 書き換えた雛形に入れて今と同じ定義にする', () => {
+    const places: Places = {
+      users: [inputAt('user', 1), paramAt('user_fc1', 'in_features')],
+      items: [inputAt('item', 1), paramAt('item_fc1', 'in_features')],
+    }
+    const { spec, notes, values } = viaTemplate('two_tower_retrieval', tower, places, reactions)
+    expect(values).toEqual({ users: 6, items: 4 })
+    expect(spec).toEqual(applyDatasetInputs(tower, reactions, units).spec)
+    expect(notes[1]).toBe('反応の強さ (qty) が 0 以下か数でない 1 行を除きました')
+    expect(notes).toContain(
+      '雛形の引数 users (利用者の数) を 12 から 6 にしました (入力 user の形の 2 番目, user_fc1 の in_features)',
+    )
+    expect(notes.at(-1)).toBe(
+      '出力 score は利用者と品物の全ての組の点数の表なので, 出力の大きさは変えていません',
+    )
+  })
+
   it('config に割合が無ければ既定の割合と知らせる', () => {
     const rank = { ...reactions.rank!, valid: null, test: null, problem: null }
     const { notes } = applyDatasetInputs(tower, { ...reactions, rank }, units)
@@ -525,6 +640,25 @@ describe('applyDatasetInputs (異常の検知)', () => {
     expect(notes).toContain('dec2 の out_features を 3 にしました')
     expect(datasetSummary(readings)).toBe(
       'データセットから入れました: 入力 x [4, 3], タスク anomaly, 目的の列 is_anomaly, 出す値 3',
+    )
+  })
+
+  it('雛形 tabular_autoencoder のままなら, 縮めた幅は渡さずに今と同じ定義にする', () => {
+    const places: Places = {
+      features: [inputAt('x', 1), paramAt('enc1', 'in_features'), paramAt('dec2', 'out_features')],
+      bottleneck: [paramAt('enc2', 'out_features'), paramAt('dec1', 'in_features')],
+    }
+    const { spec, notes, values } = viaTemplate(
+      'tabular_autoencoder',
+      autoencoder,
+      places,
+      readings,
+    )
+    expect(values).toEqual({ features: 3 })
+    expect(spec).toEqual(applyDatasetInputs(autoencoder, readings, units).spec)
+    expect(notes.at(-1)).toBe(
+      '雛形の引数 features (特徴の数) を 16 から 3 にしました ' +
+        '(入力 x の形の 2 番目, enc1 の in_features, dec2 の out_features)',
     )
   })
 
@@ -633,6 +767,27 @@ describe('applyDatasetInputs (効果を見積もる)', () => {
     )
   })
 
+  it('雛形 tabular_uplift のままなら, 書き換えた雛形に入れて今と同じ定義にし, 出力は 1 のままと知らせる', () => {
+    const places: Places = {
+      features: [
+        inputAt('x', 1),
+        paramAt('treated1', 'in_features'),
+        paramAt('control1', 'in_features'),
+      ],
+    }
+    const { spec, notes, values } = viaTemplate('tabular_uplift', twoHeads, places, log)
+    expect(values).toEqual({ features: 5 })
+    expect(spec).toEqual(applyDatasetInputs(twoHeads, log, units).spec)
+    expect(notes).toContain(
+      '雛形の引数 features (特徴の数) を 16 から 5 にしました ' +
+        '(入力 x の形の 2 番目, treated1 の in_features, control1 の in_features)',
+    )
+    expect(notes.at(-1)).toBe(
+      '出力 treated と control の値の数は, 雛形の 1 のままです ' +
+        '(効果の見積もりの 2 つの出力は, どちらも 1 行に 1 つの値を出します)',
+    )
+  })
+
   it('出す値の数が違う出力も 1 にし, 名前の分からない列は役だけを出す', () => {
     const wide: Spec = {
       ...twoHeads,
@@ -726,6 +881,17 @@ describe('applyDatasetInputs (値段を変える判断)', () => {
     expect(datasetSummary(record)).toBe(
       'データセットから入れました: 入力 x [4, 5], タスク price, 目的の列 units, 出す値 1',
     )
+  })
+
+  it('雛形 tabular_price のままなら, 書き換えた雛形に入れて今と同じ定義にし, 出力は変えないと知らせる', () => {
+    const places: Places = { features: [inputAt('x', 1), paramAt('units1', 'in_features')] }
+    const { spec, notes, values } = viaTemplate('tabular_price', sales, places, record)
+    expect(values).toEqual({ features: 5 })
+    expect(spec).toEqual(applyDatasetInputs(sales, record, units).spec)
+    expect(notes).toContain(
+      '雛形の引数 features (特徴の数) を 17 から 5 にしました (入力 x の形の 2 番目, units1 の in_features)',
+    )
+    expect(notes.at(-1)).toBe(kept)
   })
 
   it('出力の前の全結合の値の数は書き換えず, 無い原価と商品の id の列と分からない幅は出さない', () => {
@@ -825,6 +991,27 @@ describe('applyDatasetInputs (時間をまたぐ量の判断)', () => {
     )
   })
 
+  it('雛形 tabular_demand のままなら, 水準の数を渡して今と同じ定義にし, 水準の決め方を知らせる', () => {
+    const places: Places = {
+      features: [inputAt('x', 1), paramAt('demand1', 'in_features')],
+      levels: [paramAt('demand2', 'out_features')],
+    }
+    const { spec, notes, values } = viaTemplate('tabular_demand', quantiles, places, record)
+    expect(values).toEqual({ features: 5, levels: 4 })
+    expect(spec).toEqual(applyDatasetInputs(quantiles, record, units).spec)
+    expect(notes.at(-1)).toBe(
+      '出力 quantiles の値の数を, 学ぶ分位点の水準 0.1, 0.5, 0.75, 0.9 の数 4 ' +
+        '(問題の設定 発注の見直し の水準. 水準ごとに 1 つの値) にしました ' +
+        '(雛形の引数 levels を 9 から 4 に: demand2 の out_features)',
+    )
+    // 水準が分からなければ水準の数は渡さず, 今の値のまま
+    const unknown = { ...record, outputs: null, demand: { ...record.demand!, levels: null } }
+    const without = viaTemplate('tabular_demand', quantiles, places, unknown)
+    expect(without.values).toEqual({ features: 5 })
+    expect(without.spec).toEqual(applyDatasetInputs(quantiles, unknown, units).spec)
+    expect(without.notes.at(-1)).toContain('学ぶ分位点の水準の数は問題の設定が決めるので')
+  })
+
   it('学習の設定の水準と食い違いの知らせを入れ, 同じ数なら値の数を変えずに知らせる', () => {
     const configured: DatasetInfo = {
       ...record,
@@ -887,5 +1074,187 @@ describe('applyDatasetInputs (時間をまたぐ量の判断)', () => {
       '出力の値の数 4 (学ぶ分位点の水準 0.1, 0.5, 0.75, 0.9 の数. 問題の設定 発注の見直し の水準) は, ' +
         '最後の部品の引数に手で入れてください',
     )
+  })
+})
+
+describe('applyDatasetInputs (雛形のままのファイルの組)', () => {
+  /** 同梱の例 unet_segmentation の入力と最初と最後の畳み込み (3 チャンネル, 2 クラス) */
+  const unet: Spec = {
+    ...emptySpec(),
+    inputs: { image: { shape: [4, 3, 32, 32] } },
+    nodes: {
+      enc1a: {
+        unit: 'nn.Conv2d',
+        params: { in_channels: 3, out_channels: 16, kernel_size: 3 },
+        inputs: 'image',
+      },
+      head: {
+        unit: 'nn.Conv2d',
+        params: { in_channels: 16, out_channels: 2, kernel_size: 1 },
+        inputs: 'enc1a',
+      },
+    },
+    outputs: { logits: 'head' },
+  }
+  /** 同梱の例 point_cloud_predictor の入力と復号と並べ直し (入力 512 点, 出す点 256) */
+  const predictor: Spec = {
+    ...emptySpec(),
+    inputs: { observed: { shape: [4, 512, 3] } },
+    nodes: {
+      encode1: {
+        unit: 'nn.Linear',
+        params: { in_features: 3, out_features: 64 },
+        inputs: 'observed',
+      },
+      decode2: {
+        unit: 'nn.Linear',
+        params: { in_features: 64, out_features: 768 },
+        inputs: 'encode1',
+      },
+      cloud: { unit: 'op.Reshape', params: { shape: [256, 3] }, inputs: 'decode2' },
+    },
+    outputs: { cloud: 'cloud' },
+  }
+
+  it('雛形 unet_segmentation のままなら, チャンネル数とクラス数を渡して今と同じ定義にする', () => {
+    const places: Places = {
+      channels: [inputAt('image', 1), paramAt('enc1a', 'in_channels')],
+      classes: [paramAt('head', 'out_channels')],
+    }
+    const { spec, notes, values } = viaTemplate('unet_segmentation', unet, places, masks)
+    expect(values).toEqual({ channels: 1, classes: 3 })
+    expect(spec).toEqual(applyDatasetInputs(unet, masks, units).spec)
+    expect(spec.inputs.image!.shape).toEqual([4, 1, 32, 32])
+    expect(notes.at(-1)).toBe(
+      '雛形の引数 classes (クラス数 (背景を含む)) を 2 から 3 にしました (head の out_channels)',
+    )
+    // タスクの無い (出す値の数の分からない) データセットはクラス数を渡さない
+    const unknown = { ...masks, outputs: null }
+    const without = viaTemplate('unet_segmentation', unet, places, unknown)
+    expect(without.values).toEqual({ channels: 1 })
+    expect(without.notes.at(-1)).toBe(
+      'タスクを決めていないデータセットなので, 出力の大きさは変えていません',
+    )
+  })
+
+  /** 点群の雛形の引数の場所 */
+  const cloudPlaces: Places = {
+    points_in: [inputAt('observed', 1)],
+    points_out: [
+      paramAt('decode2', 'out_features', 3),
+      { kind: 'shape', owner: 'cloud', key: 0, scale: 1 },
+    ],
+  }
+
+  it('雛形 point_cloud_predictor のままなら, 入力の点の数と出す点の数を渡して今と同じ定義にする', () => {
+    const observed: DatasetInfo = {
+      ...clouds,
+      inputs: [{ ...clouds.inputs[0]!, name: 'observed', shape: [4, 128, 3] }],
+    }
+    const { spec, notes, values } = viaTemplate(
+      'point_cloud_predictor',
+      predictor,
+      cloudPlaces,
+      observed,
+    )
+    expect(values).toEqual({ points_in: 128, points_out: 1024 })
+    expect(spec).toEqual(applyDatasetInputs(predictor, observed, units).spec)
+    expect(spec.inputs.observed!.shape).toEqual([4, 128, 3])
+    expect(spec.nodes.decode2!.params).toEqual({ in_features: 64, out_features: 3072 })
+    expect(spec.nodes.cloud!.params).toEqual({ shape: [1024, 3] })
+    expect(notes).toContain(
+      '雛形の引数 points_in (入力の点の数) を 512 から 128 にしました (入力 observed の形の 2 番目)',
+    )
+    expect(notes.at(-1)).toBe(
+      '雛形の引数 points_out (出す点の数) を 256 から 1024 にしました ' +
+        '(decode2 の out_features (× 3), cloud の shape の 1 番目)',
+    )
+  })
+
+  it('雛形の入力と名前の違うデータセットの入力は, 雛形の入力の名前を変えずに入れない', () => {
+    const { spec, notes, values } = viaTemplate(
+      'point_cloud_predictor',
+      predictor,
+      cloudPlaces,
+      clouds,
+    )
+    expect(values).toEqual({ points_in: 512, points_out: 1024 })
+    expect(Object.keys(spec.inputs)).toEqual(['observed'])
+    expect(spec.nodes.encode1!.inputs).toBe('observed')
+    expect(spec.nodes.cloud!.params).toEqual({ shape: [1024, 3] })
+    expect(notes).toContain(
+      'データセットの入力 capture は雛形 point_cloud_predictor の入力 (observed) と名前が違うので, ' +
+        '定義に入れていません (雛形の入力の名前は学習のスクリプトとの約束なので変えません)',
+    )
+    expect(notes.join('\n')).not.toContain('の名前を capture にしました')
+  })
+
+  it('次元の数が雛形の入力と違うデータセットの入力からは, 引数を決めずに知らせる', () => {
+    const flat: DatasetInfo = {
+      ...clouds,
+      inputs: [{ name: 'observed', shape: [4, 7], dtype: 'float32' }],
+    }
+    const { values, notes } = templateValues(
+      {
+        name: 'point_cloud_predictor',
+        args: [{ name: 'points_in', value: 512, places: [inputAt('observed', 1)] }],
+      },
+      predictor,
+      flat,
+    )
+    expect(values).toEqual({})
+    expect(notes).toEqual([
+      'データセットの入力 observed [4, 7] は雛形の入力 observed と次元の数が違うので, ' +
+        '雛形の引数 points_in (入力の点の数) は今の 512 のままです',
+    ])
+  })
+
+  it('GAN の生成器は雑音の幅を決めず, 出す 1 行の幅をデータセットの幅にし, 出す値の数を使わないと知らせる', () => {
+    const generator: Spec = {
+      ...emptySpec(),
+      inputs: { z: { shape: [8, 16] } },
+      nodes: {
+        fc1: { unit: 'nn.Linear', params: { in_features: 16, out_features: 32 }, inputs: 'z' },
+        fc2: { unit: 'nn.Linear', params: { in_features: 32, out_features: 10 }, inputs: 'fc1' },
+      },
+      outputs: { fake: 'fc2' },
+    }
+    const places: Places = {
+      noise: [inputAt('z', 1), paramAt('fc1', 'in_features')],
+      features: [paramAt('fc2', 'out_features')],
+    }
+    const { spec, notes, values } = viaTemplate('gan_generator', generator, places, table)
+    expect(values).toEqual({ features: 7 })
+    expect(Object.keys(spec.inputs)).toEqual(['z'])
+    expect(spec.inputs.z!.shape).toEqual([8, 16])
+    expect(spec.nodes.fc1!.params).toEqual({ in_features: 16, out_features: 32 })
+    expect(spec.nodes.fc2!.params).toEqual({ in_features: 32, out_features: 7 })
+    expect(notes).toContain(
+      '雛形の引数 noise (雑音の幅) はデータの幅でないので, データセットから決めずに今の 16 のままです',
+    )
+    expect(notes.at(-1)).toBe(
+      'データセットの出す値の数 3 は使っていません (雛形 gan_generator の出力の大きさは雛形の決まりで決まります. ' +
+        '出力 fake は作る行なので 1 行の幅)',
+    )
+  })
+
+  it('データセットで決まらない軸の引数は渡さない', () => {
+    const match: TemplateMatch = {
+      name: 'point_cloud_predictor',
+      args: [{ name: 'points_in', value: 512, places: [inputAt('observed', 1)] }],
+    }
+    const varied: DatasetInfo = {
+      ...clouds,
+      inputs: [{ ...clouds.inputs[0]!, dataset_shape: [null, null, 3] }],
+    }
+    expect(templateValues(match, predictor, varied)).toEqual({ values: {}, notes: [] })
+  })
+})
+
+describe('sameDefinition', () => {
+  it('名前だけが違う定義は同じとみなし, 中身が違えば違う', () => {
+    const spec: Spec = { ...emptySpec(), inputs: { x: { shape: [4, 3] } } }
+    expect(sameDefinition({ ...spec, name: 'a' }, { ...spec, name: 'b' })).toBe(true)
+    expect(sameDefinition(spec, { ...spec, inputs: { x: { shape: [4, 5] } } })).toBe(false)
   })
 })
