@@ -38,21 +38,41 @@ function remember(key: string, value: string): void {
   }
 }
 
-/** 雛形のままの定義を書き換えた結果と, 書き換えに送った定義 (入れる前に今の定義と照らすため) */
-export type DatasetTemplate = { base: Spec; applied: TemplateApplied }
+/**
+ * データセットを入れる前の準備: 読んだときの定義 (入れる前に今の定義と照らすため), 雛形のままの
+ * 定義を書き換えた結果 (雛形でなければ null) と, 雛形を照らせなかった知らせ
+ */
+export type DatasetTemplate = { base: Spec; applied: TemplateApplied | null; notes: string[] }
 
 /**
  * 定義が書き換えられる雛形のままなら, データセットから決めた引数で ML-ModelControl の
- * adapt_example に書き換えさせる (雛形でないか, 距離に基づく度合いで定義が要らなければ null)
+ * adapt_example に書き換えさせる (雛形でないか, 距離に基づく度合いで定義が要らなければ applied は
+ * null). 照らすか書き換えるのに失敗した場合も, 雛形でない定義の決め方で入れられるよう applied を
+ * null にして理由を知らせる (データセットを読んだ結果を捨てないため)
  */
-async function adaptToDataset(spec: Spec, info: DatasetInputs): Promise<DatasetTemplate | null> {
-  if (info.anomaly?.score === 'distance') return null
-  const match = await api.matchTemplate(spec)
-  if (!match) return null
-  const adapted = await api.adaptTemplate(spec, match.name, templateValues(match, spec, info))
-  return {
-    base: spec,
-    applied: { name: adapted.name, spec: adapted.spec as unknown as Spec, args: adapted.args },
+async function adaptToDataset(spec: Spec, info: DatasetInputs): Promise<DatasetTemplate> {
+  if (info.anomaly?.score === 'distance') return { base: spec, applied: null, notes: [] }
+  try {
+    const match = await api.matchTemplate(spec)
+    if (!match) return { base: spec, applied: null, notes: [] }
+    const { values, notes } = templateValues(match, spec, info)
+    const adapted = await api.adaptTemplate(spec, match.name, values)
+    const applied = {
+      name: adapted.name,
+      spec: adapted.spec as unknown as Spec,
+      args: adapted.args,
+      notes,
+    }
+    return { base: spec, applied, notes: [] }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    return {
+      base: spec,
+      applied: null,
+      notes: [
+        `雛形のままかを確かめられなかったので, 雛形でない定義の決め方で入れました (${reason})`,
+      ],
+    }
   }
 }
 
@@ -327,7 +347,7 @@ function DatasetSection({
   /** 最後に保存先を確かめた問題の設定のファイル (表の生成なら幅を符号化した行の幅に, 並べるなら入力の大きさを学習用の利用者と品物の数に, 異常の検知なら度合いの決め方を, 効果を見積もるならデータセットの説明に無い処置の列と行の id の列の名前を, 値段を変える判断ならデータセットの説明に無い値段, 原価, 商品の id と行の id の列の名前を, 時間をまたぐ量の判断なら出力の値の数にする学ぶ分位点の水準を読むため. 無ければ null) */
   problem: string | null
   /** 読んだ結果 (と雛形のままの定義を書き換えた結果) を定義に入れ, 知らせる文を返す */
-  onApply: (info: DatasetInputs, template: DatasetTemplate | null) => string[]
+  onApply: (info: DatasetInputs, template: DatasetTemplate) => string[]
 }) {
   const [path, setPath] = useState(() => remembered(DATASET_KEY))
   // この欄に打ったか (打った後は記録の場所で書き換えない)
@@ -747,7 +767,7 @@ export function ProjectDialog({
   /** 保存していない変更があるか (雛形を開く前に確かめる) */
   dirty: boolean
   /** データセットから読んだ結果 (と雛形のままの定義を書き換えた結果) を本体の定義に入れ, 知らせる文を返す */
-  onApply: (info: DatasetInputs, template: DatasetTemplate | null) => string[]
+  onApply: (info: DatasetInputs, template: DatasetTemplate) => string[]
   /** プロジェクトに書いた (書いたファイルの場所) */
   onSaved: (path: string) => void
   /** 問題の設定の雛形の定義を開く (開いた知らせはこのダイアログに出す) */

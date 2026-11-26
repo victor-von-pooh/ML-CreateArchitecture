@@ -100,7 +100,7 @@ function viaTemplate(name: string, spec: Spec, places: Places, info: DatasetInfo
       places: found,
     })),
   }
-  const values = templateValues(match, spec, info)
+  const { values, notes } = templateValues(match, spec, info)
   const args = match.args
     .filter((arg) => arg.name in values)
     .map((arg) => ({
@@ -113,6 +113,7 @@ function viaTemplate(name: string, spec: Spec, places: Places, info: DatasetInfo
     name,
     spec: writePlaces(spec, places, values),
     args,
+    notes,
   })
   return { ...applied, values }
 }
@@ -1136,26 +1137,104 @@ describe('applyDatasetInputs (雛形のままのファイルの組)', () => {
     )
   })
 
-  it('雛形 point_cloud_predictor のままなら, 名前を変えた入力の点の数と出す点の数を渡して今と同じ定義にする', () => {
-    const places: Places = {
-      points_in: [inputAt('observed', 1)],
-      points_out: [
-        paramAt('decode2', 'out_features', 3),
-        { kind: 'shape', owner: 'cloud', key: 0, scale: 1 },
-      ],
+  /** 点群の雛形の引数の場所 */
+  const cloudPlaces: Places = {
+    points_in: [inputAt('observed', 1)],
+    points_out: [
+      paramAt('decode2', 'out_features', 3),
+      { kind: 'shape', owner: 'cloud', key: 0, scale: 1 },
+    ],
+  }
+
+  it('雛形 point_cloud_predictor のままなら, 入力の点の数と出す点の数を渡して今と同じ定義にする', () => {
+    const observed: DatasetInfo = {
+      ...clouds,
+      inputs: [{ ...clouds.inputs[0]!, name: 'observed', shape: [4, 128, 3] }],
     }
-    const { spec, notes, values } = viaTemplate('point_cloud_predictor', predictor, places, clouds)
-    expect(values).toEqual({ points_in: 512, points_out: 1024 })
-    expect(spec).toEqual(applyDatasetInputs(predictor, clouds, units).spec)
+    const { spec, notes, values } = viaTemplate(
+      'point_cloud_predictor',
+      predictor,
+      cloudPlaces,
+      observed,
+    )
+    expect(values).toEqual({ points_in: 128, points_out: 1024 })
+    expect(spec).toEqual(applyDatasetInputs(predictor, observed, units).spec)
+    expect(spec.inputs.observed!.shape).toEqual([4, 128, 3])
     expect(spec.nodes.decode2!.params).toEqual({ in_features: 64, out_features: 3072 })
     expect(spec.nodes.cloud!.params).toEqual({ shape: [1024, 3] })
-    expect(notes).toContain('入力 observed の名前を capture にしました')
     expect(notes).toContain(
-      '雛形の引数 points_in (入力の点の数) は 512 のままです (入力 capture の形の 2 番目)',
+      '雛形の引数 points_in (入力の点の数) を 512 から 128 にしました (入力 observed の形の 2 番目)',
     )
     expect(notes.at(-1)).toBe(
       '雛形の引数 points_out (出す点の数) を 256 から 1024 にしました ' +
         '(decode2 の out_features (× 3), cloud の shape の 1 番目)',
+    )
+  })
+
+  it('雛形の入力と名前の違うデータセットの入力は, 雛形の入力の名前を変えずに入れない', () => {
+    const { spec, notes, values } = viaTemplate(
+      'point_cloud_predictor',
+      predictor,
+      cloudPlaces,
+      clouds,
+    )
+    expect(values).toEqual({ points_in: 512, points_out: 1024 })
+    expect(Object.keys(spec.inputs)).toEqual(['observed'])
+    expect(spec.nodes.encode1!.inputs).toBe('observed')
+    expect(spec.nodes.cloud!.params).toEqual({ shape: [1024, 3] })
+    expect(notes).toContain(
+      'データセットの入力 capture は雛形 point_cloud_predictor の入力 (observed) と名前が違うので, ' +
+        '定義に入れていません (雛形の入力の名前は学習のスクリプトとの約束なので変えません)',
+    )
+    expect(notes.join('\n')).not.toContain('の名前を capture にしました')
+  })
+
+  it('次元の数が雛形の入力と違うデータセットの入力からは, 引数を決めずに知らせる', () => {
+    const flat: DatasetInfo = {
+      ...clouds,
+      inputs: [{ name: 'observed', shape: [4, 7], dtype: 'float32' }],
+    }
+    const { values, notes } = templateValues(
+      {
+        name: 'point_cloud_predictor',
+        args: [{ name: 'points_in', value: 512, places: [inputAt('observed', 1)] }],
+      },
+      predictor,
+      flat,
+    )
+    expect(values).toEqual({})
+    expect(notes).toEqual([
+      'データセットの入力 observed [4, 7] は雛形の入力 observed と次元の数が違うので, ' +
+        '雛形の引数 points_in (入力の点の数) は今の 512 のままです',
+    ])
+  })
+
+  it('GAN の生成器は雑音の幅を決めず, 出す 1 行の幅をデータセットの幅にし, 出す値の数を使わないと知らせる', () => {
+    const generator: Spec = {
+      ...emptySpec(),
+      inputs: { z: { shape: [8, 16] } },
+      nodes: {
+        fc1: { unit: 'nn.Linear', params: { in_features: 16, out_features: 32 }, inputs: 'z' },
+        fc2: { unit: 'nn.Linear', params: { in_features: 32, out_features: 10 }, inputs: 'fc1' },
+      },
+      outputs: { fake: 'fc2' },
+    }
+    const places: Places = {
+      noise: [inputAt('z', 1), paramAt('fc1', 'in_features')],
+      features: [paramAt('fc2', 'out_features')],
+    }
+    const { spec, notes, values } = viaTemplate('gan_generator', generator, places, table)
+    expect(values).toEqual({ features: 7 })
+    expect(Object.keys(spec.inputs)).toEqual(['z'])
+    expect(spec.inputs.z!.shape).toEqual([8, 16])
+    expect(spec.nodes.fc1!.params).toEqual({ in_features: 16, out_features: 32 })
+    expect(spec.nodes.fc2!.params).toEqual({ in_features: 32, out_features: 7 })
+    expect(notes).toContain(
+      '雛形の引数 noise (雑音の幅) はデータの幅でないので, データセットから決めずに今の 16 のままです',
+    )
+    expect(notes.at(-1)).toBe(
+      'データセットの出す値の数 3 は使っていません (雛形 gan_generator の出力の大きさは雛形の決まりで決まります. ' +
+        '出力 fake は作る行なので 1 行の幅)',
     )
   })
 
@@ -1168,7 +1247,7 @@ describe('applyDatasetInputs (雛形のままのファイルの組)', () => {
       ...clouds,
       inputs: [{ ...clouds.inputs[0]!, dataset_shape: [null, null, 3] }],
     }
-    expect(templateValues(match, predictor, varied)).toEqual({})
+    expect(templateValues(match, predictor, varied)).toEqual({ values: {}, notes: [] })
   })
 })
 

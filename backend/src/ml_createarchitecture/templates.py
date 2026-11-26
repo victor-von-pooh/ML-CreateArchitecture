@@ -162,7 +162,10 @@ def place_model(place: tuple[str, str, Any, int]) -> TemplatePlace:
     return model
 
 
-def current_args(spec: dict[str, Any], name: str) -> Optional[dict[str, int]]:
+def current_args(
+    spec: dict[str, Any], name: str,
+    loose: Optional[dict[str, Any]] = None
+) -> Optional[dict[str, int]]:
     """
     定義が雛形のままなら, 書き換える引数の今の値を返す関数
 
@@ -175,6 +178,9 @@ def current_args(spec: dict[str, Any], name: str) -> Optional[dict[str, int]]:
         定義
     name: str
         雛形の名前 (TEMPLATE_ARGS にある同梱の例)
+    loose: Optional[dict[str, Any]] = None
+        定義の照らさない項目を除いた写し (無ければ求める. 雛形ごとに
+        照らすときに 1 回だけ求めるため)
 
     Returns
     ----------
@@ -196,7 +202,9 @@ def current_args(spec: dict[str, Any], name: str) -> Optional[dict[str, int]]:
 
     # 今の値で書き換えた雛形との照らし合わせ
     expected = adapt_example(name, values)
-    if loose_spec(spec) != loose_spec(expected):
+    if loose is None:
+        loose = loose_spec(spec)
+    if loose != loose_spec(expected):
         return None
 
     return values
@@ -217,8 +225,9 @@ def find_template(spec: dict[str, Any]) -> Optional[TemplateMatch]:
         雛形の名前と, 引数ごとの今の値と場所 (雛形でなければ None)
     """
     # 雛形の順に照らし, 最初に合ったもの
+    loose = loose_spec(spec)
     for name, places in TEMPLATE_ARGS.items():
-        values = current_args(spec, name)
+        values = current_args(spec, name, loose)
         if values is None:
             continue
         args = [

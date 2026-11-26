@@ -714,15 +714,16 @@ function Editor() {
           onDataset={(info, template) => {
             // 本体の定義に 1 回の変更として入れ, 部品の一覧の上にも知らせる
             const current = latest.current
-            // 雛形を書き換える間に定義が変わっていれば入れない (変えた定義を雛形で戻さないため)
-            if (template && !sameDefinition(template.base, current)) {
+            // 読む間 (雛形を書き換える間) に定義が変わっていれば入れない (変えた定義を, 読む前の
+            // 定義から作った結果で戻さないため)
+            if (!sameDefinition(template.base, current)) {
               const lines = [
                 '入力と出力を作る間に定義が変わったので, 何も変えていません. もう一度「入力と出力を作る」を押してください',
               ]
               notify(lines[0]!)
               return lines
             }
-            const adapted = template
+            const adapted = template.applied
               ? { ...template.applied, spec: { ...template.applied.spec, name: current.name } }
               : null
             const applied = applyDatasetInputs(current, info, unitsFor(current), adapted)
@@ -731,7 +732,7 @@ function Editor() {
             window.requestAnimationFrame(
               () => void flow.fitView({ duration: 200, maxZoom: 1, padding: 0.1 }),
             )
-            const lines = [datasetSummary(info), ...applied.notes]
+            const lines = [datasetSummary(info), ...applied.notes, ...template.notes]
             notify(lines.join('. '))
             return lines
           }}

@@ -174,6 +174,9 @@ test('同梱の拡散の例に表のデータセットを入れると, 残す時
   await expect(result).toContainText(
     '雛形の引数 features (特徴の数) を 16 から 3 にしました (入力 x の形の 2 番目, x_fc の in_features, head の out_features)',
   )
+  await expect(result).toContainText(
+    'データセットの出す値の数 3 は使っていません (雛形 diffusion_denoiser の出力の大きさは雛形の決まりで決まります.',
+  )
   await dialog.getByRole('button', { name: '閉じる' }).click()
 
   // x_fc と t_act の和 (add) が通り, 出力 noise のつなぎ元 head が [4, 3] になる
