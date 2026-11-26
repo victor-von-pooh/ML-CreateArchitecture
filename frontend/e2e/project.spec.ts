@@ -503,7 +503,7 @@ test('値段を変える判断の問題の設定を新しく始めるときに�
   ).toContainText(`${priceProject}/models/model.yaml`)
 
   // 記録のデータセットから入力と出力を作ると, 入力の幅を特徴の 2 列と値段の 1 列の 3 にし
-  // (売れた数, 原価, 商品の id, 行の id の列は数えない), 出力 units は 1
+  // (売れた数, 原価, 商品の id, 行の id の列は数えない), 出力 units の値の数 1 はそのまま
   const data = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
   await expect(data.getByLabel('データセットのディレクトリ')).toHaveValue(
     `${priceProject}/outputs/dataset`,
@@ -514,16 +514,16 @@ test('値段を変える判断の問題の設定を新しく始めるときに�
     'データセットから入れました: 入力 x [4, 3], タスク price, 目的の列 units, 出す値 1',
   )
   await expect(result).toContainText(
-    '問題の設定 e2e の値段の見直し が値段を変える判断なので, 入力の幅を, 商品の特徴の列と値段の列の数 3 にしました ' +
-      '(値段の列 price は入力の最後の列). ' +
-      '入力に入れない列: 売れた数 (予測する値) の列 units, ' +
+    '問題の設定 e2e の値段の見直し が値段を変える判断なので, ' +
+      '入力の幅を, 商品の特徴の列と値段の列を合わせた 3 列にしました. ' +
+      '値段 (商品の売り値) の列 price は, 入力の最後の列です. ' +
+      '次の列は入力に入れません: 売れた数 (予測する値) の列 units, ' +
       '原価 (仕入れか作るのにかかる値段. 利益の計算に使う) の列 unit_cost, ' +
-      '商品の id (値段を選ぶ単位) の列 product_id, 行を見分ける id の列 record_id. ' +
-      '売れた数の予測は 1 行に 1 つの値を出します',
+      '商品の id (値段を選ぶ単位) の列 product_id, 行を見分ける id の列 record_id',
   )
   await expect(result).toContainText('units1 の in_features を 3 にしました')
   await expect(result).toContainText(
-    '出力のつなぎ元 units_softplus の 1 つ前の units2 の out_features を 1 にしました',
+    '出力の値の数は変えていません (売れた数の予測は 1 行に 1 つの値なので, 雛形の 1 のまま使います)',
   )
   await dialog.getByRole('button', { name: '閉じる' }).click()
 

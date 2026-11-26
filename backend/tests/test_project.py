@@ -2698,8 +2698,8 @@ def test_dataset_inputs_price(client: TestClient, tmp_path: Path) -> None:
             "problem": None
         }
 
-    # 原価と商品の id の列の無い表は, 問題の設定が答えていても出さない
-    # (説明の null は列が無い印)
+    # 原価と商品の id の列の無い表の, 問題の設定の答えに依らない原価と商品
+    # の id の無し (説明の null は列が無い印)
     bare = write_price_dataset(ml_eda, tmp_path, "bare", cost=False)
     response = client.post(
         "/api/dataset/inputs",
@@ -2745,7 +2745,7 @@ def test_dataset_inputs_price_answers(
     ----------
     None
     """
-    # 説明の price を消したデータセット (model_inputs は読める)
+    # 説明の price を消したデータセット (model_inputs で読める形)
     ml_eda = pytest.importorskip("ml_eda")
     ml_quest = pytest.importorskip("ml_quest")
     place = tmp_path / "price.yaml"

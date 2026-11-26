@@ -703,29 +703,31 @@ describe('applyDatasetInputs (値段を変える判断)', () => {
     },
   }
 
-  it('入力の幅を特徴の列と値段の列の数にし, softplus の前の出す値を 1 にし, 決め方を初めに知らせる', () => {
+  /** 出力の値の数を変えないことの知らせ */
+  const kept =
+    '出力の値の数は変えていません (売れた数の予測は 1 行に 1 つの値なので, 雛形の 1 のまま使います)'
+
+  it('入力の幅を特徴の列と値段の列の数にし, 出力の値の数は変えず, 決め方を初めに知らせる', () => {
     const { spec, notes } = applyDatasetInputs(sales, record, units)
     expect(spec.inputs.x!.shape).toEqual([4, 5])
     expect(spec.nodes.units1!.params).toEqual({ in_features: 5, out_features: 32 })
     expect(spec.nodes.units2!.params).toEqual({ in_features: 32, out_features: 1 })
     expect(notes[0]).toBe(
-      '問題の設定 値段の見直し が値段を変える判断なので, 入力の幅を, 商品の特徴の列と値段の列の数 5 にしました ' +
-        '(値段の列 price は入力の最後の列). ' +
-        '入力に入れない列: 売れた数 (予測する値) の列 units, ' +
+      '問題の設定 値段の見直し が値段を変える判断なので, ' +
+        '入力の幅を, 商品の特徴の列と値段の列を合わせた 5 列にしました. ' +
+        '値段 (商品の売り値) の列 price は, 入力の最後の列です. ' +
+        '次の列は入力に入れません: 売れた数 (予測する値) の列 units, ' +
         '原価 (仕入れか作るのにかかる値段. 利益の計算に使う) の列 unit_cost, ' +
-        '商品の id (値段を選ぶ単位) の列 product_id, 行を見分ける id の列 record_id. ' +
-        '売れた数の予測は 1 行に 1 つの値を出します',
+        '商品の id (値段を選ぶ単位) の列 product_id, 行を見分ける id の列 record_id',
     )
     expect(notes).toContain('units1 の in_features を 5 にしました')
-    expect(notes).toContain(
-      '出力のつなぎ元 units_softplus の 1 つ前の units2 の out_features を 1 にしました',
-    )
+    expect(notes.at(-1)).toBe(kept)
     expect(datasetSummary(record)).toBe(
       'データセットから入れました: 入力 x [4, 5], タスク price, 目的の列 units, 出す値 1',
     )
   })
 
-  it('出す値の数の違う softplus の前も 1 にし, 無い原価と商品の id の列は出さない', () => {
+  it('出力の前の全結合の値の数は書き換えず, 無い原価と商品の id の列と分からない幅は出さない', () => {
     const wide: Spec = {
       ...sales,
       nodes: {
@@ -735,16 +737,17 @@ describe('applyDatasetInputs (値段を変える判断)', () => {
     }
     const bare: DatasetInfo = {
       ...record,
-      price: { columns: 5, price: null, units: 'units', cost: null, product: null, id: null },
+      price: { columns: null, price: null, units: 'units', cost: null, product: null, id: null },
     }
     const { spec, notes } = applyDatasetInputs(wide, bare, units)
-    expect(spec.nodes.units2!.params).toEqual({ in_features: 32, out_features: 1 })
+    expect(spec.nodes.units2!.params).toEqual({ in_features: 32, out_features: 3 })
     expect(notes[0]).toBe(
-      '値段を変える判断のデータセットなので, 入力の幅を, 商品の特徴の列と値段の列の数 5 にしました ' +
-        '(値段の列は入力の最後の列). ' +
-        '入力に入れない列: 売れた数 (予測する値) の列 units, 行を見分ける id の列. ' +
-        '売れた数の予測は 1 行に 1 つの値を出します',
+      '値段を変える判断のデータセットなので, ' +
+        '入力の幅は, データセットの入力の幅のままにしました (商品の特徴の列と値段の列を合わせた数). ' +
+        '値段 (商品の売り値) の列は, 入力の最後の列です. ' +
+        '次の列は入力に入れません: 売れた数 (予測する値) の列 units, 行を見分ける id の列',
     )
+    expect(notes.at(-1)).toBe(kept)
   })
 
   it('値段を変える判断でないデータセットでは, softplus の前を書き換えない', () => {

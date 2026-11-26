@@ -923,7 +923,8 @@ def price_names(
         price, cost, product, id の列の名前 (無ければ None. 説明の値が null
         の項目は, その列が無いので答えで埋めない)
     """
-    # 説明にある項目は説明の値 (null は列が無い印), 無い項目だけ答え
+    # 説明にある項目の説明の値 (null は列が無い印) と, 説明に無い項目の
+    # 問題の設定の答え
     columns = {
         key: (
             column_names(written, {key: key})[key] if key in written
