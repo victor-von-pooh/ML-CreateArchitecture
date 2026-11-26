@@ -630,10 +630,121 @@
           }
         }
       }
+    },
+    "/api/templates/match": {
+      "post": {
+        "summary": "Match Template",
+        "description": "定義が書き換えられる雛形のままかを照らす関数\n\nParameters\n----------\nbody: MatchBody\n    照らす定義\n\nReturns\n----------\nmatch: Optional[TemplateMatch]\n    雛形の名前と, 引数ごとの今の値と場所 (雛形でなければ None)",
+        "operationId": "match_template",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TemplateMatch"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Match Template"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/templates/adapt": {
+      "post": {
+        "summary": "Adapt Template",
+        "description": "雛形のままの定義を, 渡した引数の値に書き換える関数\n\nParameters\n----------\nbody: AdaptBody\n    雛形のままの定義, 雛形の名前, 引数の名前ごとの値 (書かない引数は\n    今の定義の値のまま)\n\nReturns\n----------\nadapted: TemplateAdapted\n    書き換えた定義と, 渡した引数ごとの前と後の値と場所",
+        "operationId": "adapt_template",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdaptBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateAdapted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AdaptBody": {
+        "properties": {
+          "spec": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Spec"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "values": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Values"
+          }
+        },
+        "type": "object",
+        "required": [
+          "spec",
+          "name",
+          "values"
+        ],
+        "title": "AdaptBody"
+      },
       "AnomalyWidth": {
         "properties": {
           "columns": {
@@ -1468,6 +1579,20 @@
           "message"
         ],
         "title": "Issue"
+      },
+      "MatchBody": {
+        "properties": {
+          "spec": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Spec"
+          }
+        },
+        "type": "object",
+        "required": [
+          "spec"
+        ],
+        "title": "MatchBody"
       },
       "ModelFile": {
         "properties": {
@@ -2310,6 +2435,146 @@
           "path"
         ],
         "title": "TargetBody"
+      },
+      "TemplateAdapted": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "spec": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Spec"
+          },
+          "args": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateChange"
+            },
+            "type": "array",
+            "title": "Args"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "spec",
+          "args"
+        ],
+        "title": "TemplateAdapted"
+      },
+      "TemplateArg": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "value": {
+            "type": "integer",
+            "title": "Value"
+          },
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/TemplatePlace"
+            },
+            "type": "array",
+            "title": "Places"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "value",
+          "places"
+        ],
+        "title": "TemplateArg"
+      },
+      "TemplateChange": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "before": {
+            "type": "integer",
+            "title": "Before"
+          },
+          "after": {
+            "type": "integer",
+            "title": "After"
+          },
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/TemplatePlace"
+            },
+            "type": "array",
+            "title": "Places"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "before",
+          "after",
+          "places"
+        ],
+        "title": "TemplateChange"
+      },
+      "TemplateMatch": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "args": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateArg"
+            },
+            "type": "array",
+            "title": "Args"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "args"
+        ],
+        "title": "TemplateMatch"
+      },
+      "TemplatePlace": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "owner": {
+            "type": "string",
+            "title": "Owner"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Key"
+          },
+          "scale": {
+            "type": "integer",
+            "title": "Scale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "owner",
+          "key",
+          "scale"
+        ],
+        "title": "TemplatePlace"
       },
       "UpliftWidth": {
         "properties": {

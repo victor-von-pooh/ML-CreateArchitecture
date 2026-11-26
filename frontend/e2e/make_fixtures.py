@@ -95,6 +95,38 @@ def make_masks(path: Path) -> None:
     )
 
 
+def make_clouds(path: Path) -> None:
+    """
+    128 点の観測の点群から 64 点の点群を当てる, ファイルの組のデータセット
+    (版 2) の説明を書く関数 (model_inputs は説明だけを読むので分割の
+    ファイルは書かない)
+
+    Parameters
+    ----------
+    path: Path
+        書き出すディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 点の数のそろった観測の点群と正解の点群
+    path.mkdir(parents=True)
+    info = {
+        "format_version": 2, "role": "predict",
+        "target": {"kind": "point_cloud", "entries": ["cloud"]},
+        "entries": {
+            "observed": {"kind": "point_cloud", "role": "input",
+                         "shape": [128, 3], "dtype": "float32"},
+            "cloud": {"kind": "point_cloud", "role": "target",
+                      "shape": [64, 3], "dtype": "float32"},
+        },
+    }
+    (path / "dataset.yaml").write_text(
+        yaml.safe_dump(info, allow_unicode=True), encoding="utf-8"
+    )
+
+
 def make_project(path: Path) -> None:
     """
     ML-Quest の例の問題の設定から, 学習のプロジェクトの骨組みを書き出す
@@ -653,6 +685,7 @@ if __name__ == "__main__":
     work = Path(sys.argv[1])
     make_dataset(work / "dataset")
     make_masks(work / "masks")
+    make_clouds(work / "clouds")
     make_project(work / "project")
     make_experiment(work / "project")
     make_store(

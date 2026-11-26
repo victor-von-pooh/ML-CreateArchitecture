@@ -143,6 +143,168 @@ export interface DatasetApplied {
   notes: string[]
 }
 
+/** 雛形の書き換える場所 (API の TemplatePlace. 種類 input は入力の形の軸, param はノードの引数, shape はノードの引数 shape の要素) */
+export interface TemplatePlace {
+  kind: string
+  owner: string
+  key: number | string
+  /** 倍率 (値 × 倍率を書く) */
+  scale: number
+}
+
+/** 雛形のままの定義の雛形と, 書き換える引数ごとの今の値と場所 (API の TemplateMatch) */
+export interface TemplateMatch {
+  name: string
+  args: { name: string; value: number; places: TemplatePlace[] }[]
+}
+
+/** 雛形を書き換えた結果 (spec は書き換えた定義. args は渡した引数ごとの前と後の値と場所) */
+export interface TemplateApplied {
+  name: string
+  spec: Spec
+  args: { name: string; before: number; after: number; places: TemplatePlace[] }[]
+}
+
+/** 雛形の, データセットの出す値の数にする引数 (入力の形の軸に書く引数は, 入力の大きさで決める) */
+const OUTPUT_ARGS: Record<string, string> = {
+  unet_segmentation: 'classes',
+  point_cloud_predictor: 'points_out',
+}
+
+/** 雛形の, 学ぶ分位点の水準の数にする引数 */
+const LEVELS_ARGS: Record<string, string> = { tabular_demand: 'levels' }
+
+/** 知らせに添える, 雛形の引数の意味 (ML-ModelControl の docs/DESIGN.md の 9 節の表の記号) */
+const ARG_LABELS: Record<string, string> = {
+  features: '特徴の数',
+  latent: '潜在の幅',
+  noise: '雑音の幅',
+  users: '利用者の数',
+  items: '品物の数',
+  observations: '観測の数',
+  actions: '行動の数',
+  bottleneck: '縮めた幅',
+  levels: '水準の数',
+  channels: 'チャンネル数',
+  classes: 'クラス数 (背景を含む)',
+  points_in: '入力の点の数',
+  points_out: '出す点の数',
+}
+
+/**
+ * 雛形の書き換える引数の値をデータセットから決める
+ *
+ * 入力の形の軸に書く引数は, 同じ名前のデータセットの入力 (定義の入力とデータセットの入力が
+ * 1 つずつなら名前の違う入力) のその軸の大きさ (データセットで決まらない軸は決めない).
+ * unet_segmentation の classes と point_cloud_predictor の points_out は出す値の数,
+ * tabular_demand の levels は学ぶ分位点の水準の数. 決まらない引数は入れない (今の値のまま)
+ */
+export function templateValues(
+  match: TemplateMatch,
+  spec: Spec,
+  info: DatasetInfo,
+): Record<string, number> {
+  const values: Record<string, number> = {}
+  const only =
+    info.inputs.length === 1 && Object.keys(spec.inputs).length === 1 ? info.inputs[0]! : null
+  const positive = (size: unknown): size is number =>
+    typeof size === 'number' && Number.isInteger(size) && size > 0
+  for (const arg of match.args) {
+    const place = arg.places.find((found) => found.kind === 'input')
+    if (place) {
+      const item = info.inputs.find((found) => found.name === place.owner) ?? only
+      const axis = Number(place.key)
+      const size = item?.shape[axis]
+      if (item && item.dataset_shape?.[axis] !== null && positive(size)) values[arg.name] = size
+      continue
+    }
+    if (OUTPUT_ARGS[match.name] === arg.name && positive(info.outputs)) {
+      values[arg.name] = info.outputs
+    }
+    const levels = info.demand?.levels?.length
+    if (LEVELS_ARGS[match.name] === arg.name && positive(levels)) values[arg.name] = levels
+  }
+  return values
+}
+
+/** 定義の名前を除いて同じ定義か (雛形の書き換えに送った定義と, 入れるときの定義を照らす) */
+export function sameDefinition(first: Spec, second: Spec): boolean {
+  return JSON.stringify({ ...first, name: '' }) === JSON.stringify({ ...second, name: '' })
+}
+
+/** 雛形の書き換えた場所を読み上げやすい文字にする (入力は名前を変えた後の名前) */
+function placeText(place: TemplatePlace, renamed: Map<string, string>): string {
+  const times = place.scale > 1 ? ` (× ${place.scale})` : ''
+  const order = typeof place.key === 'number' ? `${place.key + 1} 番目` : String(place.key)
+  if (place.kind === 'input') {
+    return `入力 ${renamed.get(place.owner) ?? place.owner} の形の ${order}`
+  }
+  if (place.kind === 'shape') return `${place.owner} の shape の ${order}${times}`
+  return `${place.owner} の ${String(place.key)}${times}`
+}
+
+/** 雛形を書き換えた知らせ (書き換えたことと, 渡した引数ごとの前と後の値と場所. 決まらなかった値と変えない出力の知らせ) */
+function templateNotes(
+  template: TemplateApplied,
+  info: DatasetInfo,
+  renamed: Map<string, string>,
+): string[] {
+  const notes = [
+    `定義は雛形 ${template.name} のままなので, データに合わせる引数を ML-ModelControl の書き換え ` +
+      '(adapt_example) で, 関わるノードの引数と入力の形をそろえて書き換えました',
+  ]
+  const given = new Set(template.args.map((arg) => arg.name))
+  for (const arg of template.args) {
+    const places = arg.places.map((place) => placeText(place, renamed)).join(', ')
+    const label = ARG_LABELS[arg.name] ? ` (${ARG_LABELS[arg.name]})` : ''
+    if (LEVELS_ARGS[template.name] === arg.name && info.demand?.levels) {
+      const levels = info.demand.levels
+      const reason =
+        `学ぶ分位点の水準 ${levels.join(', ')} の数 ${arg.after} (${levelsOrigin(info.demand)}. ` +
+        '水準ごとに 1 つの値)'
+      const output = Object.keys(template.spec.outputs).join(', ')
+      notes.push(
+        arg.before === arg.after
+          ? `出力 ${output} の値の数は, ${reason} のままです (雛形の引数 ${arg.name}: ${places})`
+          : `出力 ${output} の値の数を, ${reason} にしました ` +
+              `(雛形の引数 ${arg.name} を ${arg.before} から ${arg.after} に: ${places})`,
+      )
+      continue
+    }
+    notes.push(
+      arg.before === arg.after
+        ? `雛形の引数 ${arg.name}${label} は ${arg.after} のままです (${places})`
+        : `雛形の引数 ${arg.name}${label} を ${arg.before} から ${arg.after} にしました (${places})`,
+    )
+  }
+  // 決まらなかった出す値の数と水準の数
+  const levelsArg = LEVELS_ARGS[template.name]
+  if (levelsArg && !given.has(levelsArg)) {
+    notes.push(
+      '学ぶ分位点の水準の数は問題の設定が決めるので, 出力の値の数は変えていません. ' +
+        '時間をまたぐ量の判断の問題の設定から保存先を確かめてから入れ直すと, 水準の数にします',
+    )
+  }
+  const outputArg = OUTPUT_ARGS[template.name]
+  if (outputArg && !given.has(outputArg)) {
+    notes.push('タスクを決めていないデータセットなので, 出力の大きさは変えていません')
+  }
+  // 雛形の決まりのまま変えない出力
+  if (info.price) {
+    notes.push(
+      '出力の値の数は変えていません (売れた数の予測は 1 行に 1 つの値なので, 雛形の 1 のまま使います)',
+    )
+  } else if (info.rank) {
+    notes.push('出力 score は利用者と品物の全ての組の点数の表なので, 出力の大きさは変えていません')
+  } else if (info.uplift) {
+    notes.push(
+      `出力 ${Object.keys(template.spec.outputs).join(' と ')} の値の数は, 雛形の 1 のままです ` +
+        '(効果の見積もりの 2 つの出力は, どちらも 1 行に 1 つの値を出します)',
+    )
+  }
+  return notes
+}
+
 /** 部品の無い定義に置く, 出す値の数を決める全結合の部品 */
 const HEAD_UNIT = 'nn.Linear'
 
@@ -474,12 +636,16 @@ export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
  * 需要の記録のデータセット (info.demand) では, 入力の幅が学習に使う列の数なので, その決め方と
  * 水準の決め方の知らせを初めに知らせ, 出力の値の数を学ぶ分位点の水準の数にする (出力の
  * つなぎ元から, 形を変えない softplus と累積和をさかのぼった out_features. 水準が分からなければ
- * 変えない)
+ * 変えない).
+ * 雛形のままの定義 (template. バックエンドが ML-ModelControl の adapt_example で書き換えた結果)
+ * では, 書き換えた定義に入力を同じ決まりで入れ, 入力に直につながる引数と出す値の数をノードを
+ * たどって決めずに, 書き換えた引数の前と後の値と場所を知らせる
  */
 export function applyDatasetInputs(
   spec: Spec,
   info: DatasetInfo,
   units: Map<string, UnitSpec>,
+  template: TemplateApplied | null = null,
 ): DatasetApplied {
   if (info.anomaly?.score === 'distance') {
     return { spec, notes: [anomalyDistanceNote(info.anomaly)] }
@@ -508,12 +674,16 @@ export function applyDatasetInputs(
     return { spec, notes }
   }
   const names = info.inputs.map((item) => item.name)
+  // 雛形のままの定義は, ML-ModelControl で書き換えた定義から始める
+  if (template) next = template.spec
 
   // 1 つずつで名前が違えば, 名前を変える (つなぎ先も書き換える)
   const current = Object.keys(next.inputs)
   const only = info.inputs.length === 1 ? info.inputs[0]! : null
+  const renamed = new Map<string, string>()
   if (only && current.length === 1 && current[0] !== only.name) {
     next = renameItem(next, current[0]!, only.name)
+    renamed.set(current[0]!, only.name)
     notes.push(`入力 ${current[0]} の名前を ${only.name} にしました`)
   }
 
@@ -560,6 +730,9 @@ export function applyDatasetInputs(
     }
   })
   next = { ...next, inputs }
+
+  // 雛形のままの定義は, ノードをたどって引数を決めない (ML-ModelControl で書き換え済み)
+  if (template) return { spec: next, notes: [...notes, ...templateNotes(template, info, renamed)] }
 
   // 入力に直につながる in_features を入力の最後の次元に, in_channels を
   // チャンネル (3 次元以上の入力の 2 番目の次元) に, num_embeddings を

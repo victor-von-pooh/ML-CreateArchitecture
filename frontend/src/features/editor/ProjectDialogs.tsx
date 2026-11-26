@@ -12,6 +12,7 @@ import {
 } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
 import { Button, ErrorBox, Spinner } from '../../components/ui'
+import { templateValues, type TemplateApplied } from '../../lib/dataset'
 import type { Spec } from '../../lib/graph'
 import { templateAction, templateConfirm, templateReason } from '../../lib/template'
 
@@ -34,6 +35,24 @@ function remember(key: string, value: string): void {
     window.localStorage.setItem(key, value)
   } catch {
     // 覚えられなくても操作は続ける
+  }
+}
+
+/** 雛形のままの定義を書き換えた結果と, 書き換えに送った定義 (入れる前に今の定義と照らすため) */
+export type DatasetTemplate = { base: Spec; applied: TemplateApplied }
+
+/**
+ * 定義が書き換えられる雛形のままなら, データセットから決めた引数で ML-ModelControl の
+ * adapt_example に書き換えさせる (雛形でないか, 距離に基づく度合いで定義が要らなければ null)
+ */
+async function adaptToDataset(spec: Spec, info: DatasetInputs): Promise<DatasetTemplate | null> {
+  if (info.anomaly?.score === 'distance') return null
+  const match = await api.matchTemplate(spec)
+  if (!match) return null
+  const adapted = await api.adaptTemplate(spec, match.name, templateValues(match, spec, info))
+  return {
+    base: spec,
+    applied: { name: adapted.name, spec: adapted.spec as unknown as Spec, args: adapted.args },
   }
 }
 
@@ -293,19 +312,22 @@ export function ExperimentCopies({
  * 入れた結果の知らせは, 閉じるまでダイアログに出す
  */
 function DatasetSection({
+  spec,
   disabled,
   suggested,
   problem,
   onApply,
 }: {
+  /** 入れる先の本体の定義 (雛形のままかを照らす) */
+  spec: Spec
   /** 選べない理由 (部分モデルを編集している間. 選べる場合は null) */
   disabled: string | null
   /** 学習のスクリプトが読むデータセットの場所 (問題の設定の記録か, 無ければ config の data.dataset. この欄に打つ前か, 一覧から問題の設定を選んだ場合に入れる) */
   suggested: Suggestion | null
   /** 最後に保存先を確かめた問題の設定のファイル (表の生成なら幅を符号化した行の幅に, 並べるなら入力の大きさを学習用の利用者と品物の数に, 異常の検知なら度合いの決め方を, 効果を見積もるならデータセットの説明に無い処置の列と行の id の列の名前を, 値段を変える判断ならデータセットの説明に無い値段, 原価, 商品の id と行の id の列の名前を, 時間をまたぐ量の判断なら出力の値の数にする学ぶ分位点の水準を読むため. 無ければ null) */
   problem: string | null
-  /** 読んだ結果を定義に入れ, 知らせる文を返す */
-  onApply: (info: DatasetInputs) => string[]
+  /** 読んだ結果 (と雛形のままの定義を書き換えた結果) を定義に入れ, 知らせる文を返す */
+  onApply: (info: DatasetInputs, template: DatasetTemplate | null) => string[]
 }) {
   const [path, setPath] = useState(() => remembered(DATASET_KEY))
   // この欄に打ったか (打った後は記録の場所で書き換えない)
@@ -333,8 +355,10 @@ function DatasetSection({
   // 定義に入れるのは mutate に渡した onSuccess (読んでいる間にダイアログを
   // 閉じた場合は入れない)
   const read = useMutation({
-    mutationFn: ({ target, from }: { target: string; from: string | null }) =>
-      api.datasetInputs(target, from),
+    mutationFn: async ({ target, from }: { target: string; from: string | null }) => {
+      const info = await api.datasetInputs(target, from)
+      return { info, template: await adaptToDataset(spec, info) }
+    },
   })
   return (
     <section aria-labelledby={titleId} className="space-y-3">
@@ -350,9 +374,9 @@ function DatasetSection({
             read.mutate(
               { target: path.trim(), from: problem },
               {
-                onSuccess: (info) => {
+                onSuccess: ({ info, template }) => {
                   remember(DATASET_KEY, info.path)
-                  setResult(onApply(info))
+                  setResult(onApply(info, template))
                 },
               },
             )
@@ -722,8 +746,8 @@ export function ProjectDialog({
   fresh: boolean
   /** 保存していない変更があるか (雛形を開く前に確かめる) */
   dirty: boolean
-  /** データセットから読んだ結果を本体の定義に入れ, 知らせる文を返す */
-  onApply: (info: DatasetInputs) => string[]
+  /** データセットから読んだ結果 (と雛形のままの定義を書き換えた結果) を本体の定義に入れ, 知らせる文を返す */
+  onApply: (info: DatasetInputs, template: DatasetTemplate | null) => string[]
   /** プロジェクトに書いた (書いたファイルの場所) */
   onSaved: (path: string) => void
   /** 問題の設定の雛形の定義を開く (開いた知らせはこのダイアログに出す) */
@@ -773,6 +797,7 @@ export function ProjectDialog({
         )}
         <hr className="border-line" />
         <DatasetSection
+          spec={spec}
           disabled={
             editing === null
               ? null

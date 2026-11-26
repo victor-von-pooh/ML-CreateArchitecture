@@ -18,6 +18,7 @@ from ml_createarchitecture.experiments import router as experiments_router
 from ml_createarchitecture.project import router as project_router
 from ml_createarchitecture.settings import get_custom_modules, get_data_dir
 from ml_createarchitecture.store import ModelStore
+from ml_createarchitecture.templates import router as templates_router
 
 # ビルド済みの画面を置く場所 (パッケージの中)
 STATIC_DIR = (Path(__file__).parent / "static").resolve()
@@ -385,6 +386,7 @@ def create_app(
     app.include_router(router)
     app.include_router(project_router)
     app.include_router(experiments_router)
+    app.include_router(templates_router)
     mount_frontend(app, STATIC_DIR)
 
     return app

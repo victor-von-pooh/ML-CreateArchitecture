@@ -581,10 +581,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/templates/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Match Template
+         * @description 定義が書き換えられる雛形のままかを照らす関数
+         *
+         *     Parameters
+         *     ----------
+         *     body: MatchBody
+         *         照らす定義
+         *
+         *     Returns
+         *     ----------
+         *     match: Optional[TemplateMatch]
+         *         雛形の名前と, 引数ごとの今の値と場所 (雛形でなければ None)
+         */
+        post: operations["match_template"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/templates/adapt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adapt Template
+         * @description 雛形のままの定義を, 渡した引数の値に書き換える関数
+         *
+         *     Parameters
+         *     ----------
+         *     body: AdaptBody
+         *         雛形のままの定義, 雛形の名前, 引数の名前ごとの値 (書かない引数は
+         *         今の定義の値のまま)
+         *
+         *     Returns
+         *     ----------
+         *     adapted: TemplateAdapted
+         *         書き換えた定義と, 渡した引数ごとの前と後の値と場所
+         */
+        post: operations["adapt_template"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdaptBody */
+        AdaptBody: {
+            /** Spec */
+            spec: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Values */
+            values: {
+                [key: string]: unknown;
+            };
+        };
         /** AnomalyWidth */
         AnomalyWidth: {
             /**
@@ -905,6 +979,13 @@ export interface components {
             location?: string | null;
             /** Subgraph */
             subgraph?: string | null;
+        };
+        /** MatchBody */
+        MatchBody: {
+            /** Spec */
+            spec: {
+                [key: string]: unknown;
+            };
         };
         /** ModelFile */
         ModelFile: {
@@ -1275,6 +1356,55 @@ export interface components {
              * @description models/ の下の名前 (拡張子無し. 無いか空なら既定)
              */
             name?: string | null;
+        };
+        /** TemplateAdapted */
+        TemplateAdapted: {
+            /** Name */
+            name: string;
+            /** Spec */
+            spec: {
+                [key: string]: unknown;
+            };
+            /** Args */
+            args: components["schemas"]["TemplateChange"][];
+        };
+        /** TemplateArg */
+        TemplateArg: {
+            /** Name */
+            name: string;
+            /** Value */
+            value: number;
+            /** Places */
+            places: components["schemas"]["TemplatePlace"][];
+        };
+        /** TemplateChange */
+        TemplateChange: {
+            /** Name */
+            name: string;
+            /** Before */
+            before: number;
+            /** After */
+            after: number;
+            /** Places */
+            places: components["schemas"]["TemplatePlace"][];
+        };
+        /** TemplateMatch */
+        TemplateMatch: {
+            /** Name */
+            name: string;
+            /** Args */
+            args: components["schemas"]["TemplateArg"][];
+        };
+        /** TemplatePlace */
+        TemplatePlace: {
+            /** Kind */
+            kind: string;
+            /** Owner */
+            owner: string;
+            /** Key */
+            key: number | string;
+            /** Scale */
+            scale: number;
         };
         /** UpliftWidth */
         UpliftWidth: {
@@ -1948,6 +2078,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExperimentSpec"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    match_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MatchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateMatch"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adapt_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdaptBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateAdapted"];
                 };
             };
             /** @description Validation Error */
