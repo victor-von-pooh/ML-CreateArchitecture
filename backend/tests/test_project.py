@@ -1,4 +1,5 @@
 import copy
+import shutil
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -793,9 +794,12 @@ class StubQuest:
 
         Returns
         ----------
-        None
+        contract: None
+            約束無し
         """
-        return None
+        contract = None
+
+        return contract
 
     def check_model_contract(
         self, problem: dict[str, Any], spec: Any, widths: Any = None
@@ -3343,7 +3347,7 @@ def test_project_save_contract(
     spec = response.json()["spec"]
     names = list(spec["inputs"])
 
-    # 雛形のままの幅は, 入力ごとに直す場所と数を出して書かない
+    # 雛形のままの幅は, 入力ごとの直す場所と数を出す 409 (書き無し)
     response = client.put(
         "/api/project/model", json={"path": str(place), "spec": template}
     )
@@ -3358,7 +3362,7 @@ def test_project_save_contract(
     assert detail["widths"] and detail["notes"] == []
     assert not Path(target["path"]).exists()
 
-    # 入力の名前と出力の名前の違いも直す場所を出す
+    # 入力の名前と出力の名前の違いの直す場所
     renamed = copy.deepcopy(spec)
     renamed["inputs"][f"{names[0]}_in"] = renamed["inputs"].pop(names[0])
     renamed["outputs"][f"{output}_out"] = renamed["outputs"].pop(output)
@@ -3369,13 +3373,18 @@ def test_project_save_contract(
     ids = {item["id"] for item in response.json()["detail"]["findings"]}
     assert ids == {"inputs", f"inputs.{names[0]}_in", "outputs"}
 
-    # 合う定義は確かめの知らせ無しで書き, 直さずに書く指定は合わなくても
-    # 書く
+    # 合う定義は確かめの知らせ無しの書き込み. 既にあるファイルは, 約束の
+    # 確かめより先に上書きの確かめ. 直さずに書く指定は合わなくても書き込み
     response = client.put(
         "/api/project/model", json={"path": str(place), "spec": spec}
     )
     assert response.status_code == 200, response.text
     assert response.json()["notes"] == []
+    response = client.put(
+        "/api/project/model", json={"path": str(place), "spec": renamed}
+    )
+    assert response.status_code == 409, response.text
+    assert "既にあります" in response.json()["detail"]
     response = client.put("/api/project/model", json={
         "path": str(place), "spec": renamed, "overwrite": True,
         "accept_contract": True
@@ -3414,11 +3423,9 @@ def test_project_save_contract_without_dataset(
         "/api/project/target", json={"path": str(place)}
     ).json()
     template = client.get("/api/examples/tabular_autoencoder").json()["spec"]
-    for item in Path(target["dataset"]).iterdir():
-        item.unlink()
-    Path(target["dataset"]).rmdir()
+    shutil.rmtree(target["dataset"])
 
-    # 名前は合うので書き, 幅を確かめていないことを知らせる
+    # 名前は合うので書き込み, 幅を確かめていないことの知らせ
     response = client.put(
         "/api/project/model", json={"path": str(place), "spec": template}
     )
@@ -3426,7 +3433,7 @@ def test_project_save_contract_without_dataset(
     notes = response.json()["notes"]
     assert len(notes) == 1 and "確かめていません" in notes[0]
 
-    # 名前の違いは, データセットを読めなくても出す (知らせも添える)
+    # 名前の違いは, データセットを読めなくても出る 409 (知らせ付き)
     template["outputs"]["out"] = template["outputs"].pop("recon")
     response = client.put("/api/project/model", json={
         "path": str(place), "spec": template, "overwrite": True

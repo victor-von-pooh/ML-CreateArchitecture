@@ -51,7 +51,14 @@ export function contractDetail(
   if (!Array.isArray(findings)) return null
   return {
     message: error.message,
-    findings: findings as ContractFinding[],
+    findings: findings.map((item: unknown) => {
+      const record = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>
+      return {
+        level: String(record.level ?? 'error'),
+        id: String(record.id ?? ''),
+        message: String(record.message ?? ''),
+      }
+    }),
     notes: Array.isArray(notes) ? notes.map(String) : [],
   }
 }

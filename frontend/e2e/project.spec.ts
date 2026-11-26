@@ -72,17 +72,26 @@ async function expectContract(dialog: Locator, file: string, places: string[]) {
   return findings
 }
 
-/** データセットから作った定義をプロジェクトに保存すると, 合わない所を出さずに書く */
-async function expectSaved(page: Page, dialog: Locator, file: string) {
+/**
+ * データセットから作った定義をプロジェクトに保存すると, 合わない所を出さずに書く
+ * (overwrite は既に書いた定義があり, 上書きを確かめる場合)
+ */
+async function expectSaved(page: Page, dialog: Locator, file: string, overwrite = false) {
   const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
-  // 前の試行か「直さずに保存」で書いた定義は上書きを確かめる
-  page.once('dialog', (confirm) => void confirm.accept())
+  let asked = ''
+  if (overwrite) {
+    page.once('dialog', (confirm) => {
+      asked = confirm.message()
+      void confirm.accept()
+    })
+  }
   await save
     .getByRole('group', { name: '保存先' })
     .getByRole('button', { name: 'この場所に保存' })
     .click()
   await expect(save.getByRole('status')).toContainText(`${file} に保存しました`)
   await expect(save.getByRole('region', { name: '骨組みの入力と出力に合わない所' })).toHaveCount(0)
+  if (overwrite) expect(asked).toContain('上書きしますか')
 }
 
 test('データセットから入力と出力を作ると, 誤り無しで形が出る', async ({ page }) => {
@@ -500,7 +509,6 @@ test('異常の検知の問題の設定を新しく始めるときに選ぶと�
   // 雛形のままの幅 16 は骨組みが読む学習に使う列の数 3 と違うので, 直す場所を出して書かない.
   // 書くかは利用者が選べる (直さずに保存)
   const anomalyFile = `${anomalyProject}/models/model.yaml`
-  rmSync(anomalyFile, { force: true })
   const findings = await expectContract(dialog, anomalyFile, [
     'inputs.x: 入力 x の最後の大きさを学習に使う列の数 3 にしてください (今は 16)',
   ])
@@ -532,7 +540,7 @@ test('異常の検知の問題の設定を新しく始めるときに選ぶと�
   )
 
   // 作った定義は骨組みに合うので, 合わない所を出さずに書く
-  await expectSaved(page, dialog, anomalyFile)
+  await expectSaved(page, dialog, anomalyFile, true)
   expect(readFileSync(anomalyFile, 'utf-8')).toContain('in_features: 3')
   await dialog.getByRole('button', { name: '閉じる' }).click()
 
@@ -569,7 +577,6 @@ test('効果の見積もりの問題の設定を新しく始めるときに選�
 
   // 雛形のままの幅は骨組みが読む数と違うので, 直す場所を出して書かない
   const file = `${upliftProject}/models/model.yaml`
-  rmSync(file, { force: true })
   await expectContract(dialog, file, [
     'inputs.x: 入力 x の最後の大きさを処置の列を除いた学習に使う列の数 2 にしてください (今は 16)',
   ])
@@ -641,7 +648,6 @@ test('値段を変える判断の問題の設定を新しく始めるときに�
 
   // 雛形のままの幅は骨組みが読む数と違うので, 直す場所を出して書かない
   const file = `${priceProject}/models/model.yaml`
-  rmSync(file, { force: true })
   await expectContract(dialog, file, [
     'inputs.x: 入力 x の最後の大きさを特徴の列と値段の列の数 3 にしてください (今は 17)',
   ])
@@ -714,7 +720,6 @@ test('時間をまたぐ量の判断の問題の設定を新しく始めると�
 
   // 雛形のままの幅は骨組みが読む数と違うので, 直す場所を出して書かない
   const file = `${demandProject}/models/model.yaml`
-  rmSync(file, { force: true })
   await expectContract(dialog, file, [
     'inputs.x: 入力 x の最後の大きさを学習に使う列の数 5 にしてください (今は 16)',
   ])
@@ -780,7 +785,6 @@ test('並べるの問題の設定を選んで入力と出力を作ると, 入力
 
   // 雛形のままの利用者と品物の数は骨組みが読む数と違うので, 直す場所を出して書かない
   const file = `${rankProject}/models/model.yaml`
-  rmSync(file, { force: true })
   await expectContract(dialog, file, [
     'inputs.user: 入力 user の最後の大きさを学習用の利用者の数 6 にしてください (今は 12)',
     'inputs.item: 入力 item の最後の大きさを学習用の品物の数 4 にしてください (今は 20)',

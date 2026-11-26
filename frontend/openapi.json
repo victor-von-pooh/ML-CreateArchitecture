@@ -517,7 +517,7 @@
     "/api/project/model": {
       "put": {
         "summary": "Save Project Model",
-        "description": "定義をプロジェクトの保存先に書く関数\n\nParameters\n----------\nbody: ProjectSaveBody\n    保存先を決める場所, models/ の下の名前, 定義, 上書きするか\n\nReturns\n----------\nsaved: ProjectSaved\n    書いたファイルと更新時刻\n\nRaises\n----------\nHTTPException\n    確かめた保存先 (target) と違う場合と, 既にあり上書きしない場合は\n    409, 定義を読めない場合は 422, 骨組みの約束に合わない所があり\n    accept_contract でない場合は 409 (detail に画面の文 message, 直す\n    場所 findings, 知らせ notes と比べた数 widths), 書けない場合は 500\n    (他は保存先を決めるときと同じ)",
+        "description": "定義をプロジェクトの保存先に書く関数\n\nParameters\n----------\nbody: ProjectSaveBody\n    保存先を決める場所, models/ の下の名前, 定義, 上書きするか\n\nReturns\n----------\nsaved: ProjectSaved\n    書いたファイル, 更新時刻と, 骨組みの約束の確かめの知らせ\n\nRaises\n----------\nHTTPException\n    確かめた保存先 (target) と違う場合と, 既にあり上書きしない場合は\n    409, 定義を読めない場合は 422, 骨組みの約束に合わない所があり\n    accept_contract でない場合は 409 (detail に画面の文 message, 直す\n    場所 findings, 知らせ notes と比べた数 widths), 書けない場合は 500\n    (他は保存先を決めるときと同じ)",
         "operationId": "save_project_model",
         "requestBody": {
           "content": {

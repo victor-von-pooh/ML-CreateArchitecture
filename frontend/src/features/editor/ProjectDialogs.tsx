@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { ClipboardList, FlaskConical, LayoutTemplate } from 'lucide-react'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import {
   api,
@@ -529,6 +529,8 @@ type SaveRequest = {
   overwrite: boolean
   saved: Spec
   accept: boolean
+  /** 送ったときの確かめの番号 (保存の間に確かめ直したかを見分ける) */
+  resolved: number
 }
 
 /**
@@ -560,8 +562,8 @@ function ContractFindings({
           </li>
         ))}
       </ul>
-      {contract.notes.map((note) => (
-        <p key={note}>{note}</p>
+      {contract.notes.map((note, index) => (
+        <p key={index}>{note}</p>
       ))}
       <Button disabled={pending} onClick={onAccept}>
         直さずに保存
@@ -605,8 +607,9 @@ function ProjectSaveSection({
   // 書いたファイルと確かめの知らせ (確かめ直すか保存し直すまで出す)
   const [written, setWritten] = useState<{ path: string; notes: string[] } | null>(null)
   // 骨組みの約束に合わない所で断られた保存 (定義と保存先が同じ間だけ出し, 直さずに保存できる)
+  // (定義は中身で比べる. 親が描くたびに新しい値を渡すため)
   const [contract, setContract] = useState<{
-    spec: Spec
+    text: string
     request: SaveRequest
     message: string
     findings: ContractFinding[]
@@ -697,7 +700,9 @@ function ProjectSaveSection({
       // 骨組みの約束に合わない所は, 直す場所を出して書くかを任せる
       const found = contractDetail(error)
       if (found) {
-        setContract({ spec: request.saved, request, ...found })
+        // 保存の間に保存先を確かめ直した場合は出さない (古い要求の結果のため)
+        if (request.resolved !== latest.current) return
+        setContract({ text: JSON.stringify(request.saved), request, ...found })
         return
       }
       // 確かめた後に保存先が変わったか, 別の所でファイルが作られた (409)
@@ -709,8 +714,11 @@ function ProjectSaveSection({
     },
   })
   // 断られた保存は, 同じ定義と同じ保存先の間だけ出す (定義を直したら消す)
+  const specText = useMemo(() => JSON.stringify(spec), [spec])
   const shownContract =
-    contract !== null && contract.spec === spec && checked?.path === contract.request.checkedPath
+    contract !== null &&
+    contract.text === specText &&
+    checked?.path === contract.request.checkedPath
       ? contract
       : null
   const requestSave = () => {
@@ -728,6 +736,7 @@ function ProjectSaveSection({
       overwrite: checked.exists,
       saved: spec,
       accept: false,
+      resolved: latest.current,
     })
   }
   // 合わない所を残したまま, 断られた保存と同じ保存先に書く
@@ -735,7 +744,7 @@ function ProjectSaveSection({
     if (!shownContract) return
     setWritten(null)
     setContract(null)
-    save.mutate({ ...shownContract.request, accept: true })
+    save.mutate({ ...shownContract.request, accept: true, resolved: latest.current })
   }
   return (
     <section aria-labelledby={titleId} className="space-y-3">
@@ -817,8 +826,8 @@ function ProjectSaveSection({
       </p>
       {written && written.notes.length > 0 && (
         <ul className="list-disc space-y-1 pl-5 text-xs text-ink-3">
-          {written.notes.map((note) => (
-            <li key={note}>{note}</li>
+          {written.notes.map((note, index) => (
+            <li key={index}>{note}</li>
           ))}
         </ul>
       )}

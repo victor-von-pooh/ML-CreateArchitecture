@@ -2399,44 +2399,43 @@ def project_target(body: TargetBody) -> ProjectTarget:
     return target
 
 
-def contract_widths(info: DatasetInputs) -> dict[str, int]:
+def contract_widths(kind: str, info: DatasetInputs) -> dict[str, int]:
     """
-    データセットから入力と出力を作るときの数を, 骨組みの約束の最後の
-    大きさの鍵の数にする関数
+    データセットから入力と出力を作るときの数を, 骨組みの約束の入力の形の
+    最後の大きさの鍵の数にする関数
 
     Parameters
     ----------
+    kind: str
+        骨組みの型 (ML-Quest の model_contract の skeleton)
     info: DatasetInputs
         データセットから読んだ入力と出力 (read_dataset_inputs)
 
     Returns
     ----------
     widths: dict[str, int]
-        最後の大きさの鍵 (features, users, items, levels) から数 (分から
-        ない鍵は無し)
+        最後の大きさの鍵 (features, users, items) から数 (分からない鍵と,
+        数を求めない骨組みは無し)
     """
-    # 表の生成は符号化した行の幅, 他は受け持ちごとの学習に使う列の数
+    # 骨組みの型ごとに, 同じ意味の数だけを使う形 (別の受け持ちの数との
+    # 比べを避けるため)
     widths = {}
-    parts = (info.anomaly, info.uplift, info.price, info.demand)
-    columns = [part.columns for part in parts
-               if part is not None and part.columns is not None]
-    if info.table is not None:
+    parts = {"anomaly": info.anomaly, "uplift": info.uplift,
+             "price": info.price, "demand": info.demand}
+    part = parts.get(kind)
+    if kind == "table" and info.table is not None:
         widths["features"] = info.table.width
-    elif columns:
-        widths["features"] = columns[0]
-
-    # 並べるの学習用の利用者と品物の数と, 学ぶ分位点の水準の数
-    if info.rank is not None:
+    elif kind == "rank" and info.rank is not None:
         widths["users"] = info.rank.users
         widths["items"] = info.rank.items
-    if info.demand is not None and info.demand.levels:
-        widths["levels"] = len(info.demand.levels)
+    elif part is not None and part.columns is not None:
+        widths["features"] = part.columns
 
     return widths
 
 
 def dataset_widths(
-    target: ProjectTarget
+    target: ProjectTarget, kind: str
 ) -> tuple[dict[str, int], Optional[str]]:
     """
     保存先の記録のデータセットから, 骨組みの約束の最後の大きさの数を
@@ -2449,6 +2448,8 @@ def dataset_widths(
     ----------
     target: ProjectTarget
         保存先 (記録のデータセットと問題の設定のファイル)
+    kind: str
+        骨組みの型
 
     Returns
     ----------
@@ -2457,7 +2458,8 @@ def dataset_widths(
     note: Optional[str]
         数を求められない理由 (求められれば None)
     """
-    # 記録が無いか読めないデータセットは, 名前と出力だけを確かめる
+    # 記録が無いか読めないデータセットは, 名前と出力だけの確かめ (数は
+    # 確かめの助けなので, 読めない理由を問わず保存を止めない)
     note: Optional[str]
     if target.dataset is None:
         note = ("問題の設定にデータセットの場所の記録が無いので, 入力の形の"
@@ -2467,11 +2469,13 @@ def dataset_widths(
         info = read_dataset_inputs(DatasetBody(
             path=target.dataset, problem=target.problem_path
         ))
-    except HTTPException as error:
+    except Exception as error:
+        reason = (error.detail if isinstance(error, HTTPException)
+                  else error)
         note = (f"記録のデータセット {target.dataset} を読めないので, 入力の"
-                f"形の最後の大きさは確かめていません: {error.detail}")
+                f"形の最後の大きさは確かめていません: {reason}")
         return {}, note
-    widths = contract_widths(info)
+    widths = contract_widths(kind, info)
     note = None
 
     return widths, note
@@ -2524,7 +2528,7 @@ def contract_findings(
         return [], [], {}
 
     # 最後の大きさは, データセットから入力と出力を作るときと同じ数
-    widths, note = dataset_widths(target)
+    widths, note = dataset_widths(target, str(contract.get("skeleton")))
     try:
         found = quest.check_model_contract(problem, spec, widths)
     except READ_ERRORS as error:
@@ -2549,7 +2553,7 @@ def save_project_model(body: ProjectSaveBody) -> ProjectSaved:
     Returns
     ----------
     saved: ProjectSaved
-        書いたファイルと更新時刻
+        書いたファイル, 更新時刻と, 骨組みの約束の確かめの知らせ
 
     Raises
     ----------
@@ -2576,10 +2580,14 @@ def save_project_model(body: ProjectSaveBody) -> ProjectSaved:
     except ModelError as error:
         raise HTTPException(422, str(error)) from error
 
-    # 問題の設定の骨組みの約束に合わない所があれば, 書くかを利用者に任せる
-    # (学習を始めてから食い違いに気付かないため)
-    found, notes, widths = contract_findings(target, body.spec)
-    if found and not body.accept_contract:
+    # 問題の設定の骨組みの約束に合わない所があれば, 書くかは利用者の選択
+    # (学習を始めてから食い違いに気付かないため. 直さずに書く指定では確かめ
+    # 無し)
+    found, notes, widths = (
+        ([], [], {}) if body.accept_contract
+        else contract_findings(target, body.spec)
+    )
+    if found:
         raise HTTPException(409, {
             "message": (
                 f"骨組みの学習のスクリプトが読む入力と出力に合わない所が "

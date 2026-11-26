@@ -498,7 +498,7 @@ export interface paths {
          *     Returns
          *     ----------
          *     saved: ProjectSaved
-         *         書いたファイルと更新時刻
+         *         書いたファイル, 更新時刻と, 骨組みの約束の確かめの知らせ
          *
          *     Raises
          *     ----------
