@@ -2517,3 +2517,290 @@ def test_problem_uplift(
     }
     assert entries["uplift"]["usable"] is True, entries["uplift"]
     assert entries["uplift"]["example"] == "tabular_uplift"
+
+
+def price_problem(ml_quest: Any) -> dict[str, Any]:
+    """
+    見本の課題から, 試しに値段を変えた記録から値段を選ぶ問題の設定を作る
+    関数
+
+    Parameters
+    ----------
+    ml_quest: Any
+        ML-Quest のモジュール
+
+    Returns
+    ----------
+    problem: dict[str, Any]
+        効果を見積もるで方策でなく, 今ある記録で値段を変えた問題の設定 (値段
+        の列は price, 売れた数の列は units, 原価の列は unit_cost, 商品の id
+        の列は product_id, 行の id の列は record_id, 売れ行きの予測に使う
+        列は category と weekday. ML-Quest のテストの受け持ちの入れ替えと
+        同じ)
+    """
+    # 見本の受け持ちの作り直し
+    problem = ml_quest.example_problem("解約の引き止め")
+    problem["ml"]["parts"] = [{}]
+    for key in ("decision", "basis", "current"):
+        problem["action"].pop(key, None)
+    problem = ml_quest.answer(
+        problem, "information.columns",
+        ["record_id", "product_id", "category", "weekday", "price", "units",
+         "unit_cost"]
+    )
+    answers: list[tuple[str, Any]] = [
+        ("role", "effect"), ("unit", "row"), ("output", "effect"),
+        ("target.source", "intervention"), ("method", "scratch"),
+        ("autonomous", False), ("collect", "log"), ("varied", "price"),
+        ("what", "値段を変えたときの売れた数"),
+        ("item", "商品と日ごとの 1 行"), ("baseline", "今の値段のまま"),
+        ("price.price", "price"), ("price.units", "units"),
+        ("price.cost", "unit_cost"), ("price.product", "product_id"),
+        ("price.id", "record_id"),
+        ("price.columns", ["category", "weekday"]),
+        ("evaluation.metric", "mae"),
+        ("evaluation.link", "売れた数の外れが小さいほど利益の見込みが当たる")
+    ]
+    for key, value in answers:
+        problem = ml_quest.answer(problem, f"ml.parts.0.{key}", value)
+    problem = ml_quest.answer(problem, "action.decision", {
+        "type": "price", "candidates": [-0.1, 0, 0.1], "max_change": 0.1
+    })
+
+    return problem
+
+
+def write_price_dataset(
+    ml_eda: Any, root: Path, name: str = "sales", cost: bool = True
+) -> Path:
+    """
+    試しに値段を変えた売れ行きの記録を, 値段を変えた記録の表 (task: price)
+    として書き出す関数
+
+    Parameters
+    ----------
+    ml_eda: Any
+        ML-EDA のモジュール
+    root: Path
+        書き出す場所の親
+    name: str
+        書き出すデータセットの名前
+    cost: bool
+        原価の列と商品の id の列を書くか (偽なら, 2 つの列の無い表)
+
+    Returns
+    ----------
+    dataset: Path
+        書き出したデータセット (学習に使う列は weekday と, one_hot にした
+        category の 3 つの値と, 最後の値段の 5 列)
+    """
+    # 学習に使う列から外す列 (売れた数, 原価, 商品の id, 行の id の列)
+    rows = 60
+    frame = pd.DataFrame({
+        "record_id": [f"r{number:03d}" for number in range(rows)],
+        "category": np.array(["a", "b", "c"] * 20),
+        "weekday": np.arange(rows) % 7,
+        "price": 100 * (1 + 0.1 * (np.arange(rows) % 5 - 2)),
+        "units": 20 - np.arange(rows) % 5
+    })
+    recipe: dict[str, Any] = {
+        "task": "price", "target": "units", "price": "price",
+        "id": "record_id",
+        "steps": [{"op": "one_hot", "columns": ["category"]},
+                  {"op": "standardize", "columns": "auto"}],
+        "split": {"method": "stratified", "valid": 0.2, "test": 0.2}
+    }
+    if cost:
+        frame["product_id"] = [f"p{number % 6}" for number in range(rows)]
+        frame["unit_cost"] = 60.0
+        recipe.update(cost="unit_cost", product="product_id")
+    source = root / f"{name}.csv"
+    frame.to_csv(source, index=False)
+    dataset = root / name
+    ml_eda.export_dataset(ml_eda.load_data(source), recipe, dataset)
+
+    return dataset
+
+
+def test_dataset_inputs_price(client: TestClient, tmp_path: Path) -> None:
+    """
+    値段を変えた記録の表では, 入力 x の幅を特徴の列と値段の列の数にし,
+    出す値の数を 1 にし, 値段, 売れた数, 原価, 商品の id と行の id の列を
+    返すことを確かめる関数 (ML-EDA と ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 値段を変える判断, 効果の見積もりと列の予測の問題の設定
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    places = {}
+    for name, problem in (
+        ("price", price_problem(ml_quest)),
+        ("uplift", uplift_problem(ml_quest)),
+        ("column", ml_quest.example_problem("総菜の作る量")),
+    ):
+        places[name] = tmp_path / f"{name}.yaml"
+        ml_quest.save_problem(problem, places[name])
+    dataset = write_price_dataset(ml_eda, tmp_path)
+
+    # 入力 x の 5 列 (売れた数, 原価, 商品の id, 行の id の列を除き, 値段の
+    # 列を含む) と, 出す値の数 1
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(dataset), "problem": str(places["price"])}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["task"] == "price" and body["target"] == "units"
+    assert body["inputs"] == [{
+        "name": "x", "shape": [4, 5], "dtype": "float32",
+        "dataset_shape": [None, 5], "vocabulary": None
+    }]
+    assert body["outputs"] == 1
+    assert body["uplift"] is None
+    assert body["price"] == {
+        "columns": 5, "price": "price", "units": "units",
+        "cost": "unit_cost", "product": "product_id", "id": "record_id",
+        "problem": "解約の引き止め"
+    }
+
+    # 雛形 tabular_price の入力の幅に入れた定義の形の推定 (誤り無し. 出力
+    # は (バッチ, 1). 隠れ層の幅はそのまま)
+    spec = client.get("/api/examples/tabular_price").json()["spec"]
+    spec["inputs"]["x"]["shape"] = body["inputs"][0]["shape"]
+    spec["nodes"]["units1"]["params"]["in_features"] = 5
+    result = client.post("/api/check", json={"spec": spec}).json()
+    assert result["issues"] == [] and result["inferred"]
+    assert result["nodes"]["units_softplus"]["outputs"]["out"]["shape"] == [
+        4, 1
+    ]
+    assert result["nodes"]["units1"]["outputs"]["out"]["shape"] == [4, 32]
+
+    # 問題の設定を渡さないか値段を変える判断でない問題の設定でも, データ
+    # セットの説明の列の名前 (問題の設定の名前は無し)
+    for extra in ({}, {"problem": str(places["column"])}):
+        response = client.post(
+            "/api/dataset/inputs", json={"path": str(dataset), **extra}
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["price"] == {
+            "columns": 5, "price": "price", "units": "units",
+            "cost": "unit_cost", "product": "product_id", "id": "record_id",
+            "problem": None
+        }
+
+    # 原価と商品の id の列の無い表の, 問題の設定の答えに依らない原価と商品
+    # の id の無し (説明の null は列が無い印)
+    bare = write_price_dataset(ml_eda, tmp_path, "bare", cost=False)
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(bare), "problem": str(places["price"])}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["price"] == {
+        "columns": 5, "price": "price", "units": "units", "cost": None,
+        "product": None, "id": "record_id", "problem": "解約の引き止め"
+    }
+
+    # 値段を変える判断の問題の設定に介入の記録の表を渡した場合と, 効果の
+    # 見積もりの問題の設定に値段を変えた記録の表を渡した場合の 422
+    uplift = write_uplift_dataset(ml_eda, tmp_path)
+    for path, problem, message in (
+        (uplift, "price", "値段を変えた記録の表として書き出したものでは"),
+        (dataset, "uplift", "介入の記録の表として書き出したものでは"),
+    ):
+        response = client.post(
+            "/api/dataset/inputs",
+            json={"path": str(path), "problem": str(places[problem])}
+        )
+        assert response.status_code == 422
+        assert message in response.json()["detail"]
+
+
+def test_dataset_inputs_price_answers(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    説明に値段を変えた記録の項目が無いデータセットでは, 列の名前を問題の
+    設定の答えから出すことを確かめる関数 (ML-EDA と ML-Quest が無ければ
+    飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 説明の price を消したデータセット (model_inputs で読める形)
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    place = tmp_path / "price.yaml"
+    ml_quest.save_problem(price_problem(ml_quest), place)
+    dataset = write_price_dataset(ml_eda, tmp_path)
+    info = yaml.safe_load((dataset / "dataset.yaml").read_text())
+    info.pop("price")
+    (dataset / "dataset.yaml").write_text(yaml.safe_dump(info))
+
+    # 問題の設定の答え
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(dataset), "problem": str(place)}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["price"] == {
+        "columns": 5, "price": "price", "units": "units",
+        "cost": "unit_cost", "product": "product_id", "id": "record_id",
+        "problem": "解約の引き止め"
+    }
+
+
+def test_problem_price(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    骨組みを書き出した値段を変える判断の問題の設定が選べて, 雛形
+    tabular_price を返すことを確かめる関数 (ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        環境変数の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    # 骨組みを書き出したプロジェクトの記録を持つ問題の設定
+    quest = pytest.importorskip("ml_quest")
+    home = tmp_path / "pathfinder"
+    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
+    problem = price_problem(quest)
+    project = tmp_path / "price"
+    quest.make_project(problem, project)
+    save_problem(quest, home, "price", quest.record_project(problem, project))
+    response = client.get("/api/problems")
+    assert response.status_code == 200, response.text
+    entries = {
+        Path(entry["path"]).parent.name: entry
+        for entry in response.json()["problems"]
+    }
+    assert entries["price"]["usable"] is True, entries["price"]
+    assert entries["price"]["example"] == "tabular_price"

@@ -71,6 +71,24 @@ export interface UpliftWidth {
   problem?: string | null
 }
 
+/** 値段を変える判断の入力 x の幅 (商品の特徴の列と値段の列の数) と列の名前 */
+export interface PriceWidth {
+  /** 特徴の列と値段の列の数 (売れた数, 原価, 商品の id と行の id の列は数えない) */
+  columns: number | null
+  /** 値段の列 (入力の最後の列. 分からなければ無い) */
+  price?: string | null
+  /** 売れた数の列 (データセットの目的の列) */
+  units?: string | null
+  /** 原価の列 (無いか分からなければ無い) */
+  cost?: string | null
+  /** 商品の id の列 (無いか分からなければ無い) */
+  product?: string | null
+  /** 行の id の列 (分からなければ無い) */
+  id?: string | null
+  /** 問題の設定の名前 */
+  problem?: string | null
+}
+
 /** バックエンドが ML-EDA の model_inputs から返す値 */
 export interface DatasetInfo {
   path: string
@@ -89,6 +107,8 @@ export interface DatasetInfo {
   anomaly?: AnomalyWidth | null
   /** 効果を見積もるのデータセットで, 入力 x の幅にした学習に使う列の数と数えない列 (他は無い) */
   uplift?: UpliftWidth | null
+  /** 値段を変える判断のデータセットで, 入力 x の幅にした特徴の列と値段の列の数と列の名前 (他は無い) */
+  price?: PriceWidth | null
 }
 
 /** 入れた結果 (定義と, 知らせる文) */
@@ -267,6 +287,34 @@ export function upliftWidthNote(uplift: UpliftWidth): string {
   )
 }
 
+/**
+ * 値段を変える判断で, 入力の幅をどう決めたかの文 (列は, 初めての人にも分かるよう役を言葉で添える.
+ * 無い原価と商品の id の列は出さない. 名前の分からない列は役だけ)
+ */
+export function priceWidthNote(price: PriceWidth): string {
+  const from = price.problem
+    ? `問題の設定 ${price.problem} が値段を変える判断`
+    : '値段を変える判断のデータセット'
+  const named = (role: string, name: string | null | undefined) => (name ? `${role} ${name}` : role)
+  const width =
+    price.columns === null
+      ? '入力の幅は, データセットの入力の幅のままにしました (商品の特徴の列と値段の列を合わせた数)'
+      : `入力の幅を, 商品の特徴の列と値段の列を合わせた ${price.columns} 列にしました`
+  const skipped = [
+    named('売れた数 (予測する値) の列', price.units),
+    ...(price.cost
+      ? [named('原価 (仕入れか作るのにかかる値段. 利益の計算に使う) の列', price.cost)]
+      : []),
+    ...(price.product ? [named('商品の id (値段を選ぶ単位) の列', price.product)] : []),
+    named('行を見分ける id の列', price.id),
+  ].join(', ')
+  return (
+    `${from}なので, ${width}. ` +
+    `値段 (商品の売り値) の列${price.price ? ` ${price.price} ` : ''}は, 入力の最後の列です. ` +
+    `次の列は入力に入れません: ${skipped}`
+  )
+}
+
 /** 異常の検知の距離に基づく度合いで, 何も変えない理由の文 */
 export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
   const from = anomaly.problem ? `問題の設定 ${anomaly.problem} の` : '問題の設定の'
@@ -300,7 +348,9 @@ export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
  * ことを知らせて何も変えない. 効果を見積もるのデータセット (info.uplift) では,
  * 入力の幅が処置の列を除いた学習に使う列の数なので, その決め方を初めに知らせ,
  * 出力が 2 つ以上 (T-learner の treated と control) なら, それぞれのつなぎ元の
- * out_features を出す値の数にする
+ * out_features を出す値の数にする. 値段を変える判断のデータセット (info.price) では,
+ * 入力の幅が特徴の列と値段の列の数なので, その決め方を初めに知らせ, 出力の値の数は
+ * 変えない (売れた数の予測は常に 1 つの値で, 雛形 tabular_price の 1 のまま使うため)
  */
 export function applyDatasetInputs(
   spec: Spec,
@@ -318,7 +368,9 @@ export function applyDatasetInputs(
         ? [anomalyWidthNote(info.anomaly)]
         : info.uplift
           ? [upliftWidthNote(info.uplift)]
-          : []
+          : info.price
+            ? [priceWidthNote(info.price)]
+            : []
   let next = spec
   // ノードと同じ名前の入力は作らない (つなぎ先が入力を指すように変わるため)
   const clashes = info.inputs.filter((item) => item.name in spec.nodes)
@@ -446,6 +498,13 @@ export function applyDatasetInputs(
       return { spec: next, notes }
     }
     notes.push(`出力の大きさ ${outputs} は, 最後の部品の引数に入れてください`)
+    return { spec: next, notes }
+  }
+  // 値段を変える判断の売れた数の予測の値の数 (常に 1 つなので変えない)
+  if (info.price) {
+    notes.push(
+      '出力の値の数は変えていません (売れた数の予測は 1 行に 1 つの値なので, 雛形の 1 のまま使います)',
+    )
     return { spec: next, notes }
   }
   // 効果を見積もるの 2 つ以上の出力のつなぎ元の out_features (出す値の数)

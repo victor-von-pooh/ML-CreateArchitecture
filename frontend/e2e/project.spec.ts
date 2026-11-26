@@ -18,6 +18,9 @@ const anomalyProject = fileURLToPath(new URL('.work/anomaly_project', import.met
 // 効果の見積もりの問題の設定のプロジェクト (記録の場所に, 効果の見積もりに使う 2 列と処置の列
 // と結果の列の, 介入の記録の表がある)
 const upliftProject = fileURLToPath(new URL('.work/uplift_project', import.meta.url))
+// 値段を変える判断の問題の設定のプロジェクト (記録の場所に, 特徴の 2 列と値段の列と, 売れた数,
+// 原価, 商品の id の列の, 値段を変えた記録の表がある)
+const priceProject = fileURLToPath(new URL('.work/price_project', import.meta.url))
 
 // プロジェクトへの保存は 2 回目に上書きを確かめるので, 書いた順に実行
 test.describe.configure({ mode: 'serial' })
@@ -472,6 +475,64 @@ test('効果の見積もりの問題の設定を新しく始めるときに選�
   })
   await expect(page.locator('[data-id="treated2"]')).toContainText('[4, 1]')
   await expect(page.locator('[data-id="control2"]')).toContainText('[4, 1]')
+  await expect(page.locator('header')).toContainText('誤り 0 件')
+  await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
+})
+
+test('値段を変える判断の問題の設定を新しく始めるときに選ぶと売れ行きの雛形を開き, 入力の幅を特徴の列と値段の列の数にする', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const dialog = await openDialog(page)
+  const price = dialog
+    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('button', { name: /e2e の値段の見直し/ })
+  await expect(price).toContainText('雛形: tabular_price')
+
+  // 新規の画面で選ぶと雛形を開き, 保存先は記録の場所
+  await price.click()
+  const note = dialog.getByRole('region', { name: '受け持ちに合う雛形' })
+  await expect(note.getByRole('status')).toContainText(
+    '問題の設定 e2e の値段の見直し の受け持ちに合う雛形 tabular_price を開きました',
+  )
+  await expect(note.getByRole('button')).toHaveCount(0)
+  await expect(
+    dialog
+      .getByRole('region', { name: 'プロジェクトに保存' })
+      .getByRole('group', { name: '保存先' }),
+  ).toContainText(`${priceProject}/models/model.yaml`)
+
+  // 記録のデータセットから入力と出力を作ると, 入力の幅を特徴の 2 列と値段の 1 列の 3 にし
+  // (売れた数, 原価, 商品の id, 行の id の列は数えない), 出力 units の値の数 1 はそのまま
+  const data = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
+  await expect(data.getByLabel('データセットのディレクトリ')).toHaveValue(
+    `${priceProject}/outputs/dataset`,
+  )
+  await data.getByRole('button', { name: '入力と出力を作る' }).click()
+  const result = data.getByRole('status')
+  await expect(result).toContainText(
+    'データセットから入れました: 入力 x [4, 3], タスク price, 目的の列 units, 出す値 1',
+  )
+  await expect(result).toContainText(
+    '問題の設定 e2e の値段の見直し が値段を変える判断なので, ' +
+      '入力の幅を, 商品の特徴の列と値段の列を合わせた 3 列にしました. ' +
+      '値段 (商品の売り値) の列 price は, 入力の最後の列です. ' +
+      '次の列は入力に入れません: 売れた数 (予測する値) の列 units, ' +
+      '原価 (仕入れか作るのにかかる値段. 利益の計算に使う) の列 unit_cost, ' +
+      '商品の id (値段を選ぶ単位) の列 product_id, 行を見分ける id の列 record_id',
+  )
+  await expect(result).toContainText('units1 の in_features を 3 にしました')
+  await expect(result).toContainText(
+    '出力の値の数は変えていません (売れた数の予測は 1 行に 1 つの値なので, 雛形の 1 のまま使います)',
+  )
+  await dialog.getByRole('button', { name: '閉じる' }).click()
+
+  // 隠れ層の幅は変えず, 出力は (バッチ, 1) (誤り 0 件は確認の結果が届く前にも出るので, 入れた
+  // 後の形を先に待つ)
+  await expect(page.locator('[data-id="units1"]')).toContainText('[4, 32]', {
+    timeout: 20_000,
+  })
+  await expect(page.locator('[data-id="units_softplus"]')).toContainText('[4, 1]')
   await expect(page.locator('header')).toContainText('誤り 0 件')
   await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
 })

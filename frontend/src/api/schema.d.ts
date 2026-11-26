@@ -366,7 +366,9 @@ export interface paths {
          *     (ML-EDA の outputs) と, 問題の設定の度合いの決め方も返す. 効果を
          *     見積もるのデータセットでは, 学習に使う列の数 (ML-EDA の入力 x の幅) と,
          *     処置の列と行の id の列 (データセットの説明を先, 無ければ問題の設定の
-         *     答え) も返す
+         *     答え) も返す. 値段を変える判断のデータセットでは, 特徴の列と値段の列の
+         *     数 (ML-EDA の入力 x の幅) と, 値段, 売れた数, 原価, 商品の id と行の id
+         *     の列 (データセットの説明を先, 説明に無ければ問題の設定の答え) も返す
          *
          *     Parameters
          *     ----------
@@ -381,7 +383,7 @@ export interface paths {
          *         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
          *         符号化した行の幅, 並べるの学習用の利用者と品物の数, 異常の検知の
          *         学習に使う列の数と度合いの決め方, 効果を見積もるの学習に使う列の数と
-         *         数えない列
+         *         数えない列, 値段を変える判断の特徴の列と値段の列の数と列の名前
          *
          *     Raises
          *     ----------
@@ -391,7 +393,9 @@ export interface paths {
          *         組など) と, 表の生成の幅か並べるの数を求められない場合と, 表の生成
          *         で入力が表の行 (バッチと列の 2 次元の 1 つ) でない場合と, 異常の
          *         検知の問題の設定でデータセットが異常の検知の表でない場合と, 効果を
-         *         見積もるの問題の設定でデータセットが介入の記録の表でない場合は 422.
+         *         見積もるの問題の設定でデータセットが介入の記録の表でない場合と, 値段
+         *         を変える判断の問題の設定でデータセットが値段を変えた記録の表でない
+         *         場合は 422.
          *         並べるで反応の表が無い場合は 404
          */
         post: operations["read_dataset_inputs"];
@@ -653,7 +657,7 @@ export interface components {
             path: string;
             /**
              * Problem
-             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. 並べるなら, path は反応の表のファイルで, 入力 user と item の大きさを ML-Quest の rank_encoding の学習用の利用者と品物の数にする. 異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を見積もるなら, データセットの説明に無い処置の列と行の id の列を受け持ちの答えから読む)
+             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. 並べるなら, path は反応の表のファイルで, 入力 user と item の大きさを ML-Quest の rank_encoding の学習用の利用者と品物の数にする. 異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を見積もるなら, データセットの説明に無い処置の列と行の id の列を受け持ちの答えから読む. 値段を変える判断なら, データセットの説明に無い値段, 原価, 商品の id と行の id の列を受け持ちの答えから読む)
              */
             problem?: string | null;
         };
@@ -703,6 +707,8 @@ export interface components {
             anomaly?: components["schemas"]["AnomalyWidth"] | null;
             /** @description 効果を見積もるのデータセットか問題の設定で, 入力 x の幅にした学習に使う列の数と数えない列 (他は無し) */
             uplift?: components["schemas"]["UpliftWidth"] | null;
+            /** @description 値段を変える判断のデータセットか問題の設定で, 入力 x の幅にした特徴の列と値段の列の数と列の名前 (他は無し) */
+            price?: components["schemas"]["PriceWidth"] | null;
         };
         /** ExampleSummary */
         ExampleSummary: {
@@ -956,6 +962,44 @@ export interface components {
             credit?: string | null;
             /** Size Bytes */
             size_bytes?: number | null;
+        };
+        /** PriceWidth */
+        PriceWidth: {
+            /**
+             * Columns
+             * @description 特徴の列と値段の列の数 (入力 x の幅. 値段の列は最後. 売れた数, 元の値段, 原価, 商品の id と行の id の列は数えず, one_hot で増えた列は数える)
+             */
+            columns: number | null;
+            /**
+             * Price
+             * @description 値段の列 (データセットの説明の price.price. 説明に無ければ問題の設定の答え. どちらにも無ければ無し)
+             */
+            price?: string | null;
+            /**
+             * Units
+             * @description 売れた数の列 (データセットの目的の列)
+             */
+            units?: string | null;
+            /**
+             * Cost
+             * @description 原価の列 (データセットの説明の price.cost. 説明に項目が無ければ問題の設定の答え. 説明が null か, どちらにも無ければ無し)
+             */
+            cost?: string | null;
+            /**
+             * Product
+             * @description 商品の id の列 (データセットの説明の price.product. 説明に項目が無ければ問題の設定の答え. 説明が null か, どちらにも無ければ無し)
+             */
+            product?: string | null;
+            /**
+             * Id
+             * @description 行の id の列 (データセットの説明の price.id. 説明に無ければ問題の設定の答え. どちらにも無ければ無し)
+             */
+            id?: string | null;
+            /**
+             * Problem
+             * @description 問題の設定の名前
+             */
+            problem?: string | null;
         };
         /** ProblemEntry */
         ProblemEntry: {
