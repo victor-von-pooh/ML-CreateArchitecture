@@ -1,7 +1,7 @@
-import { readFileSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 // e2e/serve.sh が ML-EDA と ML-Quest で作った, 書き出したデータセット (3 列の
 // 3 クラスの分類) と学習のプロジェクトの骨組み
@@ -31,9 +31,14 @@ const demandProject = fileURLToPath(new URL('.work/demand_project', import.meta.
 test.describe.configure({ mode: 'serial' })
 
 // このファイルのテストがプロジェクトに書くモデルの定義
-const written = ['model.yaml', 'e2e_candidate.yaml', 'e2e_picked.yaml', 'e2e_from_run.yaml'].map(
-  (name) => `${project}/models/${name}`,
-)
+const written = [
+  ...['model.yaml', 'e2e_candidate.yaml', 'e2e_picked.yaml', 'e2e_from_run.yaml'].map(
+    (name) => `${project}/models/${name}`,
+  ),
+  ...[anomalyProject, upliftProject, priceProject, demandProject, rankProject].map(
+    (place) => `${place}/models/model.yaml`,
+  ),
+]
 
 // 書く前の形から始める (直列のテストの再試行は最初のテストからやり直すが,
 // 前の試行が書いたファイルは残り, 「まだ無い」の確かめが別の誤りで落ちるため)
@@ -45,6 +50,39 @@ test.beforeAll(() => {
 async function openDialog(page: Page) {
   await page.getByRole('button', { name: 'データセットとプロジェクト' }).click()
   return page.getByRole('dialog', { name: 'データセットとプロジェクト' })
+}
+
+/**
+ * 今の定義をプロジェクトに保存すると, 骨組みの入力と出力に合わない所 (直す場所と文) が出て,
+ * 書かないことを確かめ, 合わない所の欄を返す
+ */
+async function expectContract(dialog: Locator, file: string, places: string[]) {
+  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
+  await save
+    .getByRole('group', { name: '保存先' })
+    .getByRole('button', { name: 'この場所に保存' })
+    .click()
+  const findings = save.getByRole('region', { name: '骨組みの入力と出力に合わない所' })
+  await expect(findings.getByRole('alert')).toContainText(
+    `骨組みの学習のスクリプトが読む入力と出力に合わない所が ${places.length} 件あります`,
+  )
+  for (const place of places) await expect(findings).toContainText(place)
+  await expect(findings.getByRole('listitem')).toHaveCount(places.length)
+  expect(existsSync(file)).toBe(false)
+  return findings
+}
+
+/** データセットから作った定義をプロジェクトに保存すると, 合わない所を出さずに書く */
+async function expectSaved(page: Page, dialog: Locator, file: string) {
+  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
+  // 前の試行か「直さずに保存」で書いた定義は上書きを確かめる
+  page.once('dialog', (confirm) => void confirm.accept())
+  await save
+    .getByRole('group', { name: '保存先' })
+    .getByRole('button', { name: 'この場所に保存' })
+    .click()
+  await expect(save.getByRole('status')).toContainText(`${file} に保存しました`)
+  await expect(save.getByRole('region', { name: '骨組みの入力と出力に合わない所' })).toHaveCount(0)
 }
 
 test('データセットから入力と出力を作ると, 誤り無しで形が出る', async ({ page }) => {
@@ -459,6 +497,19 @@ test('異常の検知の問題の設定を新しく始めるときに選ぶと�
       .getByRole('group', { name: '保存先' }),
   ).toContainText(`${anomalyProject}/models/model.yaml`)
 
+  // 雛形のままの幅 16 は骨組みが読む学習に使う列の数 3 と違うので, 直す場所を出して書かない.
+  // 書くかは利用者が選べる (直さずに保存)
+  const anomalyFile = `${anomalyProject}/models/model.yaml`
+  rmSync(anomalyFile, { force: true })
+  const findings = await expectContract(dialog, anomalyFile, [
+    'inputs.x: 入力 x の最後の大きさを学習に使う列の数 3 にしてください (今は 16)',
+  ])
+  await findings.getByRole('button', { name: '直さずに保存' }).click()
+  await expect(
+    dialog.getByRole('region', { name: 'プロジェクトに保存' }).getByRole('status'),
+  ).toContainText(`${anomalyFile} に保存しました`)
+  expect(readFileSync(anomalyFile, 'utf-8')).toContain('in_features: 16')
+
   // 記録のデータセットから入力と出力を作ると, 幅を学習に使う 3 列にする (正解の列は数えない)
   const data = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
   await expect(data.getByLabel('データセットのディレクトリ')).toHaveValue(
@@ -479,6 +530,10 @@ test('異常の検知の問題の設定を新しく始めるときに選ぶと�
   await expect(result).toContainText(
     '雛形の引数 features (特徴の数) を 16 から 3 にしました (入力 x の形の 2 番目, enc1 の in_features, dec2 の out_features)',
   )
+
+  // 作った定義は骨組みに合うので, 合わない所を出さずに書く
+  await expectSaved(page, dialog, anomalyFile)
+  expect(readFileSync(anomalyFile, 'utf-8')).toContain('in_features: 3')
   await dialog.getByRole('button', { name: '閉じる' }).click()
 
   // 縮めた幅は変えず, 再構成は入力と同じ形 (誤り 0 件は確認の結果が届く前にも出るので,
@@ -512,6 +567,13 @@ test('効果の見積もりの問題の設定を新しく始めるときに選�
       .getByRole('group', { name: '保存先' }),
   ).toContainText(`${upliftProject}/models/model.yaml`)
 
+  // 雛形のままの幅は骨組みが読む数と違うので, 直す場所を出して書かない
+  const file = `${upliftProject}/models/model.yaml`
+  rmSync(file, { force: true })
+  await expectContract(dialog, file, [
+    'inputs.x: 入力 x の最後の大きさを処置の列を除いた学習に使う列の数 2 にしてください (今は 16)',
+  ])
+
   // 記録のデータセットから入力と出力を作ると, 入力の幅を 2 列にし (処置の列, 結果の列,
   // 行の id の列は数えない), 2 つの出力はどちらも 1
   const data = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
@@ -538,6 +600,9 @@ test('効果の見積もりの問題の設定を新しく始めるときに選�
     '雛形の引数 features (特徴の数) を 16 から 2 にしました (入力 x の形の 2 番目, treated1 の in_features, control1 の in_features)',
   )
   await expect(result).toContainText('出力 treated と control の値の数は, 雛形の 1 のままです')
+
+  // 作った定義は骨組みに合うので, 合わない所を出さずに書く
+  await expectSaved(page, dialog, file)
   await dialog.getByRole('button', { name: '閉じる' }).click()
 
   // 隠れ層の幅は変えず, 2 つの出力はどちらも (バッチ, 1) (誤り 0 件は確認の結果が届く前にも
@@ -574,6 +639,13 @@ test('値段を変える判断の問題の設定を新しく始めるときに�
       .getByRole('group', { name: '保存先' }),
   ).toContainText(`${priceProject}/models/model.yaml`)
 
+  // 雛形のままの幅は骨組みが読む数と違うので, 直す場所を出して書かない
+  const file = `${priceProject}/models/model.yaml`
+  rmSync(file, { force: true })
+  await expectContract(dialog, file, [
+    'inputs.x: 入力 x の最後の大きさを特徴の列と値段の列の数 3 にしてください (今は 17)',
+  ])
+
   // 記録のデータセットから入力と出力を作ると, 入力の幅を特徴の 2 列と値段の 1 列の 3 にし
   // (売れた数, 原価, 商品の id, 行の id の列は数えない), 出力 units の値の数 1 はそのまま
   const data = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
@@ -602,6 +674,9 @@ test('値段を変える判断の問題の設定を新しく始めるときに�
   await expect(result).toContainText(
     '出力の値の数は変えていません (売れた数の予測は 1 行に 1 つの値なので, 雛形の 1 のまま使います)',
   )
+
+  // 作った定義は骨組みに合うので, 合わない所を出さずに書く
+  await expectSaved(page, dialog, file)
   await dialog.getByRole('button', { name: '閉じる' }).click()
 
   // 隠れ層の幅は変えず, 出力は (バッチ, 1) (誤り 0 件は確認の結果が届く前にも出るので, 入れた
@@ -637,6 +712,13 @@ test('時間をまたぐ量の判断の問題の設定を新しく始めると�
       .getByRole('group', { name: '保存先' }),
   ).toContainText(`${demandProject}/models/model.yaml`)
 
+  // 雛形のままの幅は骨組みが読む数と違うので, 直す場所を出して書かない
+  const file = `${demandProject}/models/model.yaml`
+  rmSync(file, { force: true })
+  await expectContract(dialog, file, [
+    'inputs.x: 入力 x の最後の大きさを学習に使う列の数 5 にしてください (今は 16)',
+  ])
+
   // 記録のデータセットから入力と出力を作ると, 入力の幅を学習に使う 5 列にし, 出力 quantiles
   // の値の数を学習の設定の学ぶ水準 (答えた 0.1 と 0.9 に, 0.5 と水準 τ 0.75 を足したもの) の数 4 にする
   const data = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
@@ -668,6 +750,9 @@ test('時間をまたぐ量の判断の問題の設定を新しく始めると�
       '(プロジェクトの学習の設定の水準. 水準ごとに 1 つの値) にしました ' +
       '(雛形の引数 levels を 9 から 4 に: demand2 の out_features)',
   )
+
+  // 作った定義は骨組みに合うので, 合わない所を出さずに書く
+  await expectSaved(page, dialog, file)
   await dialog.getByRole('button', { name: '閉じる' }).click()
 
   // 隠れ層の幅は変えず, 出力は (バッチ, 水準の数) (誤り 0 件は確認の結果が届く前にも出るので,
@@ -692,6 +777,14 @@ test('並べるの問題の設定を選んで入力と出力を作ると, 入力
   await expect(
     dialog.getByRole('region', { name: '受け持ちに合う雛形' }).getByRole('status'),
   ).toContainText('雛形 two_tower_retrieval を開きました')
+
+  // 雛形のままの利用者と品物の数は骨組みが読む数と違うので, 直す場所を出して書かない
+  const file = `${rankProject}/models/model.yaml`
+  rmSync(file, { force: true })
+  await expectContract(dialog, file, [
+    'inputs.user: 入力 user の最後の大きさを学習用の利用者の数 6 にしてください (今は 12)',
+    'inputs.item: 入力 item の最後の大きさを学習用の品物の数 4 にしてください (今は 20)',
+  ])
 
   // 欄には記録の反応の表のファイルが入り, 問題の設定も渡す
   const data = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
@@ -720,6 +813,9 @@ test('並べるの問題の設定を選んで入力と出力を作ると, 入力
   await expect(result).toContainText(
     '雛形の引数 items (品物の数) を 20 から 4 にしました (入力 item の形の 2 番目, item_fc1 の in_features)',
   )
+
+  // 作った定義は骨組みに合うので, 合わない所を出さずに書く
+  await expectSaved(page, dialog, file)
   await dialog.getByRole('button', { name: '閉じる' }).click()
   await expect(page.locator('[data-id="user_fc1"]')).toBeVisible({ timeout: 20_000 })
   await expect(page.locator('header')).toContainText('誤り 0 件', { timeout: 20_000 })

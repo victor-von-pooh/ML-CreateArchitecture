@@ -25,29 +25,55 @@ export type ExperimentSpec = Schemas['ExperimentSpec']
 export type TemplateMatch = Schemas['TemplateMatch']
 export type TemplateAdapted = Schemas['TemplateAdapted']
 
-/** API がエラーを返したときの例外 */
+/** API がエラーを返したときの例外 (detail は文でない detail の中身. 文なら null) */
 export class ApiError extends Error {
   readonly status: number
+  readonly detail: unknown
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, detail: unknown = null) {
     super(message)
     this.status = status
+    this.detail = detail
   }
 }
 
-/** エラーのレスポンスから表示する文を取り出す */
-async function readError(response: Response): Promise<string> {
+/** 骨組みの約束に合わない所の 1 件 (ML-Quest の check_model_contract. id は直す場所) */
+export type ContractFinding = { level: string; id: string; message: string }
+
+/** 保存の 409 の detail が骨組みの約束に合わない所なら, 文, 直す場所, 知らせを返す */
+export function contractDetail(
+  error: unknown,
+): { message: string; findings: ContractFinding[]; notes: string[] } | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const detail = error.detail
+  if (!detail || typeof detail !== 'object' || !('findings' in detail)) return null
+  const { findings, notes } = detail as { findings: unknown; notes?: unknown }
+  if (!Array.isArray(findings)) return null
+  return {
+    message: error.message,
+    findings: findings as ContractFinding[],
+    notes: Array.isArray(notes) ? notes.map(String) : [],
+  }
+}
+
+/** エラーのレスポンスから表示する文と, 文でない detail を取り出す */
+async function readError(response: Response): Promise<{ message: string; detail: unknown }> {
   try {
     const body: unknown = await response.json()
     if (body && typeof body === 'object' && 'detail' in body) {
       const detail = (body as { detail: unknown }).detail
-      if (typeof detail === 'string') return detail
-      return JSON.stringify(detail)
+      if (typeof detail === 'string') return { message: detail, detail: null }
+      // 画面の文 message を持つ detail はその文 (他は JSON の文)
+      if (detail && typeof detail === 'object' && 'message' in detail) {
+        const message = (detail as { message: unknown }).message
+        if (typeof message === 'string') return { message, detail }
+      }
+      return { message: JSON.stringify(detail), detail }
     }
   } catch {
     // JSON でない場合は状態の文を使う
   }
-  return `${response.status} ${response.statusText}`
+  return { message: `${response.status} ${response.statusText}`, detail: null }
 }
 
 /** JSON の API を呼ぶ */
@@ -57,7 +83,8 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   })
   if (!response.ok) {
-    throw new ApiError(response.status, await readError(response))
+    const { message, detail } = await readError(response)
+    throw new ApiError(response.status, message, detail)
   }
   // 中身の無い応答 (消した場合の 204) は undefined
   if (response.status === 204) return undefined as T
@@ -125,12 +152,27 @@ export const api = {
     }),
   /**
    * 定義をプロジェクトの保存先に書く (target は確かめた保存先. 決め直した保存先と違うか,
-   * 既にあり overwrite が偽なら 409)
+   * 既にあり overwrite が偽なら 409. 骨組みの約束に合わない所があり acceptContract が偽なら,
+   * 直す場所を detail に付けて 409)
    */
-  saveProjectModel: (path: string, name: string, spec: Spec, target: string, overwrite: boolean) =>
+  saveProjectModel: (
+    path: string,
+    name: string,
+    spec: Spec,
+    target: string,
+    overwrite: boolean,
+    acceptContract = false,
+  ) =>
     request<ProjectSaved>('/api/project/model', {
       method: 'PUT',
-      body: JSON.stringify({ path, name, spec, target, overwrite }),
+      body: JSON.stringify({
+        path,
+        name,
+        spec,
+        target,
+        overwrite,
+        accept_contract: acceptContract,
+      }),
     }),
   /** プロジェクトの実験と, 学習に使った定義の写しを開けるかの一覧 */
   listExperiments: (path: string) =>

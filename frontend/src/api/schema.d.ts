@@ -504,8 +504,10 @@ export interface paths {
          *     ----------
          *     HTTPException
          *         確かめた保存先 (target) と違う場合と, 既にあり上書きしない場合は
-         *         409, 定義を読めない場合は 422, 書けない場合は 500 (他は保存先を
-         *         決めるときと同じ)
+         *         409, 定義を読めない場合は 422, 骨組みの約束に合わない所があり
+         *         accept_contract でない場合は 409 (detail に画面の文 message, 直す
+         *         場所 findings, 知らせ notes と比べた数 widths), 書けない場合は 500
+         *         (他は保存先を決めるときと同じ)
          */
         put: operations["save_project_model"];
         post?: never;
@@ -1214,6 +1216,12 @@ export interface components {
              * @description 確かめた保存先 (POST /api/project/target の path). 送ると, 書くときに決め直した保存先と違えば 409
              */
             target?: string | null;
+            /**
+             * Accept Contract
+             * @description 骨組みの約束に合わない所があっても書くか (偽なら, 合わない所を detail の findings に付けて 409)
+             * @default false
+             */
+            accept_contract: boolean;
         };
         /** ProjectSaved */
         ProjectSaved: {
@@ -1221,6 +1229,11 @@ export interface components {
             path: string;
             /** Updated At */
             updated_at: string;
+            /**
+             * Notes
+             * @description 骨組みの約束の確かめの知らせ (データセットを読めず, 入力の形の最後の大きさを確かめていないなど)
+             */
+            notes?: string[];
         };
         /** ProjectTarget */
         ProjectTarget: {

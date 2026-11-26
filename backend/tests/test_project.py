@@ -782,6 +782,45 @@ class StubQuest:
 
         return record
 
+    def model_contract(self, problem: dict[str, Any]) -> None:
+        """
+        骨組みの約束が無いとみなす関数
+
+        Parameters
+        ----------
+        problem: dict[str, Any]
+            問題の設定 (使わない)
+
+        Returns
+        ----------
+        None
+        """
+        return None
+
+    def check_model_contract(
+        self, problem: dict[str, Any], spec: Any, widths: Any = None
+    ) -> list[dict[str, Any]]:
+        """
+        約束の無い骨組みの確かめ (合わない所無し) を返す関数
+
+        Parameters
+        ----------
+        problem: dict[str, Any]
+            問題の設定 (使わない)
+        spec: Any
+            定義 (使わない)
+        widths: Any = None
+            最後の大きさの数 (使わない)
+
+        Returns
+        ----------
+        found: list[dict[str, Any]]
+            空の並び
+        """
+        found: list[dict[str, Any]] = []
+
+        return found
+
 
 def test_problem_record(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -3164,3 +3203,235 @@ def test_problem_demand(
     }
     assert entries["demand"]["usable"] is True, entries["demand"]
     assert entries["demand"]["example"] == "tabular_demand"
+
+
+# 骨組みの約束を確かめる受け持ちごとの, 雛形と出力の 1 つの名前
+CONTRACT_CASES = {
+    "anomaly": ("tabular_autoencoder", "recon"),
+    "rank": ("two_tower_retrieval", "score"),
+    "uplift": ("tabular_uplift", "treated"),
+    "price": ("tabular_price", "units"),
+    "demand": ("tabular_demand", "quantiles"),
+}
+
+
+def contract_problem(
+    ml_eda: Any, ml_quest: Any, kind: str, root: Path
+) -> Path:
+    """
+    骨組みを書き出し, 記録のデータセットを持つ問題の設定を保存する関数
+
+    Parameters
+    ----------
+    ml_eda: Any
+        ML-EDA のモジュール
+    ml_quest: Any
+        ML-Quest のモジュール
+    kind: str
+        受け持ち (CONTRACT_CASES の鍵)
+    root: Path
+        プロジェクト, データセットと問題の設定を置く場所
+
+    Returns
+    ----------
+    place: Path
+        保存した問題の設定のファイル
+    """
+    # 受け持ちごとの問題の設定
+    makers = {
+        "anomaly": anomaly_problem, "rank": rank_problem,
+        "uplift": uplift_problem, "price": price_problem,
+        "demand": demand_problem,
+    }
+    problem = makers[kind](ml_quest)
+    project = root / "project"
+    ml_quest.make_project(problem, project)
+    recorded = ml_quest.record_project(problem, project)
+
+    # 記録のデータセット (並べるは記録の場所の反応の表)
+    if kind == "rank":
+        rows = [{"member": f"m{number % 6}", "item_id": f"i{number % 4}",
+                 "ts": number, "qty": 1} for number in range(40)]
+        reactions = Path(recorded["project"]["dataset"])
+        reactions.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(rows).to_csv(reactions, index=False)
+    elif kind == "anomaly":
+        dataset = write_anomaly_dataset(ml_eda, root, labeled=True)
+        recorded["project"]["dataset"] = str(dataset)
+    else:
+        writers = {"uplift": write_uplift_dataset,
+                   "price": write_price_dataset,
+                   "demand": write_demand_dataset}
+        dataset = writers[kind](ml_eda, root)
+        recorded["project"]["dataset"] = str(dataset)
+    place = root / "problem.yaml"
+    ml_quest.save_problem(recorded, place)
+
+    return place
+
+
+def template_values(info: dict[str, Any]) -> dict[str, int]:
+    """
+    データセットから読んだ入力と出力から, 雛形の書き換える引数の値を作る
+    関数 (画面の「データセットから入力と出力を作る」と同じ値)
+
+    Parameters
+    ----------
+    info: dict[str, Any]
+        POST /api/dataset/inputs の結果
+
+    Returns
+    ----------
+    values: dict[str, int]
+        引数の名前から値
+    """
+    # 並べるは利用者と品物の数, 他は入力の幅 (需要は水準の数も)
+    if info["rank"] is not None:
+        values = {"users": info["rank"]["users"],
+                  "items": info["rank"]["items"]}
+        return values
+    values = {"features": info["inputs"][0]["shape"][-1]}
+    if info["demand"] is not None:
+        values["levels"] = info["outputs"]
+
+    return values
+
+
+@pytest.mark.parametrize("kind", list(CONTRACT_CASES))
+def test_project_save_contract(
+    client: TestClient, tmp_path: Path, kind: str
+) -> None:
+    """
+    問題の設定から決めた保存先では, 骨組みの学習のスクリプトが読む入力と
+    出力に合わない定義を直す場所付きの 409 で断り, データセットから作った
+    雛形は通し, 直さずに書く指定では書くことを確かめる関数 (ML-EDA と
+    check_model_contract のある ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    kind: str
+        受け持ち (CONTRACT_CASES の鍵)
+
+    Returns
+    ----------
+    None
+    """
+    # 記録のデータセットから入力と出力を作った雛形
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    if not hasattr(ml_quest, "check_model_contract"):
+        pytest.skip("ML-Quest に check_model_contract がありません")
+    example, output = CONTRACT_CASES[kind]
+    place = contract_problem(ml_eda, ml_quest, kind, tmp_path)
+    target = client.post(
+        "/api/project/target", json={"path": str(place)}
+    ).json()
+    assert target["example"] == example
+    info = client.post(
+        "/api/dataset/inputs",
+        json={"path": target["dataset"], "problem": str(place)}
+    ).json()
+    template = client.get(f"/api/examples/{example}").json()["spec"]
+    response = client.post("/api/templates/adapt", json={
+        "spec": template, "name": example, "values": template_values(info)
+    })
+    assert response.status_code == 200, response.text
+    spec = response.json()["spec"]
+    names = list(spec["inputs"])
+
+    # 雛形のままの幅は, 入力ごとに直す場所と数を出して書かない
+    response = client.put(
+        "/api/project/model", json={"path": str(place), "spec": template}
+    )
+    assert response.status_code == 409, response.text
+    detail = response.json()["detail"]
+    assert "合わない所" in detail["message"]
+    assert [item["id"] for item in detail["findings"]] == [
+        f"inputs.{name}" for name in names
+    ]
+    assert all(item["level"] == "error" for item in detail["findings"])
+    assert "最後の大きさ" in detail["findings"][0]["message"]
+    assert detail["widths"] and detail["notes"] == []
+    assert not Path(target["path"]).exists()
+
+    # 入力の名前と出力の名前の違いも直す場所を出す
+    renamed = copy.deepcopy(spec)
+    renamed["inputs"][f"{names[0]}_in"] = renamed["inputs"].pop(names[0])
+    renamed["outputs"][f"{output}_out"] = renamed["outputs"].pop(output)
+    response = client.put(
+        "/api/project/model", json={"path": str(place), "spec": renamed}
+    )
+    assert response.status_code == 409, response.text
+    ids = {item["id"] for item in response.json()["detail"]["findings"]}
+    assert ids == {"inputs", f"inputs.{names[0]}_in", "outputs"}
+
+    # 合う定義は確かめの知らせ無しで書き, 直さずに書く指定は合わなくても
+    # 書く
+    response = client.put(
+        "/api/project/model", json={"path": str(place), "spec": spec}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["notes"] == []
+    response = client.put("/api/project/model", json={
+        "path": str(place), "spec": renamed, "overwrite": True,
+        "accept_contract": True
+    })
+    assert response.status_code == 200, response.text
+    written = yaml.safe_load(Path(target["path"]).read_text())
+    assert f"{output}_out" in written["outputs"]
+
+
+def test_project_save_contract_without_dataset(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    記録のデータセットを読めない場合は, 名前と出力だけを確かめ, 最後の
+    大きさを確かめていないことを知らせることを確かめる関数 (ML-EDA と
+    check_model_contract のある ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 雛形のままの幅の定義と, 消したデータセット
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    if not hasattr(ml_quest, "check_model_contract"):
+        pytest.skip("ML-Quest に check_model_contract がありません")
+    place = contract_problem(ml_eda, ml_quest, "anomaly", tmp_path)
+    target = client.post(
+        "/api/project/target", json={"path": str(place)}
+    ).json()
+    template = client.get("/api/examples/tabular_autoencoder").json()["spec"]
+    for item in Path(target["dataset"]).iterdir():
+        item.unlink()
+    Path(target["dataset"]).rmdir()
+
+    # 名前は合うので書き, 幅を確かめていないことを知らせる
+    response = client.put(
+        "/api/project/model", json={"path": str(place), "spec": template}
+    )
+    assert response.status_code == 200, response.text
+    notes = response.json()["notes"]
+    assert len(notes) == 1 and "確かめていません" in notes[0]
+
+    # 名前の違いは, データセットを読めなくても出す (知らせも添える)
+    template["outputs"]["out"] = template["outputs"].pop("recon")
+    response = client.put("/api/project/model", json={
+        "path": str(place), "spec": template, "overwrite": True
+    })
+    assert response.status_code == 409, response.text
+    detail = response.json()["detail"]
+    assert [item["id"] for item in detail["findings"]] == ["outputs"]
+    assert detail["widths"] == {} and len(detail["notes"]) == 1
