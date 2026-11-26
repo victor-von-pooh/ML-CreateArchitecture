@@ -1123,15 +1123,19 @@ def config_levels(config: dict[str, Any]) -> Optional[list[float]]:
     Returns
     ----------
     levels: Optional[list[float]]
-        水準の並び (無いか, 空か, 0 より大きく 1 より小さい数の並びでなけ
-        れば None)
+        水準の並び (無いか, 空か, 0 より大きく 1 より小さい数を小さい順に
+        重ねずに並べ, 0.5 を含む並びでなければ None)
     """
-    # 骨組みの学習のスクリプトが止める値は使わない
+    # 骨組みの学習のスクリプトが止める値は使わない (ML-Quest の時間をまたぐ
+    # 量の判断の骨組みの config の確かめと同じ条件)
     value = section(config, "demand").get("levels")
     if not isinstance(value, list) or not value or not all(
         isinstance(level, (int, float)) and not isinstance(level, bool)
         and 0 < level < 1 for level in value
-    ):
+    ) or any(
+        first >= second
+        for first, second in zip(value, value[1:], strict=False)
+    ) or 0.5 not in value:
         return None
     levels = [float(level) for level in value]
 
@@ -1181,8 +1185,9 @@ def demand_levels(
     if found:
         notes.append(
             f"学習の設定 ({PROJECT_CONFIG}) の学ぶ水準 (demand.levels) を"
-            "読めないので, 問題の設定の水準にしました (学習のスクリプトは"
-            "読めない水準で止まるので, 学習の設定を直してください)"
+            "読めないので, 問題の設定の水準にしました (学習のスクリプトは, "
+            "0 より大きく 1 より小さい数を小さい順に重ねずに並べ, 0.5 を含む"
+            "水準でなければ止まるので, 学習の設定を直してください)"
         )
     if asked is None:
         reason = answers.get("error")

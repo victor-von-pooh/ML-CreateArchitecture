@@ -3090,9 +3090,15 @@ def test_dataset_inputs_demand_levels(
         "demand.levels を直してください)"
     ]
 
-    # 読めない水準と読めない学習の設定は, 問題の設定の水準にして知らせる
+    # 学習のスクリプトが止める水準 (範囲の外, 0.5 が無い, 小さい順でない,
+    # 重なり) と読めない学習の設定は, 問題の設定の水準にして知らせる
     for text in (
-        yaml.safe_dump({**config, "demand": {"levels": [0, 2]}}),
+        *(
+            yaml.safe_dump({**config, "demand": {"levels": levels}})
+            for levels in (
+                [0, 2], [0.1, 0.9], [0.9, 0.1, 0.5], [0.5, 0.5]
+            )
+        ),
         "demand: [",
     ):
         config_path.write_text(text)
