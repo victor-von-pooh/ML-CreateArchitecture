@@ -21,6 +21,9 @@ const upliftProject = fileURLToPath(new URL('.work/uplift_project', import.meta.
 // 値段を変える判断の問題の設定のプロジェクト (記録の場所に, 特徴の 2 列と値段の列と, 売れた数,
 // 原価, 商品の id の列の, 値段を変えた記録の表がある)
 const priceProject = fileURLToPath(new URL('.work/price_project', import.meta.url))
+// 時間をまたぐ量の判断の問題の設定のプロジェクト (記録の場所に, 学習に使う 5 列と, 売れた数,
+// 商品の id, 日付, 在庫の数の列の, 需要の記録の表がある. 学習の設定の学ぶ水準は 4 つ)
+const demandProject = fileURLToPath(new URL('.work/demand_project', import.meta.url))
 
 // プロジェクトへの保存は 2 回目に上書きを確かめるので, 書いた順に実行
 test.describe.configure({ mode: 'serial' })
@@ -533,6 +536,67 @@ test('値段を変える判断の問題の設定を新しく始めるときに�
     timeout: 20_000,
   })
   await expect(page.locator('[data-id="units_softplus"]')).toContainText('[4, 1]')
+  await expect(page.locator('header')).toContainText('誤り 0 件')
+  await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
+})
+
+test('時間をまたぐ量の判断の問題の設定を新しく始めるときに選ぶと需要の雛形を開き, 入力の幅と出力の値の数を学ぶ水準の数にする', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const dialog = await openDialog(page)
+  const demand = dialog
+    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('button', { name: /e2e の発注の見直し/ })
+  await expect(demand).toContainText('雛形: tabular_demand')
+
+  // 新規の画面で選ぶと雛形を開き, 保存先は記録の場所
+  await demand.click()
+  const note = dialog.getByRole('region', { name: '受け持ちに合う雛形' })
+  await expect(note.getByRole('status')).toContainText(
+    '問題の設定 e2e の発注の見直し の受け持ちに合う雛形 tabular_demand を開きました',
+  )
+  await expect(note.getByRole('button')).toHaveCount(0)
+  await expect(
+    dialog
+      .getByRole('region', { name: 'プロジェクトに保存' })
+      .getByRole('group', { name: '保存先' }),
+  ).toContainText(`${demandProject}/models/model.yaml`)
+
+  // 記録のデータセットから入力と出力を作ると, 入力の幅を学習に使う 5 列にし, 出力 quantiles
+  // の値の数を学習の設定の学ぶ水準 (答えた 0.1 と 0.9 に, 0.5 と水準 τ 0.75 を足したもの) の数 4 にする
+  const data = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })
+  await expect(data.getByLabel('データセットのディレクトリ')).toHaveValue(
+    `${demandProject}/outputs/dataset`,
+  )
+  await data.getByRole('button', { name: '入力と出力を作る' }).click()
+  const result = data.getByRole('status')
+  await expect(result).toContainText(
+    'データセットから入れました: 入力 x [4, 5], タスク demand, 目的の列 demand, 出す値 4',
+  )
+  await expect(result).toContainText(
+    '問題の設定 e2e の発注の見直し が時間をまたぐ量の判断なので, ' +
+      '入力の幅を, 学習に使う 5 列にしました ' +
+      '(商品の特徴, 過去の売れた数のずらしと移動平均, 曜日などの列). ' +
+      '次の列は入力に入れません: ' +
+      '日ごとの売れた数 (先の期間の合計が予測する値) の列 units, ' +
+      '商品の id (発注の数を決める単位) の列 product_id, 日付 (発注を決める日) の列 date, ' +
+      '在庫の数 (発注の数から引く) の列 stock, 行を見分ける id の列 record_id',
+  )
+  await expect(result).toContainText('demand1 の in_features を 5 にしました')
+  await expect(result).toContainText(
+    '出力 quantiles の値の数を, 学ぶ分位点の水準 0.1, 0.5, 0.75, 0.9 の数 4 ' +
+      '(プロジェクトの学習の設定の水準. 水準ごとに 1 つの値) にしました ' +
+      '(demand2 の out_features を 9 から 4 に)',
+  )
+  await dialog.getByRole('button', { name: '閉じる' }).click()
+
+  // 隠れ層の幅は変えず, 出力は (バッチ, 水準の数) (誤り 0 件は確認の結果が届く前にも出るので,
+  // 入れた後の形を先に待つ)
+  await expect(page.locator('[data-id="demand1"]')).toContainText('[4, 32]', {
+    timeout: 20_000,
+  })
+  await expect(page.locator('[data-id="demand_cumsum"]')).toContainText('[4, 4]')
   await expect(page.locator('header')).toContainText('誤り 0 件')
   await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
 })

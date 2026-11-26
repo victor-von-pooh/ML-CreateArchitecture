@@ -89,6 +89,30 @@ export interface PriceWidth {
   problem?: string | null
 }
 
+/** 時間をまたぐ量の判断の入力 x の幅 (学習に使う列の数), 数えない列と学ぶ分位点の水準 */
+export interface DemandWidth {
+  /** 学習に使う列の数 (日ごとの売れた数, 商品の id, 日付, 在庫の数と行の id の列は数えない) */
+  columns: number | null
+  /** 日ごとの売れた数の列 (分からなければ無い) */
+  units?: string | null
+  /** 商品の id の列 (分からなければ無い) */
+  product?: string | null
+  /** 日付の列 (分からなければ無い) */
+  date?: string | null
+  /** 在庫の数の列 (無いか分からなければ無い) */
+  stock?: string | null
+  /** 行の id の列 (分からなければ無い) */
+  id?: string | null
+  /** 学ぶ分位点の水準 (出力 quantiles の列の順. 問題の設定を渡していないか読めなければ無い) */
+  levels?: number[] | null
+  /** 水準をどこから読んだか (config は学習の設定, problem は問題の設定) */
+  levels_from?: string | null
+  /** 水準の決め方の知らせ (学習の設定と問題の設定の水準の数の食い違いなど) */
+  notes?: string[]
+  /** 問題の設定の名前 */
+  problem?: string | null
+}
+
 /** バックエンドが ML-EDA の model_inputs から返す値 */
 export interface DatasetInfo {
   path: string
@@ -109,6 +133,8 @@ export interface DatasetInfo {
   uplift?: UpliftWidth | null
   /** 値段を変える判断のデータセットで, 入力 x の幅にした特徴の列と値段の列の数と列の名前 (他は無い) */
   price?: PriceWidth | null
+  /** 需要の記録のデータセットで, 入力 x の幅にした学習に使う列の数, 数えない列と学ぶ水準 (他は無い) */
+  demand?: DemandWidth | null
 }
 
 /** 入れた結果 (定義と, 知らせる文) */
@@ -315,6 +341,100 @@ export function priceWidthNote(price: PriceWidth): string {
   )
 }
 
+/**
+ * 時間をまたぐ量の判断で, 入力の幅をどう決めたかの文 (列は, 初めての人にも分かるよう役を言葉で
+ * 添える. 無い在庫の数の列は出さない. 名前の分からない列は役だけ)
+ */
+export function demandWidthNote(demand: DemandWidth): string {
+  const from = demand.problem
+    ? `問題の設定 ${demand.problem} が時間をまたぐ量の判断`
+    : '需要の記録のデータセット'
+  const named = (role: string, name: string | null | undefined) => (name ? `${role} ${name}` : role)
+  const width =
+    demand.columns === null
+      ? '入力の幅は, データセットの入力の幅のままにしました'
+      : `入力の幅を, 学習に使う ${demand.columns} 列にしました`
+  const skipped = [
+    named('日ごとの売れた数 (先の期間の合計が予測する値) の列', demand.units),
+    named('商品の id (発注の数を決める単位) の列', demand.product),
+    named('日付 (発注を決める日) の列', demand.date),
+    ...(demand.stock ? [named('在庫の数 (発注の数から引く) の列', demand.stock)] : []),
+    named('行を見分ける id の列', demand.id),
+  ].join(', ')
+  return (
+    `${from}なので, ${width} ` +
+    '(商品の特徴, 過去の売れた数のずらしと移動平均, 曜日などの列). ' +
+    `次の列は入力に入れません: ${skipped}`
+  )
+}
+
+/** 学ぶ分位点の水準をどこから読んだかの文 */
+function levelsOrigin(demand: DemandWidth): string {
+  if (demand.levels_from === 'config') return 'プロジェクトの学習の設定の水準'
+  return demand.problem ? `問題の設定 ${demand.problem} の水準` : '問題の設定の水準'
+}
+
+/** 時間をまたぐ量の判断の出力のつなぎ元からさかのぼる, 形を変えない部品 (雛形 tabular_demand の softplus と累積和) */
+const KEEP_SHAPE_UNITS = new Set(['nn.Softplus', 'op.CumSum'])
+
+/**
+ * 時間をまたぐ量の判断の出力 quantiles の値の数 (学ぶ分位点の水準の数) を, 出力のつなぎ元から
+ * 形を変えない部品をさかのぼった最初の out_features に入れる. 水準が分からなければ変えずに知らせる
+ */
+function fitDemandOutputs(
+  spec: Spec,
+  units: Map<string, UnitSpec>,
+  demand: DemandWidth,
+): DatasetApplied {
+  const notes: string[] = []
+  const outputNames = Object.keys(spec.outputs)
+  const levels = demand.levels ?? null
+  if (!levels || levels.length === 0) {
+    notes.push(
+      '学ぶ分位点の水準の数は問題の設定が決めるので, 出力の値の数は変えていません. ' +
+        '時間をまたぐ量の判断の問題の設定から保存先を確かめてから入れ直すと, 水準の数にします',
+    )
+    return { spec, notes }
+  }
+  const size = levels.length
+  const reason =
+    `学ぶ分位点の水準 ${levels.join(', ')} の数 ${size} (${levelsOrigin(demand)}. ` +
+    '水準ごとに 1 つの値)'
+  const output = outputNames.length === 1 ? outputNames[0]! : null
+  let name = output ? parseRef(spec.outputs[output]!).name : null
+  const seen = new Set<string>()
+  while (name && spec.nodes[name] && KEEP_SHAPE_UNITS.has(spec.nodes[name]!.unit)) {
+    if (seen.has(name)) break
+    seen.add(name)
+    const sources = specWires(spec, units).filter((wire) => wire.target === name)
+    name = sources.length === 1 ? sources[0]!.source : null
+  }
+  const node = name ? spec.nodes[name] : undefined
+  if (!output || !name || !node || !hasParam(units, node.unit, 'out_features')) {
+    notes.push(
+      `出力の値の数 ${size} (学ぶ分位点の水準 ${levels.join(', ')} の数. ${levelsOrigin(demand)}) は, ` +
+        '最後の部品の引数に手で入れてください',
+    )
+    return { spec, notes }
+  }
+  const before = node.params?.out_features
+  if (before === size) {
+    notes.push(`出力 ${output} の値の数は, ${reason} のままです (${name} の out_features)`)
+    return { spec, notes }
+  }
+  notes.push(
+    `出力 ${output} の値の数を, ${reason} にしました ` +
+      `(${name} の out_features を ${String(before ?? '無し')} から ${size} に)`,
+  )
+  return {
+    spec: {
+      ...spec,
+      nodes: { ...spec.nodes, [name]: { ...node, params: { ...node.params, out_features: size } } },
+    },
+    notes,
+  }
+}
+
 /** 異常の検知の距離に基づく度合いで, 何も変えない理由の文 */
 export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
   const from = anomaly.problem ? `問題の設定 ${anomaly.problem} の` : '問題の設定の'
@@ -350,7 +470,11 @@ export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
  * 出力が 2 つ以上 (T-learner の treated と control) なら, それぞれのつなぎ元の
  * out_features を出す値の数にする. 値段を変える判断のデータセット (info.price) では,
  * 入力の幅が特徴の列と値段の列の数なので, その決め方を初めに知らせ, 出力の値の数は
- * 変えない (売れた数の予測は常に 1 つの値で, 雛形 tabular_price の 1 のまま使うため)
+ * 変えない (売れた数の予測は常に 1 つの値で, 雛形 tabular_price の 1 のまま使うため).
+ * 需要の記録のデータセット (info.demand) では, 入力の幅が学習に使う列の数なので, その決め方と
+ * 水準の決め方の知らせを初めに知らせ, 出力の値の数を学ぶ分位点の水準の数にする (出力の
+ * つなぎ元から, 形を変えない softplus と累積和をさかのぼった out_features. 水準が分からなければ
+ * 変えない)
  */
 export function applyDatasetInputs(
   spec: Spec,
@@ -370,7 +494,9 @@ export function applyDatasetInputs(
           ? [upliftWidthNote(info.uplift)]
           : info.price
             ? [priceWidthNote(info.price)]
-            : []
+            : info.demand
+              ? [demandWidthNote(info.demand), ...(info.demand.notes ?? [])]
+              : []
   let next = spec
   // ノードと同じ名前の入力は作らない (つなぎ先が入力を指すように変わるため)
   const clashes = info.inputs.filter((item) => item.name in spec.nodes)
@@ -463,6 +589,12 @@ export function applyDatasetInputs(
   }
   next = { ...next, nodes }
 
+  // 時間をまたぐ量の判断の出力の値の数 (学ぶ分位点の水準の数. ML-EDA の outputs の 1 は水準
+  // 1 つあたりなので使わない. 部品の無い定義は, 水準が分かれば下の全結合の head の値の数にする)
+  if (info.demand && (Object.keys(next.outputs).length > 0 || !info.demand.levels?.length)) {
+    const fitted = fitDemandOutputs(next, units, info.demand)
+    return { spec: fitted.spec, notes: [...notes, ...fitted.notes] }
+  }
   // 出す値の数
   const outputs = info.outputs ?? null
   if (outputs === null) {
