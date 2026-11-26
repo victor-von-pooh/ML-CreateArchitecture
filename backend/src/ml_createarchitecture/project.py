@@ -83,7 +83,8 @@ class DatasetBody(BaseModel):
         "を ML-Quest の rank_encoding の学習用の利用者と品物の数にする. "
         "異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を"
         "見積もるなら, データセットの説明に無い処置の列と行の id の列を受け"
-        "持ちの答えから読む)"
+        "持ちの答えから読む. 値段を変える判断なら, データセットの説明に無い"
+        "値段, 原価, 商品の id と行の id の列を受け持ちの答えから読む)"
     )
 
 
@@ -197,6 +198,43 @@ class UpliftWidth(BaseModel):
     )
 
 
+class PriceWidth(BaseModel):
+    # 値段を変える判断の入力の幅 (商品の特徴の列と値段の列の数) と, 列の
+    # 名前
+    columns: Optional[int] = Field(
+        description="特徴の列と値段の列の数 (入力 x の幅. 値段の列は最後. "
+        "売れた数, 元の値段, 原価, 商品の id と行の id の列は数えず, "
+        "one_hot で増えた列は数える)"
+    )
+    price: Optional[str] = Field(
+        default=None,
+        description="値段の列 (データセットの説明の price.price. 説明に無け"
+        "れば問題の設定の答え. どちらにも無ければ無し)"
+    )
+    units: Optional[str] = Field(
+        default=None, description="売れた数の列 (データセットの目的の列)"
+    )
+    cost: Optional[str] = Field(
+        default=None,
+        description="原価の列 (データセットの説明の price.cost. 説明に項目"
+        "が無ければ問題の設定の答え. 説明が null か, どちらにも無ければ無し)"
+    )
+    product: Optional[str] = Field(
+        default=None,
+        description="商品の id の列 (データセットの説明の price.product. "
+        "説明に項目が無ければ問題の設定の答え. 説明が null か, どちらにも"
+        "無ければ無し)"
+    )
+    id: Optional[str] = Field(
+        default=None,
+        description="行の id の列 (データセットの説明の price.id. 説明に"
+        "無ければ問題の設定の答え. どちらにも無ければ無し)"
+    )
+    problem: Optional[str] = Field(
+        default=None, description="問題の設定の名前"
+    )
+
+
 class DatasetInputs(BaseModel):
     # データセットの場所と, ML-EDA の model_inputs の結果
     path: str
@@ -228,6 +266,11 @@ class DatasetInputs(BaseModel):
         default=None,
         description="効果を見積もるのデータセットか問題の設定で, 入力 x の幅"
         "にした学習に使う列の数と数えない列 (他は無し)"
+    )
+    price: Optional[PriceWidth] = Field(
+        default=None,
+        description="値段を変える判断のデータセットか問題の設定で, 入力 x "
+        "の幅にした特徴の列と値段の列の数と列の名前 (他は無し)"
     )
 
 
@@ -681,6 +724,74 @@ def anomaly_score(problem: Any) -> Optional[str]:
     return score
 
 
+def logged_answers(
+    problem: Any, keys: tuple[str, ...]
+) -> Optional[dict[str, Any]]:
+    """
+    問題の設定の受け持ちが今ある記録から学ぶ効果を見積もるなら, 受け持ちの
+    答えを返す関数
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+    keys: tuple[str, ...]
+        受け持ちの中の答えの場所 (varied は常に読む)
+
+    Returns
+    ----------
+    values: Optional[dict[str, Any]]
+        場所から答え (答えていなければ None. varied も含む). 効果を見積もる
+        で方策でなく, 今ある記録から集め, 作り方が既製のモデルをそのまま
+        でない受け持ちでなければ None. 要らなくなった問いの古い答えは除外
+    """
+    # ML-Quest の答えの読み方 (ML-Quest の今ある記録から学ぶ受け持ちと同じ
+    # 見分け方)
+    quest = load_library("ml_quest", "active_value")
+    try:
+        values = {
+            key: quest.active_value(problem, f"{quest.PART}.{key}")
+            for key in (
+                "role", "autonomous", "collect", "method", "varied", *keys
+            )
+        }
+    except READ_ERRORS:
+        values = {}
+    if values.get("role") != "effect" or values.get("autonomous") is True \
+            or values.get("collect") != "log" \
+            or values.get("method") == "pretrained":
+        return None
+
+    return values
+
+
+def column_names(
+    values: dict[str, Any], keys: dict[str, str]
+) -> dict[str, Optional[str]]:
+    """
+    答えか説明の値から, 列の名前 (空でない文字列) を取り出す関数
+
+    Parameters
+    ----------
+    values: dict[str, Any]
+        答えか説明の値
+    keys: dict[str, str]
+        返す名前から values の場所
+
+    Returns
+    ----------
+    columns: dict[str, Optional[str]]
+        返す名前から列の名前 (無いか文字列でなければ None)
+    """
+    # 空の文字列と文字列でない値は無し
+    columns: dict[str, Optional[str]] = {}
+    for name, key in keys.items():
+        value = values.get(key)
+        columns[name] = value if isinstance(value, str) and value else None
+
+    return columns
+
+
 def uplift_columns(problem: Any) -> Optional[dict[str, Optional[str]]]:
     """
     問題の設定の受け持ちが効果の見積もりなら, 処置の列と行の id の列を返す
@@ -695,36 +806,76 @@ def uplift_columns(problem: Any) -> Optional[dict[str, Optional[str]]]:
     ----------
     columns: Optional[dict[str, Optional[str]]]
         treatment (処置の列) と id (行の id の列) の答え (答えていなければ
-        None). 効果を見積もるで方策でなく, 今ある記録から集め, 作り方が
-        既製のモデルをそのままでない受け持ちでなければ None. 要らなくなった
-        問いの古い答えは除外
+        None). 今ある記録から学ぶ効果を見積もるで, 記録で変えたものが値段で
+        ない受け持ちでなければ None
     """
-    # ML-Quest の答えの読み方 (ML-Quest の効果の見積もりの受け持ちと同じ
-    # 見分け方)
-    quest = load_library("ml_quest", "active_value")
-    try:
-        values = {
-            key: quest.active_value(problem, f"{quest.PART}.{key}")
-            for key in (
-                "role", "autonomous", "collect", "method",
-                "uplift.treatment", "uplift.id"
-            )
-        }
-    except READ_ERRORS:
-        values = {}
-    if values.get("role") != "effect" or values.get("autonomous") is True \
-            or values.get("collect") != "log" \
-            or values.get("method") == "pretrained":
+    # 記録で変えたものが値段なら値段を変える判断 (ML-Quest の効果の見積もり
+    # の受け持ちと同じ見分け方)
+    values = logged_answers(problem, ("uplift.treatment", "uplift.id"))
+    if values is None or values.get("varied") == "price":
         return None
-    columns = {
-        key: value if isinstance(value, str) and value else None
-        for key, value in (
-            ("treatment", values.get("uplift.treatment")),
-            ("id", values.get("uplift.id"))
-        )
-    }
+    columns = column_names(
+        values, {"treatment": "uplift.treatment", "id": "uplift.id"}
+    )
 
     return columns
+
+
+def price_columns(problem: Any) -> Optional[dict[str, Optional[str]]]:
+    """
+    問題の設定の受け持ちが値段を変える判断なら, 値段, 原価, 商品の id と
+    行の id の列を返す関数
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+
+    Returns
+    ----------
+    columns: Optional[dict[str, Optional[str]]]
+        price (値段の列), cost (原価の列), product (商品の id の列) と id
+        (行の id の列) の答え (答えていなければ None). 今ある記録から学ぶ
+        効果を見積もるで, 記録で変えたものが値段の受け持ちでなければ None
+    """
+    # 記録で変えたものが値段 (ML-Quest の値段を変える判断の受け持ちと同じ
+    # 見分け方)
+    keys = {
+        name: f"price.{name}" for name in ("price", "cost", "product", "id")
+    }
+    values = logged_answers(problem, tuple(keys.values()))
+    if values is None or values.get("varied") != "price":
+        return None
+    columns = column_names(values, keys)
+
+    return columns
+
+
+def dataset_section(path: Path, key: str) -> dict[str, Any]:
+    """
+    書き出したデータセットの説明から, 1 つの項目を読む関数
+
+    Parameters
+    ----------
+    path: Path
+        書き出したデータセットのディレクトリ
+    key: str
+        説明の項目の名前 (uplift, price など)
+
+    Returns
+    ----------
+    part: dict[str, Any]
+        説明の項目 (無いか, 辞書でないか, 読めなければ空)
+    """
+    # ML-EDA の説明の読み方
+    eda = load_library("ml_eda", "load_dataset")
+    try:
+        info = eda.load_dataset(path).info
+    except READ_ERRORS:
+        info = {}
+    part = section(info, key)
+
+    return part
 
 
 def dataset_uplift(path: Path) -> dict[str, Optional[str]]:
@@ -742,19 +893,43 @@ def dataset_uplift(path: Path) -> dict[str, Optional[str]]:
         treatment (処置の列) と id (行の id の列). 説明に無いか読めなければ
         None
     """
-    # ML-EDA の説明の読み方 (説明の uplift の名前)
-    eda = load_library("ml_eda", "load_dataset")
-    try:
-        info = eda.load_dataset(path).info
-    except READ_ERRORS:
-        info = {}
-    effects = section(info, "uplift")
+    # 説明の uplift の名前
+    columns = column_names(
+        dataset_section(path, "uplift"),
+        {"treatment": "treatment", "id": "id"}
+    )
+
+    return columns
+
+
+def price_names(
+    written: dict[str, Any], answers: Optional[dict[str, Optional[str]]]
+) -> dict[str, Optional[str]]:
+    """
+    値段, 原価, 商品の id と行の id の列の名前を, データセットの説明を先に,
+    説明に項目が無ければ問題の設定の答えから決める関数
+
+    Parameters
+    ----------
+    written: dict[str, Any]
+        データセットの説明の price (無ければ空)
+    answers: Optional[dict[str, Optional[str]]]
+        問題の設定の答え (price_columns. 値段を変える判断の問題の設定で
+        なければ None)
+
+    Returns
+    ----------
+    columns: dict[str, Optional[str]]
+        price, cost, product, id の列の名前 (無ければ None. 説明の値が null
+        の項目は, その列が無いので答えで埋めない)
+    """
+    # 説明にある項目は説明の値 (null は列が無い印), 無い項目だけ答え
     columns = {
-        key: value if isinstance(value, str) and value else None
-        for key, value in (
-            ("treatment", effects.get("treatment")),
-            ("id", effects.get("id"))
+        key: (
+            column_names(written, {key: key})[key] if key in written
+            else (answers or {}).get(key)
         )
+        for key in ("price", "cost", "product", "id")
     }
 
     return columns
@@ -875,7 +1050,9 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     (ML-EDA の outputs) と, 問題の設定の度合いの決め方も返す. 効果を
     見積もるのデータセットでは, 学習に使う列の数 (ML-EDA の入力 x の幅) と,
     処置の列と行の id の列 (データセットの説明を先, 無ければ問題の設定の
-    答え) も返す
+    答え) も返す. 値段を変える判断のデータセットでは, 特徴の列と値段の列の
+    数 (ML-EDA の入力 x の幅) と, 値段, 売れた数, 原価, 商品の id と行の id
+    の列 (データセットの説明を先, 説明に無ければ問題の設定の答え) も返す
 
     Parameters
     ----------
@@ -890,7 +1067,7 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
         符号化した行の幅, 並べるの学習用の利用者と品物の数, 異常の検知の
         学習に使う列の数と度合いの決め方, 効果を見積もるの学習に使う列の数と
-        数えない列
+        数えない列, 値段を変える判断の特徴の列と値段の列の数と列の名前
 
     Raises
     ----------
@@ -900,7 +1077,9 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         組など) と, 表の生成の幅か並べるの数を求められない場合と, 表の生成
         で入力が表の行 (バッチと列の 2 次元の 1 つ) でない場合と, 異常の
         検知の問題の設定でデータセットが異常の検知の表でない場合と, 効果を
-        見積もるの問題の設定でデータセットが介入の記録の表でない場合は 422.
+        見積もるの問題の設定でデータセットが介入の記録の表でない場合と, 値段
+        を変える判断の問題の設定でデータセットが値段を変えた記録の表でない
+        場合は 422.
         並べるで反応の表が無い場合は 404
     """
     # 並べるは反応の表のファイルから 2 塔の入力を作る
@@ -992,6 +1171,28 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
             problem=None if roles is None else problem_name(problem)
         )
 
+    # 値段を変える判断の入力 x の幅 (ML-EDA の入力 x の最後の次元), 列の
+    # 名前 (データセットの説明を先, 説明に無ければ問題の設定の答え) と, 問題
+    # の設定が値段を変える判断の場合の表の種類の確かめ
+    answers = None if problem is None else price_columns(problem)
+    price = None
+    if answers is not None and task != "price":
+        raise HTTPException(
+            422,
+            "値段を変える判断の問題の設定ですが, データセットが ML-Fathom "
+            "(ML-EDA) で値段を変えた記録の表として書き出したものではありま"
+            "せん"
+        )
+    if task == "price":
+        last = inputs[0].dataset_shape[-1:] if len(inputs) == 1 else []
+        names = price_names(dataset_section(path, "price"), answers)
+        price = PriceWidth(
+            columns=last[0] if last and isinstance(last[0], int)
+            and last[0] > 0 else None,
+            units=target, **names,
+            problem=None if answers is None else problem_name(problem)
+        )
+
     # 表の生成は, 入力 (バッチと列の 2 次元) の列の次元と出す値の数を
     # 符号化した行の幅に
     table = None if problem is None else table_width(problem, path)
@@ -1014,7 +1215,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
             target_kind=optional_text(info, "target_kind"),
             outputs=outputs if isinstance(outputs, int)
             and not isinstance(outputs, bool) and outputs > 0 else None,
-            table=table, anomaly=anomaly, uplift=uplift
+            table=table, anomaly=anomaly, uplift=uplift,
+            price=price
         )
     except ValidationError as error:
         raise HTTPException(

@@ -20,6 +20,11 @@ READINGS = ["reading_id", "temp", "vibration", "current", "is_anomaly"]
 # 介入の記録の表の列 (行の id, 効果の見積もりに使う 2 列, 処置, 結果)
 COUPONS = ["customer_id", "age", "visits", "coupon", "purchased"]
 
+# 値段を変えた記録の表の列 (行の id, 商品の id, 売れ行きの予測に使う 2 列,
+# 値段, 売れた数, 原価)
+SALES = ["record_id", "product_id", "size", "weekday", "price", "units",
+         "unit_cost"]
+
 
 def make_dataset(path: Path) -> None:
     """
@@ -300,9 +305,95 @@ def make_coupons(path: Path) -> None:
     ml_eda.export_dataset(ml_eda.load_data(source), recipe, path)
 
 
+def price_problem() -> dict:
+    """
+    見本の課題から, 試しに値段を変えた記録から値段を選ぶ問題の設定を作る
+    関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    problem: dict
+        効果を見積もるで方策でなく, 今ある記録で値段を変えた問題の設定 (値段
+        の列は price, 売れた数の列は units, 原価の列は unit_cost, 商品の id
+        の列は product_id, 行の id の列は record_id, 売れ行きの予測に使う
+        列は size と weekday)
+    """
+    # 見本の受け持ちの作り直し (ML-Quest のテストの受け持ちの入れ替えと同じ)
+    problem = ml_quest.example_problem("解約の引き止め")
+    problem["ml"]["parts"] = [{}]
+    for key in ("decision", "basis", "current"):
+        problem["action"].pop(key, None)
+    problem = ml_quest.answer(problem, "information.columns", SALES)
+    answers = [
+        ("role", "effect"), ("unit", "row"), ("output", "effect"),
+        ("target.source", "intervention"), ("method", "scratch"),
+        ("autonomous", False), ("collect", "log"), ("varied", "price"),
+        ("what", "値段を変えたときの売れた数"),
+        ("item", "商品と日ごとの 1 行"), ("baseline", "今の値段のまま"),
+        ("price.price", "price"), ("price.units", "units"),
+        ("price.cost", "unit_cost"), ("price.product", "product_id"),
+        ("price.id", "record_id"), ("price.columns", ["size", "weekday"]),
+        ("evaluation.metric", "mae"),
+        ("evaluation.link", "売れた数の外れが小さいほど利益の見込みが当たる")
+    ]
+    for key, value in answers:
+        problem = ml_quest.answer(problem, f"ml.parts.0.{key}", value)
+    problem = ml_quest.answer(problem, "action.decision", {
+        "type": "price", "candidates": [-0.1, 0, 0.1], "max_change": 0.1
+    })
+    problem["name"] = "e2e の値段の見直し"
+
+    return problem
+
+
+def make_sales(path: Path) -> None:
+    """
+    試しに値段を変えた売れ行きの記録を, 値段を変えた記録の表 (task: price)
+    として書き出す関数
+
+    Parameters
+    ----------
+    path: Path
+        書き出すディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 学習に使う列から外す列 (売れた数, 原価, 商品の id, 行の id の列. 学習
+    # に使う列は特徴の 2 列と最後の値段の 1 列)
+    rows = 40
+    frame = pd.DataFrame({
+        "record_id": [f"r{number:03d}" for number in range(rows)],
+        "product_id": [f"p{number % 4}" for number in range(rows)],
+        "size": [float(number % 4) for number in range(rows)],
+        "weekday": [number % 7 for number in range(rows)],
+        "price": [
+            100 * (1 + 0.1 * (number % 5 - 2)) for number in range(rows)
+        ],
+        "units": [20 - number % 5 for number in range(rows)],
+        "unit_cost": 60.0
+    })
+    source = path.parent / "sales.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(source, index=False)
+    recipe = {
+        "task": "price", "target": "units", "price": "price",
+        "cost": "unit_cost", "product": "product_id", "id": "record_id",
+        "steps": [{"op": "standardize", "columns": "auto"}],
+        "split": {"method": "stratified", "valid": 0.2, "test": 0.2}
+    }
+    ml_eda.export_dataset(ml_eda.load_data(source), recipe, path)
+
+
 def make_store(
     path: Path, project: Path, dataset: Path, rank_project: Path,
-    anomaly_project: Path, distance_project: Path, uplift_project: Path
+    anomaly_project: Path, distance_project: Path, uplift_project: Path,
+    price_project: Path
 ) -> None:
     """
     ML-Pathfinder の置き場に, プロジェクトを書き出した問題の設定と, まだ
@@ -328,6 +419,10 @@ def make_store(
     uplift_project: Path
         効果の見積もりの問題の設定のプロジェクトのディレクトリ (効果の
         見積もりの骨組みを書き出し, 記録の場所に介入の記録の表を書き出す)
+    price_project: Path
+        値段を変える判断の問題の設定のプロジェクトのディレクトリ (値段を
+        変える判断の骨組みを書き出し, 記録の場所に値段を変えた記録の表を
+        書き出す)
 
     Returns
     ----------
@@ -388,6 +483,13 @@ def make_store(
     make_coupons(Path(recorded["project"]["dataset"]))
     ml_quest.save_problem(recorded, path / "problems" / "uplift")
 
+    # 値段を変える判断の問題の設定 (他のテストが書く定義と重ならないように
+    # 別のプロジェクト)
+    ml_quest.make_project(price_problem(), price_project)
+    recorded = ml_quest.record_project(price_problem(), price_project)
+    make_sales(Path(recorded["project"]["dataset"]))
+    ml_quest.save_problem(recorded, path / "problems" / "price")
+
 
 def make_experiment(project: Path) -> None:
     """
@@ -445,5 +547,6 @@ if __name__ == "__main__":
     make_store(
         work / "pathfinder", work / "project", work / "dataset",
         work / "rank_project", work / "anomaly_project",
-        work / "distance_project", work / "uplift_project"
+        work / "distance_project", work / "uplift_project",
+        work / "price_project"
     )

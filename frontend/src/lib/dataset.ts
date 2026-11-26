@@ -71,6 +71,24 @@ export interface UpliftWidth {
   problem?: string | null
 }
 
+/** 値段を変える判断の入力 x の幅 (商品の特徴の列と値段の列の数) と列の名前 */
+export interface PriceWidth {
+  /** 特徴の列と値段の列の数 (売れた数, 原価, 商品の id と行の id の列は数えない) */
+  columns: number | null
+  /** 値段の列 (入力の最後の列. 分からなければ無い) */
+  price?: string | null
+  /** 売れた数の列 (データセットの目的の列) */
+  units?: string | null
+  /** 原価の列 (無いか分からなければ無い) */
+  cost?: string | null
+  /** 商品の id の列 (無いか分からなければ無い) */
+  product?: string | null
+  /** 行の id の列 (分からなければ無い) */
+  id?: string | null
+  /** 問題の設定の名前 */
+  problem?: string | null
+}
+
 /** バックエンドが ML-EDA の model_inputs から返す値 */
 export interface DatasetInfo {
   path: string
@@ -89,6 +107,8 @@ export interface DatasetInfo {
   anomaly?: AnomalyWidth | null
   /** 効果を見積もるのデータセットで, 入力 x の幅にした学習に使う列の数と数えない列 (他は無い) */
   uplift?: UpliftWidth | null
+  /** 値段を変える判断のデータセットで, 入力 x の幅にした特徴の列と値段の列の数と列の名前 (他は無い) */
+  price?: PriceWidth | null
 }
 
 /** 入れた結果 (定義と, 知らせる文) */
@@ -197,6 +217,18 @@ function fitReshape(
   }
 }
 
+/**
+ * 出す数の引数を持たない出力のつなぎ元 (売れた数を負にしない softplus など) の 1 つ前の,
+ * out_features を持つノードの名前 (つなぎ元が 1 つのノードからだけつながる場合. 他は null)
+ */
+function fitBefore(spec: Spec, units: Map<string, UnitSpec>, name: string): string | null {
+  const sources = specWires(spec, units).filter((wire) => wire.target === name)
+  if (sources.length !== 1) return null
+  const before = spec.nodes[sources[0]!.source]
+  if (!before || !hasParam(units, before.unit, 'out_features')) return null
+  return sources[0]!.source
+}
+
 /** 表の生成で, 入力と出力の幅をどう決めたかの文 */
 export function tableWidthNote(table: TableWidth): string {
   const from = table.problem ? `問題の設定 ${table.problem} が表の生成` : '表の生成の問題の設定'
@@ -267,6 +299,32 @@ export function upliftWidthNote(uplift: UpliftWidth): string {
   )
 }
 
+/**
+ * 値段を変える判断で, 入力の幅と出力の大きさをどう決めたかの文 (入力に入れない列は, 初めての人にも
+ * 分かるよう役を言葉で添える. 無い原価と商品の id の列は出さない. 名前の分からない売れた数と行の
+ * id の列は役だけ)
+ */
+export function priceWidthNote(price: PriceWidth): string {
+  const from = price.problem
+    ? `問題の設定 ${price.problem} が値段を変える判断`
+    : '値段を変える判断のデータセット'
+  const named = (role: string, name: string | null | undefined) => (name ? `${role} ${name}` : role)
+  const skipped = [
+    named('売れた数 (予測する値) の列', price.units),
+    ...(price.cost
+      ? [named('原価 (仕入れか作るのにかかる値段. 利益の計算に使う) の列', price.cost)]
+      : []),
+    ...(price.product ? [named('商品の id (値段を選ぶ単位) の列', price.product)] : []),
+    named('行を見分ける id の列', price.id),
+  ].join(', ')
+  return (
+    `${from}なので, 入力の幅を, 商品の特徴の列と値段の列の数 ${price.columns ?? '?'} にしました ` +
+    `(${price.price ? `値段の列 ${price.price} は` : '値段の列は'}入力の最後の列). ` +
+    `入力に入れない列: ${skipped}. ` +
+    '売れた数の予測は 1 行に 1 つの値を出します'
+  )
+}
+
 /** 異常の検知の距離に基づく度合いで, 何も変えない理由の文 */
 export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
   const from = anomaly.problem ? `問題の設定 ${anomaly.problem} の` : '問題の設定の'
@@ -300,6 +358,9 @@ export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
  * ことを知らせて何も変えない. 効果を見積もるのデータセット (info.uplift) では,
  * 入力の幅が処置の列を除いた学習に使う列の数なので, その決め方を初めに知らせ,
  * 出力が 2 つ以上 (T-learner の treated と control) なら, それぞれのつなぎ元の
+ * out_features を出す値の数にする. 値段を変える判断のデータセット (info.price) では,
+ * 入力の幅が特徴の列と値段の列の数なので, その決め方を初めに知らせ, 出力のつなぎ元が
+ * 出す数の引数を持たない部品 (売れた数を負にしない softplus) なら, その 1 つ前のノードの
  * out_features を出す値の数にする
  */
 export function applyDatasetInputs(
@@ -318,7 +379,9 @@ export function applyDatasetInputs(
         ? [anomalyWidthNote(info.anomaly)]
         : info.uplift
           ? [upliftWidthNote(info.uplift)]
-          : []
+          : info.price
+            ? [priceWidthNote(info.price)]
+            : []
   let next = spec
   // ノードと同じ名前の入力は作らない (つなぎ先が入力を指すように変わるため)
   const clashes = info.inputs.filter((item) => item.name in spec.nodes)
@@ -476,6 +539,7 @@ export function applyDatasetInputs(
         (name) => source && last && hasParam(units, last.unit, name),
       )
   const reshaped = source && !param ? fitReshape(next, units, source, outputs) : null
+  const before = source && !param && !reshaped && info.price ? fitBefore(next, units, source) : null
   if (source && last && param) {
     if (last.params?.[param] !== outputs) {
       next = {
@@ -490,6 +554,20 @@ export function applyDatasetInputs(
   } else if (reshaped) {
     next = reshaped.spec
     notes.push(reshaped.note)
+  } else if (before) {
+    const node = next.nodes[before]!
+    if (node.params?.out_features !== outputs) {
+      next = {
+        ...next,
+        nodes: {
+          ...next.nodes,
+          [before]: { ...node, params: { ...node.params, out_features: outputs } },
+        },
+      }
+    }
+    notes.push(
+      `出力のつなぎ元 ${source} の 1 つ前の ${before} の out_features を ${outputs} にしました`,
+    )
   } else {
     notes.push(
       cloud

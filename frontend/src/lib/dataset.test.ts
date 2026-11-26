@@ -32,6 +32,7 @@ function unit(name: string, params: string[]): UnitSpec {
 const units = new Map([
   ['nn.Linear', unit('nn.Linear', ['in_features', 'out_features'])],
   ['nn.ReLU', unit('nn.ReLU', [])],
+  ['nn.Softplus', unit('nn.Softplus', ['beta', 'threshold'])],
   ['nn.Conv2d', unit('nn.Conv2d', ['in_channels', 'out_channels', 'kernel_size'])],
   ['op.Reshape', unit('op.Reshape', ['shape'])],
   ['nn.Embedding', unit('nn.Embedding', ['num_embeddings', 'embedding_dim'])],
@@ -663,5 +664,93 @@ describe('applyDatasetInputs (効果を見積もる)', () => {
     }
     const { notes } = applyDatasetInputs(relu, log, units)
     expect(notes).toContain('出力 control の大きさ 1 は, 最後の部品の引数に手で入れてください')
+  })
+})
+
+describe('applyDatasetInputs (値段を変える判断)', () => {
+  /** 同梱の例 tabular_price の形 (特徴の 16 列と値段の 1 列を通し, 最後に softplus) */
+  const sales: Spec = {
+    ...emptySpec(),
+    inputs: { x: { shape: [8, 17] } },
+    nodes: {
+      units1: { unit: 'nn.Linear', params: { in_features: 17, out_features: 32 }, inputs: 'x' },
+      units_act: { unit: 'nn.ReLU', inputs: 'units1' },
+      units2: {
+        unit: 'nn.Linear',
+        params: { in_features: 32, out_features: 1 },
+        inputs: 'units_act',
+      },
+      units_softplus: { unit: 'nn.Softplus', inputs: 'units2' },
+    },
+    outputs: { units: 'units_softplus' },
+  }
+  /** 特徴の 4 列と値段の 1 列の値段を変えた記録の表 */
+  const record: DatasetInfo = {
+    path: '/data/sales',
+    inputs: [{ name: 'x', shape: [4, 5], dtype: 'float32', dataset_shape: [null, 5] }],
+    task: 'price',
+    target: 'units',
+    classes: null,
+    outputs: 1,
+    price: {
+      columns: 5,
+      price: 'price',
+      units: 'units',
+      cost: 'unit_cost',
+      product: 'product_id',
+      id: 'record_id',
+      problem: '値段の見直し',
+    },
+  }
+
+  it('入力の幅を特徴の列と値段の列の数にし, softplus の前の出す値を 1 にし, 決め方を初めに知らせる', () => {
+    const { spec, notes } = applyDatasetInputs(sales, record, units)
+    expect(spec.inputs.x!.shape).toEqual([4, 5])
+    expect(spec.nodes.units1!.params).toEqual({ in_features: 5, out_features: 32 })
+    expect(spec.nodes.units2!.params).toEqual({ in_features: 32, out_features: 1 })
+    expect(notes[0]).toBe(
+      '問題の設定 値段の見直し が値段を変える判断なので, 入力の幅を, 商品の特徴の列と値段の列の数 5 にしました ' +
+        '(値段の列 price は入力の最後の列). ' +
+        '入力に入れない列: 売れた数 (予測する値) の列 units, ' +
+        '原価 (仕入れか作るのにかかる値段. 利益の計算に使う) の列 unit_cost, ' +
+        '商品の id (値段を選ぶ単位) の列 product_id, 行を見分ける id の列 record_id. ' +
+        '売れた数の予測は 1 行に 1 つの値を出します',
+    )
+    expect(notes).toContain('units1 の in_features を 5 にしました')
+    expect(notes).toContain(
+      '出力のつなぎ元 units_softplus の 1 つ前の units2 の out_features を 1 にしました',
+    )
+    expect(datasetSummary(record)).toBe(
+      'データセットから入れました: 入力 x [4, 5], タスク price, 目的の列 units, 出す値 1',
+    )
+  })
+
+  it('出す値の数の違う softplus の前も 1 にし, 無い原価と商品の id の列は出さない', () => {
+    const wide: Spec = {
+      ...sales,
+      nodes: {
+        ...sales.nodes,
+        units2: { ...sales.nodes.units2!, params: { in_features: 32, out_features: 3 } },
+      },
+    }
+    const bare: DatasetInfo = {
+      ...record,
+      price: { columns: 5, price: null, units: 'units', cost: null, product: null, id: null },
+    }
+    const { spec, notes } = applyDatasetInputs(wide, bare, units)
+    expect(spec.nodes.units2!.params).toEqual({ in_features: 32, out_features: 1 })
+    expect(notes[0]).toBe(
+      '値段を変える判断のデータセットなので, 入力の幅を, 商品の特徴の列と値段の列の数 5 にしました ' +
+        '(値段の列は入力の最後の列). ' +
+        '入力に入れない列: 売れた数 (予測する値) の列 units, 行を見分ける id の列. ' +
+        '売れた数の予測は 1 行に 1 つの値を出します',
+    )
+  })
+
+  it('値段を変える判断でないデータセットでは, softplus の前を書き換えない', () => {
+    const regression: DatasetInfo = { ...record, task: 'regression', price: null }
+    const { spec, notes } = applyDatasetInputs(sales, regression, units)
+    expect(spec.nodes.units2!.params).toEqual({ in_features: 32, out_features: 1 })
+    expect(notes).toContain('出力の大きさ 1 は, 最後の部品の引数に手で入れてください')
   })
 })
