@@ -94,7 +94,7 @@ from ml_modelcontrol import build_model
 model = build_model(Path("~/.ml-createarchitecture/models/first_mlp.yaml").expanduser())
 ```
 
-ML-Pathfinder で書き出した学習のプロジェクトには, 上の「データセットとプロジェクト」で, データセットから入力と出力を作り, プロジェクトに保存できる (操作ガイドの 9 章). ML-Found で学習する手順は, [ML-ModelControl](https://github.com/victor-von-pooh/ML-ModelControl) の README を参照.
+ML-Pathfinder で書き出した学習のプロジェクトには, 上の「データセットとプロジェクト」で, データセットから入力と出力を作り, プロジェクトに保存できる. 問題の設定から決めた保存先では, 書く前に骨組みの学習のスクリプトが読む入力と出力に合うかを確かめ, 合わなければ直す場所を出す (操作ガイドの 9 章). ML-Found で学習する手順は, [ML-ModelControl](https://github.com/victor-von-pooh/ML-ModelControl) の README を参照.
 
 ## 文書
 

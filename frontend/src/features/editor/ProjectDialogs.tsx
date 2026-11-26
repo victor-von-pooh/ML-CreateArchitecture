@@ -1,11 +1,13 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { ClipboardList, FlaskConical, LayoutTemplate } from 'lucide-react'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import {
   api,
   ApiError,
+  contractDetail,
+  type ContractFinding,
   type DatasetInputs,
   type ExperimentList,
   type ProjectTarget,
@@ -519,6 +521,57 @@ function targetSource(target: ProjectTarget): string {
   return 'プロジェクトの既定の保存先 (configs/default/train.yaml の model.spec の既定)'
 }
 
+/** プロジェクトに保存する要求 (saved は送る定義, accept は骨組みの約束に合わなくても書くか) */
+type SaveRequest = {
+  text: string
+  named: string
+  checkedPath: string
+  overwrite: boolean
+  saved: Spec
+  accept: boolean
+  /** 送ったときの確かめの番号 (保存の間に確かめ直したかを見分ける) */
+  resolved: number
+}
+
+/**
+ * 骨組みの学習のスクリプトが読む入力と出力に合わない所 (直す場所と文) と, 直さずに保存するボタン
+ */
+function ContractFindings({
+  contract,
+  pending,
+  onAccept,
+}: {
+  contract: { message: string; findings: ContractFinding[]; notes: string[] }
+  pending: boolean
+  onAccept: () => void
+}) {
+  const titleId = useId()
+  return (
+    <section
+      aria-labelledby={titleId}
+      className="space-y-2 rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text"
+    >
+      <h4 id={titleId} className="font-semibold">
+        骨組みの入力と出力に合わない所
+      </h4>
+      <p role="alert">保存しませんでした: {contract.message}</p>
+      <ul className="list-disc space-y-1 pl-5">
+        {contract.findings.map((item) => (
+          <li key={`${item.id}:${item.message}`}>
+            <span className="font-mono">{item.id}</span>: {item.message}
+          </li>
+        ))}
+      </ul>
+      {contract.notes.map((note, index) => (
+        <p key={index}>{note}</p>
+      ))}
+      <Button disabled={pending} onClick={onAccept}>
+        直さずに保存
+      </Button>
+    </section>
+  )
+}
+
 /**
  * プロジェクトのディレクトリか問題の設定を書き, 保存先を確かめてから定義を書く
  *
@@ -551,8 +604,17 @@ function ProjectSaveSection({
     name: string
     value: ProjectTarget
   } | null>(null)
-  // 書いたファイル (確かめ直すか保存し直すまで出す)
-  const [written, setWritten] = useState<string | null>(null)
+  // 書いたファイルと確かめの知らせ (確かめ直すか保存し直すまで出す)
+  const [written, setWritten] = useState<{ path: string; notes: string[] } | null>(null)
+  // 骨組みの約束に合わない所で断られた保存 (定義と保存先が同じ間だけ出し, 直さずに保存できる)
+  // (定義は中身で比べる. 親が描くたびに新しい値を渡すため)
+  const [contract, setContract] = useState<{
+    text: string
+    request: SaveRequest
+    message: string
+    findings: ContractFinding[]
+    notes: string[]
+  } | null>(null)
   // 保存が 409 で確かめ直した理由 (次に確かめるまで出す)
   const [conflict, setConflict] = useState<string | null>(null)
   const titleId = useId()
@@ -587,6 +649,7 @@ function ProjectSaveSection({
       remember(PROJECT_KEY, text)
       setTarget({ path: text, name: named, value })
       setWritten(null)
+      setContract(null)
       setConflict(reason ?? null)
       onTarget(value, text, chosen)
     },
@@ -596,6 +659,7 @@ function ProjectSaveSection({
       if (id !== latest.current) return
       setTarget(null)
       setWritten(null)
+      setContract(null)
       setConflict(null)
       onFailed()
     },
@@ -623,45 +687,70 @@ function ProjectSaveSection({
     if (pending) resolveTarget({ ...pending, chosen: true })
   }, [pending, resolveTarget])
   const save = useMutation({
-    mutationFn: ({
-      text,
-      named,
-      checkedPath,
-      overwrite,
-    }: {
-      text: string
-      named: string
-      checkedPath: string
-      overwrite: boolean
-    }) => api.saveProjectModel(text, named, spec, checkedPath, overwrite),
+    mutationFn: ({ text, named, checkedPath, overwrite, saved, accept }: SaveRequest) =>
+      api.saveProjectModel(text, named, saved, checkedPath, overwrite, accept),
     onSuccess: (saved, { text, named }) => {
       onSaved(saved.path)
       // 書いた後は既にある扱い (続けて保存すると上書きを確かめる). 保存の
       // 間に別の場所を確かめた場合は, その場所には付けない
       markExists(text, named)
-      setWritten(saved.path)
+      setWritten({ path: saved.path, notes: saved.notes ?? [] })
     },
-    onError: (error, { text, named }) => {
+    onError: (error, request) => {
+      // 骨組みの約束に合わない所は, 直す場所を出して書くかを任せる
+      const found = contractDetail(error)
+      if (found) {
+        // 保存の間に保存先を確かめ直した場合は出さない (古い要求の結果のため)
+        if (request.resolved !== latest.current) return
+        setContract({ text: JSON.stringify(request.saved), request, ...found })
+        return
+      }
       // 確かめた後に保存先が変わったか, 別の所でファイルが作られた (409)
       // 場合は, 保存先を確かめ直して理由を出す (確かめていない保存先と,
       // 既にあると知らせていないファイルに書かないため)
       if (!(error instanceof ApiError) || error.status !== 409) return
+      const { text, named } = request
       resolveTarget({ text, named, chosen: false, reason: error.message })
     },
   })
+  // 断られた保存は, 同じ定義と同じ保存先の間だけ出す (定義を直したら消す)
+  const specText = useMemo(() => JSON.stringify(spec), [spec])
+  const shownContract =
+    contract !== null &&
+    contract.text === specText &&
+    checked?.path === contract.request.checkedPath
+      ? contract
+      : null
+  // 断られた後 (保存の間も含む) に定義を書き換えた場合は, 合わない所の代わりに保存し直す案内
+  const staleContract =
+    contract !== null && shownContract === null && checked?.path === contract.request.checkedPath
+  // 「直さずに保存」で欄が消えた後の focus の移り先 (ダイアログの外に落とさないため)
+  const statusRef = useRef<HTMLParagraphElement>(null)
   const requestSave = () => {
     if (!checked) return
     if (checked.exists && !window.confirm(`${checked.path} は既にあります. 上書きしますか?`)) {
       return
     }
     setWritten(null)
+    setContract(null)
     setConflict(null)
     save.mutate({
       text: path.trim(),
       named: name.trim(),
       checkedPath: checked.path,
       overwrite: checked.exists,
+      saved: spec,
+      accept: false,
+      resolved: latest.current,
     })
+  }
+  // 合わない所を残したまま, 断られた保存と同じ保存先に書く
+  const acceptSave = () => {
+    if (!shownContract) return
+    setWritten(null)
+    setContract(null)
+    save.mutate({ ...shownContract.request, accept: true, resolved: latest.current })
+    statusRef.current?.focus()
   }
   return (
     <section aria-labelledby={titleId} className="space-y-3">
@@ -732,12 +821,31 @@ function ProjectSaveSection({
           </Button>
         </div>
       )}
+      {shownContract && (
+        <ContractFindings contract={shownContract} pending={save.isPending} onAccept={acceptSave} />
+      )}
+      {staleContract && (
+        <p
+          role="alert"
+          className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text"
+        >
+          保存しませんでした: 骨組みの入力と出力に合わない所がありました.
+          その後に定義を書き換えたので, もう一度保存してください
+        </p>
+      )}
       {save.error && !(save.error instanceof ApiError && save.error.status === 409) && (
         <ErrorBox error={save.error} />
       )}
-      <p role="status" className="text-sm">
-        {written ? `${written} に保存しました` : ''}
+      <p ref={statusRef} tabIndex={-1} role="status" className="text-sm focus:outline-none">
+        {written ? `${written.path} に保存しました` : ''}
       </p>
+      {written && written.notes.length > 0 && (
+        <ul className="list-disc space-y-1 pl-5 text-xs text-ink-3">
+          {written.notes.map((note, index) => (
+            <li key={index}>{note}</li>
+          ))}
+        </ul>
+      )}
     </section>
   )
 }
