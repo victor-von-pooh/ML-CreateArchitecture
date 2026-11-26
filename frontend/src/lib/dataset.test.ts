@@ -569,3 +569,93 @@ describe('applyDatasetInputs (異常の検知)', () => {
     expect(datasetSummary(distance)).toMatch(/^データセットを読みました: /)
   })
 })
+
+describe('applyDatasetInputs (効果を見積もる)', () => {
+  /** 同梱の例 tabular_uplift の形 (16 列を重みを共有しない 2 つの枝に通す) */
+  const twoHeads: Spec = {
+    ...emptySpec(),
+    inputs: { x: { shape: [8, 16] } },
+    nodes: {
+      treated1: { unit: 'nn.Linear', params: { in_features: 16, out_features: 32 }, inputs: 'x' },
+      treated2: {
+        unit: 'nn.Linear',
+        params: { in_features: 32, out_features: 1 },
+        inputs: 'treated1',
+      },
+      control1: { unit: 'nn.Linear', params: { in_features: 16, out_features: 32 }, inputs: 'x' },
+      control2: {
+        unit: 'nn.Linear',
+        params: { in_features: 32, out_features: 1 },
+        inputs: 'control1',
+      },
+    },
+    outputs: { treated: 'treated2', control: 'control2' },
+  }
+  /** 処置の列を除いた学習に使う 5 列の介入の記録の表 */
+  const log: DatasetInfo = {
+    path: '/data/log',
+    inputs: [{ name: 'x', shape: [4, 5], dtype: 'float32', dataset_shape: [null, 5] }],
+    task: 'uplift',
+    target: 'purchased',
+    classes: null,
+    outputs: 1,
+    uplift: {
+      columns: 5,
+      outcome: 'purchased',
+      treatment: 'coupon',
+      id: 'customer_id',
+      problem: 'クーポンの効果',
+    },
+  }
+
+  it('入力の幅を学習に使う列の数にし, 2 つの出力を 1 にし, 隠れ層の幅は変えず, 決め方を初めに知らせる', () => {
+    const { spec, notes } = applyDatasetInputs(twoHeads, log, units)
+    expect(spec.inputs.x!.shape).toEqual([4, 5])
+    expect(spec.nodes.treated1!.params).toEqual({ in_features: 5, out_features: 32 })
+    expect(spec.nodes.control1!.params).toEqual({ in_features: 5, out_features: 32 })
+    expect(spec.nodes.treated2!.params).toEqual({ in_features: 32, out_features: 1 })
+    expect(spec.nodes.control2!.params).toEqual({ in_features: 32, out_features: 1 })
+    expect(notes[0]).toBe(
+      '問題の設定 クーポンの効果 が効果の見積もりなので, 入力の幅を, 学習に使う列の数 5 にしました ' +
+        '(処置の列 coupon, 結果の列 purchased, 行の id の列 customer_id は数えません. ' +
+        '出力は処置したときとしないときの結果の予測で, どちらも 1 つの値を出します)',
+    )
+    expect(notes).toContain('treated1 の in_features を 5 にしました')
+    expect(notes).toContain('treated2 の out_features を 1 にしました')
+    expect(notes).toContain('control2 の out_features を 1 にしました')
+    expect(datasetSummary(log)).toBe(
+      'データセットから入れました: 入力 x [4, 5], タスク uplift, 目的の列 purchased, 出す値 1',
+    )
+  })
+
+  it('出す値の数が違う出力も 1 にし, 問題の設定が無ければ列の名前を出さない', () => {
+    const wide: Spec = {
+      ...twoHeads,
+      nodes: {
+        ...twoHeads.nodes,
+        control2: { ...twoHeads.nodes.control2!, params: { in_features: 32, out_features: 3 } },
+      },
+    }
+    const plain: DatasetInfo = {
+      ...log,
+      uplift: { columns: 5, outcome: 'purchased', treatment: null, id: null, problem: null },
+    }
+    const { spec, notes } = applyDatasetInputs(wide, plain, units)
+    expect(spec.nodes.control2!.params).toEqual({ in_features: 32, out_features: 1 })
+    expect(notes[0]).toBe(
+      '効果を見積もるのデータセットなので, 入力の幅を, 学習に使う列の数 5 にしました ' +
+        '(処置の列, 結果の列 purchased, 行の id の列は数えません. ' +
+        '出力は処置したときとしないときの結果の予測で, どちらも 1 つの値を出します)',
+    )
+  })
+
+  it('out_features を持たないつなぎ元の出力は手で入れるよう知らせる', () => {
+    const relu: Spec = {
+      ...twoHeads,
+      nodes: { ...twoHeads.nodes, act: { unit: 'nn.ReLU', inputs: 'control2' } },
+      outputs: { treated: 'treated2', control: 'act' },
+    }
+    const { notes } = applyDatasetInputs(relu, log, units)
+    expect(notes).toContain('出力 control の大きさ 1 は, 最後の部品の引数に手で入れてください')
+  })
+})

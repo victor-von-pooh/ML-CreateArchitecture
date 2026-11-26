@@ -57,6 +57,20 @@ export interface AnomalyWidth {
   problem?: string | null
 }
 
+/** 効果を見積もるの入力 x の幅 (処置の列を除いた学習に使う列の数) と数えない列 */
+export interface UpliftWidth {
+  /** 学習に使う列の数 (処置の列, 結果の列と行の id の列は数えない) */
+  columns: number | null
+  /** 結果の列 (データセットの目的の列) */
+  outcome?: string | null
+  /** 問題の設定の処置の列 (問題の設定を渡していないか答えていなければ無い) */
+  treatment?: string | null
+  /** 問題の設定の行の id の列 (問題の設定を渡していないか答えていなければ無い) */
+  id?: string | null
+  /** 問題の設定の名前 */
+  problem?: string | null
+}
+
 /** バックエンドが ML-EDA の model_inputs から返す値 */
 export interface DatasetInfo {
   path: string
@@ -73,6 +87,8 @@ export interface DatasetInfo {
   rank?: RankSize | null
   /** 異常の検知のデータセットで, 入力と出力の幅にした学習に使う列の数と度合いの決め方 (他は無い) */
   anomaly?: AnomalyWidth | null
+  /** 効果を見積もるのデータセットで, 入力 x の幅にした学習に使う列の数と数えない列 (他は無い) */
+  uplift?: UpliftWidth | null
 }
 
 /** 入れた結果 (定義と, 知らせる文) */
@@ -228,6 +244,24 @@ export function anomalyWidthNote(anomaly: AnomalyWidth): string {
   )
 }
 
+/** 効果を見積もるで, 入力の幅と出力の大きさをどう決めたかの文 */
+export function upliftWidthNote(uplift: UpliftWidth): string {
+  const from = uplift.problem
+    ? `問題の設定 ${uplift.problem} が効果の見積もり`
+    : '効果を見積もるのデータセット'
+  const skipped = [
+    uplift.treatment ? `処置の列 ${uplift.treatment}` : '処置の列',
+    uplift.outcome ? `結果の列 ${uplift.outcome}` : '結果の列',
+    uplift.id ? `行の id の列 ${uplift.id}` : '行の id の列',
+  ].join(', ')
+  // 名前で終われば間を空ける
+  const particle = uplift.id ? ' は' : 'は'
+  return (
+    `${from}なので, 入力の幅を, 学習に使う列の数 ${uplift.columns ?? '?'} にしました ` +
+    `(${skipped}${particle}数えません. 出力は処置したときとしないときの結果の予測で, どちらも 1 つの値を出します)`
+  )
+}
+
 /** 異常の検知の距離に基づく度合いで, 何も変えない理由の文 */
 export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
   const from = anomaly.problem ? `問題の設定 ${anomaly.problem} の` : '問題の設定の'
@@ -258,7 +292,10 @@ export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
  * 点数の表なので大きさを変えない). 異常の検知のデータセット (info.anomaly)
  * では, 入力と出力の幅が学習に使う列の数なので, その決め方を初めに知らせる.
  * 問題の設定の度合いの決め方が距離に基づく度合いなら, モデルの定義が要らない
- * ことを知らせて何も変えない
+ * ことを知らせて何も変えない. 効果を見積もるのデータセット (info.uplift) では,
+ * 入力の幅が処置の列を除いた学習に使う列の数なので, その決め方を初めに知らせ,
+ * 出力が 2 つ以上 (T-learner の treated と control) なら, それぞれのつなぎ元の
+ * out_features を出す値の数にする
  */
 export function applyDatasetInputs(
   spec: Spec,
@@ -274,7 +311,9 @@ export function applyDatasetInputs(
       ? [rankSizeNote(info.rank), ...(info.rank.notes ?? [])]
       : info.anomaly
         ? [anomalyWidthNote(info.anomaly)]
-        : []
+        : info.uplift
+          ? [upliftWidthNote(info.uplift)]
+          : []
   let next = spec
   // ノードと同じ名前の入力は作らない (つなぎ先が入力を指すように変わるため)
   const clashes = info.inputs.filter((item) => item.name in spec.nodes)
@@ -403,6 +442,23 @@ export function applyDatasetInputs(
     }
     notes.push(`出力の大きさ ${outputs} は, 最後の部品の引数に入れてください`)
     return { spec: next, notes }
+  }
+  // 効果を見積もるの 2 つ以上の出力は, それぞれのつなぎ元の out_features を出す値の数に
+  if (info.uplift && outputNames.length > 1) {
+    const nodes = { ...next.nodes }
+    for (const output of outputNames) {
+      const from = parseRef(next.outputs[output]!).name
+      const node = nodes[from]
+      if (!node || !hasParam(units, node.unit, 'out_features')) {
+        notes.push(`出力 ${output} の大きさ ${outputs} は, 最後の部品の引数に手で入れてください`)
+        continue
+      }
+      if (node.params?.out_features !== outputs) {
+        nodes[from] = { ...node, params: { ...node.params, out_features: outputs } }
+      }
+      notes.push(`${from} の out_features を ${outputs} にしました`)
+    }
+    return { spec: { ...next, nodes }, notes }
   }
   const source = outputNames.length === 1 ? parseRef(next.outputs[outputNames[0]!]!).name : null
   const last = source ? next.nodes[source] : undefined

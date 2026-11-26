@@ -81,7 +81,9 @@ class DatasetBody(BaseModel):
         "出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. "
         "並べるなら, path は反応の表のファイルで, 入力 user と item の大きさ"
         "を ML-Quest の rank_encoding の学習用の利用者と品物の数にする. "
-        "異常の検知なら, 度合いの決め方を受け持ちの答えから読む)"
+        "異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を"
+        "見積もるなら, 処置の列, 結果の列と行の id の列を受け持ちの答えから"
+        "読む)"
     )
 
 
@@ -170,6 +172,31 @@ class AnomalyWidth(BaseModel):
     )
 
 
+class UpliftWidth(BaseModel):
+    # 効果を見積もるの入力の幅 (処置の列を除いた学習に使う列の数) と, 数え
+    # ない列
+    columns: Optional[int] = Field(
+        description="学習に使う列の数 (入力 x の幅. 処置の列, 結果の列と"
+        "行の id の列は数えず, one_hot で増えた列は数える)"
+    )
+    outcome: Optional[str] = Field(
+        default=None, description="結果の列 (データセットの目的の列)"
+    )
+    treatment: Optional[str] = Field(
+        default=None,
+        description="問題の設定の処置の列 (問題の設定を渡していないか, "
+        "答えていなければ無し)"
+    )
+    id: Optional[str] = Field(
+        default=None,
+        description="問題の設定の行の id の列 (問題の設定を渡していないか, "
+        "答えていなければ無し)"
+    )
+    problem: Optional[str] = Field(
+        default=None, description="問題の設定の名前"
+    )
+
+
 class DatasetInputs(BaseModel):
     # データセットの場所と, ML-EDA の model_inputs の結果
     path: str
@@ -196,6 +223,11 @@ class DatasetInputs(BaseModel):
         default=None,
         description="異常の検知のデータセットか問題の設定で, 入力と出力の幅"
         "にした学習に使う列の数と度合いの決め方 (他は無し)"
+    )
+    uplift: Optional[UpliftWidth] = Field(
+        default=None,
+        description="効果を見積もるのデータセットか問題の設定で, 入力 x の幅"
+        "にした学習に使う列の数と数えない列 (他は無し)"
     )
 
 
@@ -649,6 +681,53 @@ def anomaly_score(problem: Any) -> Optional[str]:
     return score
 
 
+def uplift_columns(problem: Any) -> Optional[dict[str, Optional[str]]]:
+    """
+    問題の設定の受け持ちが効果の見積もりなら, 処置の列と行の id の列を返す
+    関数
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+
+    Returns
+    ----------
+    columns: Optional[dict[str, Optional[str]]]
+        treatment (処置の列) と id (行の id の列) の答え (答えていなければ
+        None). 効果を見積もるで方策でなく, 今ある記録から集め, 作り方が
+        既製のモデルをそのままでない受け持ちでなければ None. 要らなくなった
+        問いの古い答えは除外
+    """
+    # ML-Quest の答えの読み方 (ML-Quest の効果の見積もりの受け持ちと同じ
+    # 見分け方)
+    quest = load_library("ml_quest", "active_value")
+    try:
+        values = {
+            key: quest.active_value(problem, f"{quest.PART}.{key}")
+            for key in (
+                "role", "autonomous", "collect", "method",
+                "uplift.treatment", "uplift.id"
+            )
+        }
+    except READ_ERRORS:
+        values = {}
+    if values.get("role") != "effect" or values.get("autonomous") is True \
+            or values.get("collect") != "log" \
+            or values.get("method") == "pretrained":
+        columns = None
+        return columns
+    columns = {
+        key: value if isinstance(value, str) and value else None
+        for key, value in (
+            ("treatment", values.get("uplift.treatment")),
+            ("id", values.get("uplift.id"))
+        )
+    }
+
+    return columns
+
+
 def rank_size(problem: Any, dataset: Path) -> Optional[RankSize]:
     """
     並べるの問題の設定なら, 反応の表から学習用の利用者と品物の数を求める
@@ -761,7 +840,9 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     が学ぶ行の幅. 列の数とは違う). 並べるなら, 場所は反応の表のファイルで,
     入力 user と item の大きさを学習用の利用者と品物の数 (ML-Quest の
     rank_encoding) にする. 異常の検知のデータセットでは, 学習に使う列の数
-    (ML-EDA の outputs) と, 問題の設定の度合いの決め方も返す
+    (ML-EDA の outputs) と, 問題の設定の度合いの決め方も返す. 効果を
+    見積もるのデータセットでは, 学習に使う列の数 (ML-EDA の入力 x の幅) と,
+    問題の設定の処置の列と行の id の列も返す
 
     Parameters
     ----------
@@ -775,7 +856,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         入力 (形はバッチの次元を例の大きさにしたものと, データセットの
         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
         符号化した行の幅, 並べるの学習用の利用者と品物の数, 異常の検知の
-        学習に使う列の数と度合いの決め方
+        学習に使う列の数と度合いの決め方, 効果を見積もるの学習に使う列の数と
+        数えない列
 
     Raises
     ----------
@@ -784,7 +866,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の
         組など) と, 表の生成の幅か並べるの数を求められない場合と, 表の生成
         で入力が表の行 (バッチと列の 2 次元の 1 つ) でない場合と, 異常の
-        検知の問題の設定でデータセットが異常の検知の表でない場合は 422.
+        検知の問題の設定でデータセットが異常の検知の表でない場合と, 効果を
+        見積もるの問題の設定でデータセットが介入の記録の表でない場合は 422.
         並べるで反応の表が無い場合は 404
     """
     # 並べるは反応の表のファイルから 2 塔の入力を作る
@@ -852,6 +935,26 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
             problem=None if score is None else problem_name(problem)
         )
 
+    # 効果を見積もるの入力 x の幅 (ML-EDA の入力 x の最後の次元) と, 問題の
+    # 設定が効果の見積もりの場合の表の種類の確かめ
+    roles = None if problem is None else uplift_columns(problem)
+    uplift = None
+    if roles is not None and task != "uplift":
+        raise HTTPException(
+            422,
+            "効果を見積もるの問題の設定ですが, データセットが ML-Fathom "
+            "(ML-EDA) で介入の記録の表として書き出したものではありません"
+        )
+    if task == "uplift":
+        last = inputs[0].dataset_shape[-1:] if len(inputs) == 1 else []
+        uplift = UpliftWidth(
+            columns=last[0] if last and isinstance(last[0], int)
+            and last[0] > 0 else None,
+            outcome=target, treatment=(roles or {}).get("treatment"),
+            id=(roles or {}).get("id"),
+            problem=None if roles is None else problem_name(problem)
+        )
+
     # 表の生成は, 入力 (バッチと列の 2 次元) の列の次元と出す値の数を
     # 符号化した行の幅に
     table = None if problem is None else table_width(problem, path)
@@ -874,7 +977,7 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
             target_kind=optional_text(info, "target_kind"),
             outputs=outputs if isinstance(outputs, int)
             and not isinstance(outputs, bool) and outputs > 0 else None,
-            table=table, anomaly=anomaly
+            table=table, anomaly=anomaly, uplift=uplift
         )
     except ValidationError as error:
         raise HTTPException(
