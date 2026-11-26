@@ -2536,8 +2536,41 @@ def contract_findings(
             422, f"骨組みの入力と出力の約束と比べられません: {error}"
         ) from error
     notes = [] if note is None else [note]
+    if note is None:
+        notes += unchecked_widths(contract, widths)
 
     return list(found), notes, widths
+
+
+def unchecked_widths(contract: Any, widths: dict[str, int]) -> list[str]:
+    """
+    データセットを読めたのに数を求められず, 確かめなかった入力の形の最後の
+    大きさの知らせを作る関数
+
+    Parameters
+    ----------
+    contract: Any
+        骨組みの約束 (ML-Quest の model_contract)
+    widths: dict[str, int]
+        求めた最後の大きさの鍵から数
+
+    Returns
+    ----------
+    notes: list[str]
+        確かめなかった入力ごとの知らせ (全て確かめたなら空)
+    """
+    # 約束の数も渡した数も無い, 鍵を持つ入力 (崩れた約束は知らせ無し)
+    items = contract.get("inputs") if isinstance(contract, dict) else None
+    notes = [
+        f"{item.get('label') or item['width']} をデータセットから求められ"
+        f"ないので, 入力 {item.get('name') or item.get('text')} の形の最後の"
+        "大きさは確かめていません"
+        for item in items or []
+        if isinstance(item, dict) and item.get("width")
+        and item.get("size") is None and item["width"] not in widths
+    ]
+
+    return notes
 
 
 @router.put("/project/model")

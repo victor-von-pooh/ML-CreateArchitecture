@@ -20,6 +20,7 @@ from ml_createarchitecture.project import (
     make_parents,
     positive_int,
     same_file,
+    unchecked_widths,
 )
 
 # 全結合だけの小さなモデルの定義
@@ -3442,3 +3443,71 @@ def test_project_save_contract_without_dataset(
     detail = response.json()["detail"]
     assert [item["id"] for item in detail["findings"]] == ["outputs"]
     assert detail["widths"] == {} and len(detail["notes"]) == 1
+
+
+def test_project_save_old_quest(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    問題の設定から決めた保存先で, check_model_contract の無い古い ML-Quest
+    なら, 入れ直し方の案内付きの 501 で書かないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        モジュールの差し替え
+
+    Returns
+    ----------
+    None
+    """
+    # 記録を読めるが約束の関数の無い ML-Quest
+    project = make_project_dir(tmp_path / "proj").resolve()
+    problem = tmp_path / "sales.yaml"
+    problem.write_text("name: sales\n")
+    spec_path = project / "models" / "model.yaml"
+    stub = StubQuest({
+        "model": {"project_model_spec": str(spec_path)},
+        "data": {}, "project": {"path": str(project)}
+    })
+    old = SimpleNamespace(load_problem=stub.load_problem,
+                          handoff=stub.handoff)
+    monkeypatch.setitem(sys.modules, "ml_quest", old)
+
+    # 保存先は決まるが, 書く前の確かめで 501 (書き無し)
+    response = client.put(
+        "/api/project/model", json={"path": str(problem), "spec": SPEC}
+    )
+    assert response.status_code == 501, response.text
+    assert "check_model_contract" in response.json()["detail"]
+    assert not spec_path.exists()
+
+
+def test_unchecked_widths() -> None:
+    """
+    データセットから求められなかった最後の大きさだけを知らせることを
+    確かめる関数
+
+    Returns
+    ----------
+    None
+    """
+    # 数の鍵を持つ入力, 約束の数を持つ入力と, 鍵の無い入力
+    contract = {"inputs": [
+        {"name": None, "width": "observations", "size": None,
+         "label": "観測の要素の数", "text": "観測"},
+        {"name": "x", "width": "features", "size": 3,
+         "label": "学習に使う列の数", "text": "行の特徴"},
+        {"name": None, "width": None, "size": None, "label": None,
+         "text": "時刻"},
+    ]}
+    assert unchecked_widths(contract, {}) == [
+        "観測の要素の数 をデータセットから求められないので, 入力 観測 の"
+        "形の最後の大きさは確かめていません"
+    ]
+    assert unchecked_widths(contract, {"observations": 8}) == []
+    assert unchecked_widths(None, {}) == []

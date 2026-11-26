@@ -721,6 +721,11 @@ function ProjectSaveSection({
     checked?.path === contract.request.checkedPath
       ? contract
       : null
+  // 断られた後 (保存の間も含む) に定義を書き換えた場合は, 合わない所の代わりに保存し直す案内
+  const staleContract =
+    contract !== null && shownContract === null && checked?.path === contract.request.checkedPath
+  // 「直さずに保存」で欄が消えた後の focus の移り先 (ダイアログの外に落とさないため)
+  const statusRef = useRef<HTMLParagraphElement>(null)
   const requestSave = () => {
     if (!checked) return
     if (checked.exists && !window.confirm(`${checked.path} は既にあります. 上書きしますか?`)) {
@@ -745,6 +750,7 @@ function ProjectSaveSection({
     setWritten(null)
     setContract(null)
     save.mutate({ ...shownContract.request, accept: true, resolved: latest.current })
+    statusRef.current?.focus()
   }
   return (
     <section aria-labelledby={titleId} className="space-y-3">
@@ -818,10 +824,19 @@ function ProjectSaveSection({
       {shownContract && (
         <ContractFindings contract={shownContract} pending={save.isPending} onAccept={acceptSave} />
       )}
+      {staleContract && (
+        <p
+          role="alert"
+          className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text"
+        >
+          保存しませんでした: 骨組みの入力と出力に合わない所がありました.
+          その後に定義を書き換えたので, もう一度保存してください
+        </p>
+      )}
       {save.error && !(save.error instanceof ApiError && save.error.status === 409) && (
         <ErrorBox error={save.error} />
       )}
-      <p role="status" className="text-sm">
+      <p ref={statusRef} tabIndex={-1} role="status" className="text-sm focus:outline-none">
         {written ? `${written.path} に保存しました` : ''}
       </p>
       {written && written.notes.length > 0 && (
