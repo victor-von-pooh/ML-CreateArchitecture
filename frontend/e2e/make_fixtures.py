@@ -278,7 +278,7 @@ def make_coupons(path: Path) -> None:
     ----------
     None
     """
-    # 処置の列, 結果の列と行の id の列は学習に使う列から外す (学習に使う
+    # 学習に使う列から外す列 (処置の列, 結果の列, 行の id の列. 学習に使う
     # 列は 2)
     rng = np.random.default_rng(0)
     rows = 40

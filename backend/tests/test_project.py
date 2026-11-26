@@ -2363,7 +2363,7 @@ def write_uplift_dataset(ml_eda: Any, root: Path) -> Path:
         書き出したデータセット (学習に使う列は age, visits と, one_hot に
         した region の 3 つの値の 5 列)
     """
-    # 処置の列, 結果の列と行の id の列は学習に使う列から外す
+    # 学習に使う列から外す列 (処置の列, 結果の列, 行の id の列)
     rng = np.random.default_rng(0)
     rows = 60
     frame = pd.DataFrame({
@@ -2416,8 +2416,8 @@ def test_dataset_inputs_uplift(client: TestClient, tmp_path: Path) -> None:
         ml_quest.save_problem(problem, places[name])
     dataset = write_uplift_dataset(ml_eda, tmp_path)
 
-    # 入力 x は 5 列 (処置の列, 結果の列, 行の id の列は数えない) で,
-    # 出す値は 1
+    # 入力 x の 5 列 (処置の列, 結果の列, 行の id の列を除く) と, 出す値の
+    # 数 1
     response = client.post(
         "/api/dataset/inputs",
         json={"path": str(dataset), "problem": str(places["uplift"])}
@@ -2447,20 +2447,20 @@ def test_dataset_inputs_uplift(client: TestClient, tmp_path: Path) -> None:
         assert result["nodes"][node]["outputs"]["out"]["shape"] == [4, 1]
     assert result["nodes"]["treated1"]["outputs"]["out"]["shape"] == [4, 32]
 
-    # 問題の設定を渡さないか効果の見積もりでない問題の設定なら, 処置の列と
-    # 行の id の列は無し
+    # 問題の設定を渡さないか効果の見積もりでない問題の設定でも, データ
+    # セットの説明の処置の列と行の id の列 (問題の設定の名前は無し)
     for extra in ({}, {"problem": str(places["column"])}):
         response = client.post(
             "/api/dataset/inputs", json={"path": str(dataset), **extra}
         )
         assert response.status_code == 200, response.text
         assert response.json()["uplift"] == {
-            "columns": 5, "outcome": "purchased", "treatment": None,
-            "id": None, "problem": None
+            "columns": 5, "outcome": "purchased", "treatment": "coupon",
+            "id": "customer_id", "problem": None
         }
 
-    # 介入の記録の表でないデータセットは uplift が無く, 効果の見積もりの
-    # 問題の設定を渡すと 422
+    # 介入の記録の表でないデータセットの uplift の無しと, 効果の見積もりの
+    # 問題の設定を渡した場合の 422
     frame = pd.DataFrame({"age": np.arange(30.0), "visits": np.arange(30.0)})
     frame.to_csv(tmp_path / "table.csv", index=False)
     other = tmp_path / "other"

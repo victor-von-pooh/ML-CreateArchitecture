@@ -365,7 +365,8 @@ export interface paths {
          *     rank_encoding) にする. 異常の検知のデータセットでは, 学習に使う列の数
          *     (ML-EDA の outputs) と, 問題の設定の度合いの決め方も返す. 効果を
          *     見積もるのデータセットでは, 学習に使う列の数 (ML-EDA の入力 x の幅) と,
-         *     問題の設定の処置の列と行の id の列も返す
+         *     処置の列と行の id の列 (データセットの説明を先, 無ければ問題の設定の
+         *     答え) も返す
          *
          *     Parameters
          *     ----------
@@ -652,7 +653,7 @@ export interface components {
             path: string;
             /**
              * Problem
-             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. 並べるなら, path は反応の表のファイルで, 入力 user と item の大きさを ML-Quest の rank_encoding の学習用の利用者と品物の数にする. 異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を見積もるなら, 処置の列, 結果の列と行の id の列を受け持ちの答えから読む)
+             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. 並べるなら, path は反応の表のファイルで, 入力 user と item の大きさを ML-Quest の rank_encoding の学習用の利用者と品物の数にする. 異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を見積もるなら, データセットの説明に無い処置の列と行の id の列を受け持ちの答えから読む)
              */
             problem?: string | null;
         };
@@ -1183,12 +1184,12 @@ export interface components {
             outcome?: string | null;
             /**
              * Treatment
-             * @description 問題の設定の処置の列 (問題の設定を渡していないか, 答えていなければ無し)
+             * @description 処置の列 (データセットの説明の uplift.treatment. 無ければ問題の設定の答え. どちらにも無ければ無し)
              */
             treatment?: string | null;
             /**
              * Id
-             * @description 問題の設定の行の id の列 (問題の設定を渡していないか, 答えていなければ無し)
+             * @description 行の id の列 (データセットの説明の uplift.id. 無ければ問題の設定の答え. どちらにも無ければ無し)
              */
             id?: string | null;
             /**

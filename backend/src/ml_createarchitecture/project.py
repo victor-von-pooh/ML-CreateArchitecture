@@ -82,8 +82,8 @@ class DatasetBody(BaseModel):
         "並べるなら, path は反応の表のファイルで, 入力 user と item の大きさ"
         "を ML-Quest の rank_encoding の学習用の利用者と品物の数にする. "
         "異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を"
-        "見積もるなら, 処置の列, 結果の列と行の id の列を受け持ちの答えから"
-        "読む)"
+        "見積もるなら, データセットの説明に無い処置の列と行の id の列を受け"
+        "持ちの答えから読む)"
     )
 
 
@@ -173,8 +173,8 @@ class AnomalyWidth(BaseModel):
 
 
 class UpliftWidth(BaseModel):
-    # 効果を見積もるの入力の幅 (処置の列を除いた学習に使う列の数) と, 数え
-    # ない列
+    # 効果を見積もるの入力の幅 (処置の列を除いた学習に使う列の数) と,
+    # 数えない列
     columns: Optional[int] = Field(
         description="学習に使う列の数 (入力 x の幅. 処置の列, 結果の列と"
         "行の id の列は数えず, one_hot で増えた列は数える)"
@@ -184,13 +184,13 @@ class UpliftWidth(BaseModel):
     )
     treatment: Optional[str] = Field(
         default=None,
-        description="問題の設定の処置の列 (問題の設定を渡していないか, "
-        "答えていなければ無し)"
+        description="処置の列 (データセットの説明の uplift.treatment. 無け"
+        "れば問題の設定の答え. どちらにも無ければ無し)"
     )
     id: Optional[str] = Field(
         default=None,
-        description="問題の設定の行の id の列 (問題の設定を渡していないか, "
-        "答えていなければ無し)"
+        description="行の id の列 (データセットの説明の uplift.id. 無けれ"
+        "ば問題の設定の答え. どちらにも無ければ無し)"
     )
     problem: Optional[str] = Field(
         default=None, description="問題の設定の名前"
@@ -715,13 +715,45 @@ def uplift_columns(problem: Any) -> Optional[dict[str, Optional[str]]]:
     if values.get("role") != "effect" or values.get("autonomous") is True \
             or values.get("collect") != "log" \
             or values.get("method") == "pretrained":
-        columns = None
-        return columns
+        return None
     columns = {
         key: value if isinstance(value, str) and value else None
         for key, value in (
             ("treatment", values.get("uplift.treatment")),
             ("id", values.get("uplift.id"))
+        )
+    }
+
+    return columns
+
+
+def dataset_uplift(path: Path) -> dict[str, Optional[str]]:
+    """
+    介入の記録の表の説明から, 処置の列と行の id の列を読む関数
+
+    Parameters
+    ----------
+    path: Path
+        書き出したデータセットのディレクトリ (task: uplift)
+
+    Returns
+    ----------
+    columns: dict[str, Optional[str]]
+        treatment (処置の列) と id (行の id の列). 説明に無いか読めなければ
+        None
+    """
+    # ML-EDA の説明の読み方 (説明の uplift の名前)
+    eda = load_library("ml_eda", "load_dataset")
+    try:
+        info = eda.load_dataset(path).info
+    except READ_ERRORS:
+        info = {}
+    effects = section(info, "uplift")
+    columns = {
+        key: value if isinstance(value, str) and value else None
+        for key, value in (
+            ("treatment", effects.get("treatment")),
+            ("id", effects.get("id"))
         )
     }
 
@@ -842,7 +874,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     rank_encoding) にする. 異常の検知のデータセットでは, 学習に使う列の数
     (ML-EDA の outputs) と, 問題の設定の度合いの決め方も返す. 効果を
     見積もるのデータセットでは, 学習に使う列の数 (ML-EDA の入力 x の幅) と,
-    問題の設定の処置の列と行の id の列も返す
+    処置の列と行の id の列 (データセットの説明を先, 無ければ問題の設定の
+    答え) も返す
 
     Parameters
     ----------
@@ -935,8 +968,9 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
             problem=None if score is None else problem_name(problem)
         )
 
-    # 効果を見積もるの入力 x の幅 (ML-EDA の入力 x の最後の次元) と, 問題の
-    # 設定が効果の見積もりの場合の表の種類の確かめ
+    # 効果を見積もるの入力 x の幅 (ML-EDA の入力 x の最後の次元), 数えない
+    # 列の名前 (データセットの説明を先, 無ければ問題の設定の答え) と, 問題
+    # の設定が効果の見積もりの場合の表の種類の確かめ
     roles = None if problem is None else uplift_columns(problem)
     uplift = None
     if roles is not None and task != "uplift":
@@ -947,11 +981,14 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         )
     if task == "uplift":
         last = inputs[0].dataset_shape[-1:] if len(inputs) == 1 else []
+        written = dataset_uplift(path)
         uplift = UpliftWidth(
             columns=last[0] if last and isinstance(last[0], int)
             and last[0] > 0 else None,
-            outcome=target, treatment=(roles or {}).get("treatment"),
-            id=(roles or {}).get("id"),
+            outcome=target,
+            treatment=written["treatment"]
+            or (roles or {}).get("treatment"),
+            id=written["id"] or (roles or {}).get("id"),
             problem=None if roles is None else problem_name(problem)
         )
 

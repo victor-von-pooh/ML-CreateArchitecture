@@ -244,21 +244,26 @@ export function anomalyWidthNote(anomaly: AnomalyWidth): string {
   )
 }
 
-/** 効果を見積もるで, 入力の幅と出力の大きさをどう決めたかの文 */
+/**
+ * 効果を見積もるで, 入力の幅と出力の大きさをどう決めたかの文 (入力に入れない列は, 初めての人にも
+ * 分かるよう役を言葉で添える. 名前が分からない列は役だけ)
+ */
 export function upliftWidthNote(uplift: UpliftWidth): string {
   const from = uplift.problem
     ? `問題の設定 ${uplift.problem} が効果の見積もり`
     : '効果を見積もるのデータセット'
+  const named = (role: string, name: string | null | undefined) => (name ? `${role} ${name}` : role)
   const skipped = [
-    uplift.treatment ? `処置の列 ${uplift.treatment}` : '処置の列',
-    uplift.outcome ? `結果の列 ${uplift.outcome}` : '結果の列',
-    uplift.id ? `行の id の列 ${uplift.id}` : '行の id の列',
+    named('処置 (行動したかどうか. クーポンを配ったかなど) の列', uplift.treatment),
+    named('結果 (行動の後にどうなったか. 買ったかなど) の列', uplift.outcome),
+    named('行を見分ける id の列', uplift.id),
   ].join(', ')
-  // 名前で終われば間を空ける
-  const particle = uplift.id ? ' は' : 'は'
   return (
-    `${from}なので, 入力の幅を, 学習に使う列の数 ${uplift.columns ?? '?'} にしました ` +
-    `(${skipped}${particle}数えません. 出力は処置したときとしないときの結果の予測で, どちらも 1 つの値を出します)`
+    `${from}なので, 入力の幅を, 学習に使う列の数 ${uplift.columns ?? '?'} にしました. ` +
+    `入力に入れない列: ${skipped} ` +
+    '(効果は処置したときとしないときの結果の差として学ぶので, 処置と結果は入力に入れません). ' +
+    '効果の見積もりの 2 つの出力 (処置したときの結果の予測と, しないときの結果の予測) は, ' +
+    'どちらも 1 行に 1 つの値を出します'
   )
 }
 
@@ -443,7 +448,7 @@ export function applyDatasetInputs(
     notes.push(`出力の大きさ ${outputs} は, 最後の部品の引数に入れてください`)
     return { spec: next, notes }
   }
-  // 効果を見積もるの 2 つ以上の出力は, それぞれのつなぎ元の out_features を出す値の数に
+  // 効果を見積もるの 2 つ以上の出力のつなぎ元の out_features (出す値の数)
   if (info.uplift && outputNames.length > 1) {
     const nodes = { ...next.nodes }
     for (const output of outputNames) {

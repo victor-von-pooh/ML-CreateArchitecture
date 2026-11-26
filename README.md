@@ -13,7 +13,7 @@
   </tr>
   <tr>
     <td>CNN の例. ノードごとに推定した出力の形が出て, 右の詳細で引数を説明と範囲付きのフォームで決める</td>
-    <td>「開く」の一覧. 保存した定義と, 同梱の例 (CNN, LSTM, Transformer, GCN, BERT など) と受け持ちごとの雛形 (VAE, GAN, 拡散, 対照, 2 塔, 方策と価値)</td>
+    <td>「開く」の一覧. 保存した定義と, 同梱の例 (CNN, LSTM, Transformer, GCN, BERT など) と受け持ちごとの雛形 (VAE, GAN, 拡散, 対照, 2 塔, 方策と価値, 異常の検知, 効果を見積もる)</td>
   </tr>
   <tr>
     <td><img src="docs/images/error.png" alt="形の誤り: 全結合の in_features が前のノードの出力と合わず, PyTorch のエラーと直し方が出る"></td>

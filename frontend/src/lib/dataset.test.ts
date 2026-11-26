@@ -616,9 +616,12 @@ describe('applyDatasetInputs (効果を見積もる)', () => {
     expect(spec.nodes.treated2!.params).toEqual({ in_features: 32, out_features: 1 })
     expect(spec.nodes.control2!.params).toEqual({ in_features: 32, out_features: 1 })
     expect(notes[0]).toBe(
-      '問題の設定 クーポンの効果 が効果の見積もりなので, 入力の幅を, 学習に使う列の数 5 にしました ' +
-        '(処置の列 coupon, 結果の列 purchased, 行の id の列 customer_id は数えません. ' +
-        '出力は処置したときとしないときの結果の予測で, どちらも 1 つの値を出します)',
+      '問題の設定 クーポンの効果 が効果の見積もりなので, 入力の幅を, 学習に使う列の数 5 にしました. ' +
+        '入力に入れない列: 処置 (行動したかどうか. クーポンを配ったかなど) の列 coupon, ' +
+        '結果 (行動の後にどうなったか. 買ったかなど) の列 purchased, 行を見分ける id の列 customer_id ' +
+        '(効果は処置したときとしないときの結果の差として学ぶので, 処置と結果は入力に入れません). ' +
+        '効果の見積もりの 2 つの出力 (処置したときの結果の予測と, しないときの結果の予測) は, ' +
+        'どちらも 1 行に 1 つの値を出します',
     )
     expect(notes).toContain('treated1 の in_features を 5 にしました')
     expect(notes).toContain('treated2 の out_features を 1 にしました')
@@ -628,7 +631,7 @@ describe('applyDatasetInputs (効果を見積もる)', () => {
     )
   })
 
-  it('出す値の数が違う出力も 1 にし, 問題の設定が無ければ列の名前を出さない', () => {
+  it('出す値の数が違う出力も 1 にし, 名前の分からない列は役だけを出す', () => {
     const wide: Spec = {
       ...twoHeads,
       nodes: {
@@ -643,9 +646,12 @@ describe('applyDatasetInputs (効果を見積もる)', () => {
     const { spec, notes } = applyDatasetInputs(wide, plain, units)
     expect(spec.nodes.control2!.params).toEqual({ in_features: 32, out_features: 1 })
     expect(notes[0]).toBe(
-      '効果を見積もるのデータセットなので, 入力の幅を, 学習に使う列の数 5 にしました ' +
-        '(処置の列, 結果の列 purchased, 行の id の列は数えません. ' +
-        '出力は処置したときとしないときの結果の予測で, どちらも 1 つの値を出します)',
+      '効果を見積もるのデータセットなので, 入力の幅を, 学習に使う列の数 5 にしました. ' +
+        '入力に入れない列: 処置 (行動したかどうか. クーポンを配ったかなど) の列, ' +
+        '結果 (行動の後にどうなったか. 買ったかなど) の列 purchased, 行を見分ける id の列 ' +
+        '(効果は処置したときとしないときの結果の差として学ぶので, 処置と結果は入力に入れません). ' +
+        '効果の見積もりの 2 つの出力 (処置したときの結果の予測と, しないときの結果の予測) は, ' +
+        'どちらも 1 行に 1 つの値を出します',
     )
   })
 
