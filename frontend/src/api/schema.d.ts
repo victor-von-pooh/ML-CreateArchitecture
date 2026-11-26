@@ -1231,7 +1231,7 @@ export interface components {
             updated_at: string;
             /**
              * Notes
-             * @description 骨組みの約束の確かめの知らせ (データセットを読めず, 入力の形の最後の大きさを確かめていないなど)
+             * @description 骨組みの約束の確かめの知らせ (データセットを読めず, 入力と出力の形の最後の大きさを確かめていない, 出力の形を推定できないなど)
              */
             notes?: string[];
         };

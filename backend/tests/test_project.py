@@ -18,6 +18,7 @@ from ml_createarchitecture.app import create_app
 from ml_createarchitecture.project import (
     ignores_case,
     make_parents,
+    output_pairs,
     positive_int,
     same_file,
     unchecked_widths,
@@ -3220,6 +3221,14 @@ CONTRACT_CASES = {
 }
 
 
+# 雛形のままの出力の形の最後の大きさが, 骨組みが読む数と違う出力 (異常の
+# 検知の再構成は雛形の列の数, 時間をまたぐ量の判断は雛形の水準の数)
+TEMPLATE_OUTPUTS = {
+    "anomaly": ["outputs.recon"],
+    "demand": ["outputs.quantiles"],
+}
+
+
 def contract_problem(
     ml_eda: Any, ml_quest: Any, kind: str, root: Path
 ) -> Path:
@@ -3357,7 +3366,7 @@ def test_project_save_contract(
     assert "合わない所" in detail["message"]
     assert [item["id"] for item in detail["findings"]] == [
         f"inputs.{name}" for name in names
-    ]
+    ] + TEMPLATE_OUTPUTS.get(kind, [])
     assert all(item["level"] == "error" for item in detail["findings"])
     assert "最後の大きさ" in detail["findings"][0]["message"]
     assert detail["widths"] and detail["notes"] == []
@@ -3393,6 +3402,129 @@ def test_project_save_contract(
     assert response.status_code == 200, response.text
     written = yaml.safe_load(Path(target["path"]).read_text())
     assert f"{output}_out" in written["outputs"]
+
+
+# 出力の形の最後の大きさを変える受け持ちごとの, 出力の名前, 書き換える
+# ノード, 書き換える前と後の値の差と, 直し方の文の数の説明
+OUTPUT_CASES = {
+    "anomaly": ("recon", "dec2", 1, "学習に使う列の数"),
+    "uplift": ("treated", "treated2", 1, ""),
+    "demand": ("quantiles", "demand2", 2, "学ぶ水準の数"),
+}
+
+
+@pytest.mark.parametrize("kind", list(OUTPUT_CASES))
+def test_project_save_output_size(
+    client: TestClient, tmp_path: Path, kind: str
+) -> None:
+    """
+    入力が合っていて出力の形の最後の大きさだけが骨組みが読む数と違う
+    定義を, 形の推定で求めた大きさと直す場所付きの 409 で断ることを確かめ
+    る関数 (ML-EDA と check_model_contract のある ML-Quest が無ければ
+    飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    kind: str
+        受け持ち (OUTPUT_CASES の鍵)
+
+    Returns
+    ----------
+    None
+    """
+    # 記録のデータセットから作った雛形の, 出力の前のノードの幅だけを変更
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    if not hasattr(ml_quest, "check_model_contract"):
+        pytest.skip("ML-Quest に check_model_contract がありません")
+    output, node, step, label = OUTPUT_CASES[kind]
+    example = CONTRACT_CASES[kind][0]
+    place = contract_problem(ml_eda, ml_quest, kind, tmp_path)
+    target = client.post(
+        "/api/project/target", json={"path": str(place)}
+    ).json()
+    info = client.post(
+        "/api/dataset/inputs",
+        json={"path": target["dataset"], "problem": str(place)}
+    ).json()
+    template = client.get(f"/api/examples/{example}").json()["spec"]
+    spec = client.post("/api/templates/adapt", json={
+        "spec": template, "name": example, "values": template_values(info)
+    }).json()["spec"]
+    params = spec["nodes"][node]["params"]
+    expected = params["out_features"]
+    params["out_features"] = expected + step
+
+    # 入力は合うので, 出力だけの直す場所 (書き無し)
+    response = client.put(
+        "/api/project/model", json={"path": str(place), "spec": spec}
+    )
+    assert response.status_code == 409, response.text
+    detail = response.json()["detail"]
+    size = f"{label} {expected}" if label else f" {expected}"
+    assert detail["findings"] == [{
+        "level": "error", "id": f"outputs.{output}",
+        "message": f"出力 {output} の最後の大きさを{size} にしてください "
+                   f"(今は {expected + step})"
+    }]
+    assert detail["notes"] == []
+    assert not Path(target["path"]).exists()
+
+
+def test_project_save_output_not_inferred(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    出力の形を推定できない定義は, 出力の最後の大きさを確かめていないことを
+    知らせて書くことを確かめる関数 (ML-EDA と check_model_contract のある
+    ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 入力は合うが, 再構成の前のノードの入りの幅が前のノードと違う定義
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    if not hasattr(ml_quest, "check_model_contract"):
+        pytest.skip("ML-Quest に check_model_contract がありません")
+    place = contract_problem(ml_eda, ml_quest, "anomaly", tmp_path)
+    target = client.post(
+        "/api/project/target", json={"path": str(place)}
+    ).json()
+    info = client.post(
+        "/api/dataset/inputs",
+        json={"path": target["dataset"], "problem": str(place)}
+    ).json()
+    template = client.get("/api/examples/tabular_autoencoder").json()["spec"]
+    spec = client.post("/api/templates/adapt", json={
+        "spec": template, "name": "tabular_autoencoder",
+        "values": template_values(info)
+    }).json()["spec"]
+    spec["nodes"]["dec2"]["params"]["in_features"] += 1
+
+    # 合わない所は無く, 確かめていない出力の知らせ付きの書き込み
+    response = client.put(
+        "/api/project/model", json={"path": str(place), "spec": spec}
+    )
+    assert response.status_code == 200, response.text
+    notes = response.json()["notes"]
+    assert len(notes) == 1, notes
+    assert notes[0].startswith(
+        "出力 recon の形を推定できないので, 最後の大きさは確かめていません"
+    )
+    assert Path(target["path"]).exists()
 
 
 def test_project_save_contract_without_dataset(
@@ -3504,10 +3636,44 @@ def test_unchecked_widths() -> None:
          "label": "学習に使う列の数", "text": "行の特徴"},
         {"name": None, "width": None, "size": None, "label": None,
          "text": "時刻"},
+    ], "outputs": [
+        {"name": None, "width": "actions", "size": None,
+         "label": "行動の数か次元の数", "text": "行動"},
     ]}
     assert unchecked_widths(contract, {}) == [
         "観測の要素の数 をデータセットから求められないので, 入力 観測 の"
-        "形の最後の大きさは確かめていません"
+        "形の最後の大きさは確かめていません",
+        "行動の数か次元の数 をデータセットから求められないので, 出力 行動 "
+        "の形の最後の大きさは確かめていません",
     ]
-    assert unchecked_widths(contract, {"observations": 8}) == []
+    assert unchecked_widths(
+        contract, {"observations": 8, "actions": 2}
+    ) == []
     assert unchecked_widths(None, {}) == []
+
+
+def test_output_pairs() -> None:
+    """
+    最後の大きさの決まる約束の出力にだけ, 定義の出力の名前を当てることを
+    確かめる関数
+
+    Returns
+    ----------
+    None
+    """
+    # 名前を決めた出力は同じ名前, 数の無い出力は除く
+    named = {"outputs": [
+        {"name": "treated", "width": None, "size": 1},
+        {"name": "control", "width": None, "size": 1},
+        {"name": "score", "width": None, "size": None},
+    ]}
+    pairs = output_pairs(named, {"treated": "a", "score": "b"})
+    assert [name for _, name in pairs] == ["treated"]
+
+    # 名前を問わない出力は, 数が合う場合だけ順に当て
+    free = {"outputs": [{"name": None, "width": "features", "size": None}]}
+    assert [name for _, name in output_pairs(free, {"noise": "a"})] == [
+        "noise"
+    ]
+    assert output_pairs(free, {"a": "a", "b": "b"}) == []
+    assert output_pairs(None, {"a": "a"}) == []
