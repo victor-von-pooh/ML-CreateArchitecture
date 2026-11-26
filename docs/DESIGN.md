@@ -7,14 +7,38 @@ ML-CreateArchitecture の今の設計と決まりをまとめる. まだやっ�
 ML-ModelControl の部品を GUI で並べてつなぎ, モデルを組み立てるローカルの Web アプリ. 「機械学習を全て GUI 上で行う」アプリ (問題の設定, データの分析, モデルの作成・選定, モデルの学習・評価, 推論の段階に分けて作る) のうち, 「モデルの作成・選定」の段階の画面.
 コードを書かずに, 部品の一覧から選んで置き, 線でつなぎ, 引数をフォームで決め, 形とパラメータ数を確かめながらモデルの定義を作る.
 
-- 今は独立したアプリ. 将来は ML-Found と ML-Dashboard と合わせて, 1 つのアプリに統合することを目指す
-
 | 部分 | 中身 |
 | --- | --- |
 | バックエンド | Python, FastAPI. ML-ModelControl を呼ぶ API と, 定義のファイルの一覧, 読み込み, 保存. データセットから入力と出力を読む API と, プロジェクトに保存する API (ML-EDA と ML-Quest を通す) |
 | 画面 | TypeScript, React, Vite. グラフの編集に React Flow (`@xyflow/react`) を使う |
 
 ML-Dashboard と同じ構成と道具 (uv, pnpm, Ruff, mypy, Prettier, oxlint, OpenAPI から画面の型を作る) にそろえ, 将来の統合を楽にする.
+
+### 役割
+
+構想 (全体で 1 つのアプリ) の中で「モデルの作成・選定」の段階を受け持つ.
+
+- 前の段階から受け取るもの: 問題の設定 (ML-Pathfinder の置き場の `problem.yaml`. ML-Quest で読む. 受け持ちに合う雛形と, 骨組みの入力と出力の約束), データの分析の段階が作ったデータセットの説明 (`dataset.yaml`. ML-EDA で読む. 入力と出力の形)
+- 後の段階へ渡すもの: モデルの定義 (ML-ModelControl の YAML. プロジェクトの `models/` の下に書く). 学習の段階 (ML-Dashboard が動かす ML-Found の学習) が読む
+
+### 要件
+
+| 要件 | 今できていること | 足りないこと |
+| --- | --- | --- |
+| 部品を並べ, つなぎ, 引数を決めて定義を作り, 形とパラメータ数を確かめる | 画面の部品の一覧, キャンバス, 詳細, `POST /api/check` と `POST /api/export`. 保存と読み込みは `/api/models` | 統合以外は無し |
+| データセットから入力と出力を決める | `POST /api/dataset/inputs` (ML-EDA と ML-Quest を通す). 場所は画面のダイアログに利用者が入れる | 殻で選んだプロジェクトのデータセットを, 場所を入れずに受け取る (統合) |
+| 問題の設定の受け持ちに合う雛形と既製のモデルから始める | `GET /api/problems`, `GET /api/examples`, `POST /api/templates/match` と `adapt`. 問題の設定の一覧は ML-Pathfinder の置き場から読む | 統合以外は無し (まだ扱っていない型の雛形は低) |
+| 定義をプロジェクトに保存し, 学習の段階へ渡す | `PUT /api/project/model`. 骨組みの入力と出力に合うかを確かめて書く. 学習の実験の定義の写しも開ける (`/api/project/experiments`) | 保存した後に学習の段階へ移る導線 (殻の段階の並び. 統合) |
+| 置き場, トークン, 待ち受けを外から決められる | `create_app(data_dir, token, allowed_hosts, modules)` と環境変数 `ML_CREATEARCHITECTURE_HOME`, `ML_CREATEARCHITECTURE_TOKEN`. ポートは `--port` (起動のコマンドだけ) | 下の「統合に向けて足りないこと」 |
+
+### 統合に向けて足りないこと
+
+殻 (ML-Studio) は 5 つのアプリを submodule で持ち, 1 つのコマンドで 1 つのポートを開く. 起動ごとのトークンと Origin の確かめは殻が 1 つだけ持つ. 各アプリは自分のバックエンドを `/api/<段階>`, 画面を `/<段階>` の下に載せられる形にし, 単独でも今まで通り動く.
+
+- バックエンド: API の経路の頭 `/api` が, `api.py`, `project.py`, `experiments.py`, `templates.py` の 4 つの router の `APIRouter(prefix="/api")`, 起動時の認証の経路 `/api/auth` (移動先は `/`), ビルド済みの画面の配信 (`mount_frontend` が `/` に置く) に固定されている. `create_app` は token と Origin と Host の確認を自分の middleware として必ず付け, 認証の Cookie の名前はトークンから作る. 殻が `/api/<段階>` の下に載せるには, 経路の頭を渡せる router (か sub-app) の作り方を公開し, 確認の middleware と画面の配信を切って, 殻が渡したトークンの確認だけを使う形にする. 置き場 (`data_dir`) とトークンは引数で渡せるので, その形は保つ
+- 画面: API の呼び出しが `src/api/client.ts` で `/api/...` の絶対のパスに固定され (`request` が `fetch(path)`), 画面の資産も `/favicon.svg` など `/` 始まり, Vite の `base` は既定の `/`. 画面は経路を持たない 1 画面 (React Router を使っていない) で, ルートの要素は `main.tsx` が `#root` に直接描く. 殻が `/<段階>` の下に載せるには, 画面の根の部品を公開し, 経路の頭 (basename) と API の頭を props で渡せるようにし, 資産を相対にする
+- プロジェクト: データセットとプロジェクトの場所は「データセットとプロジェクト」のダイアログに利用者が入れる (`POST /api/dataset/inputs`, `POST /api/project/target`). 殻で選んだ 1 つのプロジェクトを受け取り, そのデータセットと保存先を既定にして, 場所を手で入れ直さずに済むようにする
+- 共通の部品と言葉: 見出し, 段階の並び, 誤りの出し方は各アプリの画面が別々に持つ. 殻の段階の並びと共通の部品にそろえ, 段階の名前と画面の言葉を 5 つのアプリでそろえる
 
 ## 2. 使うライブラリと約束
 
