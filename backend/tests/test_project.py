@@ -3653,6 +3653,49 @@ def test_project_save_output_batch_shapes(
     }]
 
 
+def test_project_save_output_kept_shape(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    出力をそのまま使う骨組み (異常の検知の再構成) は, 積が合っても
+    (件数, 数) の 2 次元でない出力を直す場所にすることを確かめる関数
+    (ML-EDA と check_model_contract のある ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 再構成を (件数, 列の数, 1) にした定義
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    if not hasattr(ml_quest, "check_model_contract"):
+        pytest.skip("ML-Quest に check_model_contract がありません")
+    place = contract_problem(ml_eda, ml_quest, "anomaly", tmp_path)
+    spec, target = adapted_spec(client, place, "tabular_autoencoder")
+    batch, columns = spec["inputs"]["x"]["shape"]
+    reshaped(spec, "recon", [-1, 1])
+
+    # 2 次元にする直す場所 (書き無し)
+    response = client.put(
+        "/api/project/model", json={"path": str(place), "spec": spec}
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["findings"] == [{
+        "level": "error", "id": "outputs.recon",
+        "message": f"出力 recon を (件数, 学習に使う列の数 {columns}) の "
+                   "2 次元の形にしてください (骨組みは出力をそのまま使い"
+                   f"ます. 今は形 [{batch}, {columns}, 1])"
+    }]
+    assert not Path(target["path"]).exists()
+
+
 def test_project_save_levels_without_dataset(
     client: TestClient, tmp_path: Path
 ) -> None:

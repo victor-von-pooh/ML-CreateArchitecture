@@ -59,6 +59,11 @@ RESERVED_DIRS = {
     "outputs": "データセットと実験のディレクトリ",
 }
 
+# 出力を (件数,) か (件数, 数) に reshape して読む骨組みの型 (出力の大きさ
+# をバッチの次元を除いた積で比べる. 他の骨組みは出力をそのまま使うので,
+# (件数, 数) の 2 次元で比べる)
+RESHAPED_SKELETONS = frozenset({"uplift", "price", "demand"})
+
 # 書けるモデルの定義の拡張子
 SPEC_SUFFIXES = (".yaml", ".yml")
 
@@ -2760,8 +2765,8 @@ def batch_free_size(shape: list[int]) -> int:
     """
     バッチの次元を除いた大きさ (残りの次元の大きさの積) を求める関数
 
-    骨組みの学習のスクリプトは出力を (件数,) か (件数, 数) に reshape して
-    読むので, 最後の大きさでなく積で比べる ((件数,) は 1)
+    出力を (件数,) か (件数, 数) に reshape して読む骨組み
+    (RESHAPED_SKELETONS) では, 最後の大きさでなく積で比べる ((件数,) は 1)
 
     Parameters
     ----------
@@ -2785,8 +2790,7 @@ def output_size_findings(
     contract: Any, spec: dict[str, Any], widths: dict[str, int]
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """
-    定義の出力の形のバッチの次元を除いた大きさを, 形の推定で求めて約束の
-    数と比べる関数
+    定義の出力の形の大きさを, 形の推定で求めて約束の数と比べる関数
 
     定義の出力は形を持たないので, 定義の入力の形から ML-ModelControl の
     形の推定で求める (入力の形の誤りは入力の比べが出すので, 入力の形は
@@ -2820,7 +2824,9 @@ def output_size_findings(
     if not pairs:
         return [], []
 
-    # 推定した形のバッチの次元を除いた大きさと約束の数の比べ
+    # 推定した形の大きさと約束の数の比べ (reshape して読む骨組みはバッチの
+    # 次元を除いた積)
+    reshaped = contract.get("skeleton") in RESHAPED_SKELETONS
     result = inferred_shapes(spec)
     found = []
     notes = []
@@ -2836,16 +2842,17 @@ def output_size_findings(
             notes.append(f"出力 {name} の大きさは確かめていません: "
                          f"{why_not}")
             continue
-        found += size_findings(item, name, size, value["shape"])
+        found += size_findings(item, name, size, value["shape"], reshaped)
 
     return found, notes
 
 
 def size_findings(
-    item: dict[str, Any], name: str, size: int, shape: list[int]
+    item: dict[str, Any], name: str, size: int, shape: list[int],
+    reshaped: bool
 ) -> list[dict[str, Any]]:
     """
-    出力の形のバッチの次元を除いた大きさを, 約束の数と比べる関数
+    出力の形の大きさを, 約束の数と比べる関数
 
     Parameters
     ----------
@@ -2857,24 +2864,37 @@ def size_findings(
         骨組みが読む数
     shape: list[int]
         推定した出力の形 (最初がバッチの次元)
+    reshaped: bool
+        骨組みが出力を reshape して読むか (真ならバッチの次元を除いた積,
+        偽なら (件数, 数) の 2 次元で比べる)
 
     Returns
     ----------
     found: list[dict[str, Any]]
         合わない所 (合えば空. 2 次元は最後の大きさ, 他は形を添えた文)
     """
-    # (件数, 数) の形は最後の大きさ, 他の形は形と積を添えた文
-    actual = batch_free_size(shape)
-    if actual == size:
-        return []
+    # reshape して読む骨組みは積, 他は (件数, 数) の形
     label = item.get("label")
     expected = f"{label} {size}" if label else f" {size}"
-    message = (
-        f"出力 {name} の最後の大きさを{expected} にしてください (今は "
-        f"{actual})" if len(shape) == 2
-        else f"出力 {name} のバッチの次元を除いた大きさ (残りの次元の積) "
-        f"を{expected} にしてください (今は形 {shape} で {actual})"
-    )
+    actual: Optional[int]
+    if reshaped:
+        actual = batch_free_size(shape)
+        message = (
+            f"出力 {name} のバッチの次元を除いた大きさ (残りの次元の積) "
+            f"を{expected} にしてください (今は形 {shape} で {actual})"
+        )
+    else:
+        actual = shape[-1] if len(shape) == 2 else None
+        message = (
+            f"出力 {name} を (件数, {expected.strip()}) の 2 次元の形に"
+            "してください (骨組みは出力をそのまま使います. 今は形 "
+            f"{shape})"
+        )
+    if actual == size:
+        return []
+    if len(shape) == 2:
+        message = (f"出力 {name} の最後の大きさを{expected} にしてください "
+                   f"(今は {shape[-1]})")
     found = [{"level": "error", "id": f"outputs.{name}", "message": message}]
 
     return found
