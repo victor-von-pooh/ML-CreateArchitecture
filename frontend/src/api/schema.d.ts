@@ -363,7 +363,10 @@ export interface paths {
          *     が学ぶ行の幅. 列の数とは違う). 並べるなら, 場所は反応の表のファイルで,
          *     入力 user と item の大きさを学習用の利用者と品物の数 (ML-Quest の
          *     rank_encoding) にする. 異常の検知のデータセットでは, 学習に使う列の数
-         *     (ML-EDA の outputs) と, 問題の設定の度合いの決め方も返す
+         *     (ML-EDA の outputs) と, 問題の設定の度合いの決め方も返す. 効果を
+         *     見積もるのデータセットでは, 学習に使う列の数 (ML-EDA の入力 x の幅) と,
+         *     処置の列と行の id の列 (データセットの説明を先, 無ければ問題の設定の
+         *     答え) も返す
          *
          *     Parameters
          *     ----------
@@ -377,7 +380,8 @@ export interface paths {
          *         入力 (形はバッチの次元を例の大きさにしたものと, データセットの
          *         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
          *         符号化した行の幅, 並べるの学習用の利用者と品物の数, 異常の検知の
-         *         学習に使う列の数と度合いの決め方
+         *         学習に使う列の数と度合いの決め方, 効果を見積もるの学習に使う列の数と
+         *         数えない列
          *
          *     Raises
          *     ----------
@@ -386,7 +390,8 @@ export interface paths {
          *         問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の
          *         組など) と, 表の生成の幅か並べるの数を求められない場合と, 表の生成
          *         で入力が表の行 (バッチと列の 2 次元の 1 つ) でない場合と, 異常の
-         *         検知の問題の設定でデータセットが異常の検知の表でない場合は 422.
+         *         検知の問題の設定でデータセットが異常の検知の表でない場合と, 効果を
+         *         見積もるの問題の設定でデータセットが介入の記録の表でない場合は 422.
          *         並べるで反応の表が無い場合は 404
          */
         post: operations["read_dataset_inputs"];
@@ -648,7 +653,7 @@ export interface components {
             path: string;
             /**
              * Problem
-             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. 並べるなら, path は反応の表のファイルで, 入力 user と item の大きさを ML-Quest の rank_encoding の学習用の利用者と品物の数にする. 異常の検知なら, 度合いの決め方を受け持ちの答えから読む)
+             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. 並べるなら, path は反応の表のファイルで, 入力 user と item の大きさを ML-Quest の rank_encoding の学習用の利用者と品物の数にする. 異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を見積もるなら, データセットの説明に無い処置の列と行の id の列を受け持ちの答えから読む)
              */
             problem?: string | null;
         };
@@ -696,6 +701,8 @@ export interface components {
             rank?: components["schemas"]["RankSize"] | null;
             /** @description 異常の検知のデータセットか問題の設定で, 入力と出力の幅にした学習に使う列の数と度合いの決め方 (他は無し) */
             anomaly?: components["schemas"]["AnomalyWidth"] | null;
+            /** @description 効果を見積もるのデータセットか問題の設定で, 入力 x の幅にした学習に使う列の数と数えない列 (他は無し) */
+            uplift?: components["schemas"]["UpliftWidth"] | null;
         };
         /** ExampleSummary */
         ExampleSummary: {
@@ -1162,6 +1169,34 @@ export interface components {
              * @description models/ の下の名前 (拡張子無し. 無いか空なら既定)
              */
             name?: string | null;
+        };
+        /** UpliftWidth */
+        UpliftWidth: {
+            /**
+             * Columns
+             * @description 学習に使う列の数 (入力 x の幅. 処置の列, 結果の列と行の id の列は数えず, one_hot で増えた列は数える)
+             */
+            columns: number | null;
+            /**
+             * Outcome
+             * @description 結果の列 (データセットの目的の列)
+             */
+            outcome?: string | null;
+            /**
+             * Treatment
+             * @description 処置の列 (データセットの説明の uplift.treatment. 無ければ問題の設定の答え. どちらにも無ければ無し)
+             */
+            treatment?: string | null;
+            /**
+             * Id
+             * @description 行の id の列 (データセットの説明の uplift.id. 無ければ問題の設定の答え. どちらにも無ければ無し)
+             */
+            id?: string | null;
+            /**
+             * Problem
+             * @description 問題の設定の名前
+             */
+            problem?: string | null;
         };
         /** ValidationError */
         ValidationError: {

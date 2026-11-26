@@ -2296,3 +2296,224 @@ def test_dataset_inputs_anomaly_one_hot(
     assert body["inputs"][0]["shape"] == [4, 5]
     assert body["outputs"] == 5
     assert body["anomaly"]["columns"] == 5
+
+
+def uplift_problem(ml_quest: Any) -> dict[str, Any]:
+    """
+    見本の課題から, 今ある記録から効果を見積もる問題の設定を作る関数
+
+    Parameters
+    ----------
+    ml_quest: Any
+        ML-Quest のモジュール
+
+    Returns
+    ----------
+    problem: dict[str, Any]
+        効果を見積もるで方策でなく, 今ある記録から集める問題の設定 (処置の
+        列は coupon, 結果の列は purchased, 行の id の列は customer_id,
+        学習に使う列は age, visits, region. ML-Quest のテストの受け持ちの
+        入れ替えと同じ)
+    """
+    # 見本の受け持ちの作り直し
+    problem = ml_quest.example_problem("解約の引き止め")
+    problem["ml"]["parts"] = [{}]
+    for key in ("decision", "basis", "current"):
+        problem["action"].pop(key, None)
+    problem = ml_quest.answer(
+        problem, "information.columns",
+        ["customer_id", "age", "visits", "region", "coupon", "purchased"]
+    )
+    answers: list[tuple[str, Any]] = [
+        ("role", "effect"), ("unit", "row"), ("output", "effect"),
+        ("target.source", "intervention"), ("method", "scratch"),
+        ("autonomous", False), ("collect", "log"),
+        ("what", "クーポンで買う確率がどれだけ上がるか"),
+        ("item", "顧客ごとの 1 行"), ("baseline", "全員に配る"),
+        ("uplift.treatment", "coupon"), ("uplift.outcome", "purchased"),
+        ("uplift.outcome_kind", "binary"), ("uplift.id", "customer_id"),
+        ("uplift.columns", ["age", "visits", "region"]), ("uplift.k", 0.3),
+        ("evaluation.metric", "qini"),
+        ("evaluation.link", "効果の順が当たるほど配る費用が実る")
+    ]
+    for key, value in answers:
+        problem = ml_quest.answer(problem, f"ml.parts.0.{key}", value)
+    problem = ml_quest.answer(
+        problem, "action.decision", {"type": "treat", "budget": 10}
+    )
+
+    return problem
+
+
+def write_uplift_dataset(ml_eda: Any, root: Path) -> Path:
+    """
+    無作為にクーポンを配った記録を, 介入の記録の表 (task: uplift) として
+    書き出す関数
+
+    Parameters
+    ----------
+    ml_eda: Any
+        ML-EDA のモジュール
+    root: Path
+        書き出す場所の親
+
+    Returns
+    ----------
+    dataset: Path
+        書き出したデータセット (学習に使う列は age, visits と, one_hot に
+        した region の 3 つの値の 5 列)
+    """
+    # 学習に使う列から外す列 (処置の列, 結果の列, 行の id の列)
+    rng = np.random.default_rng(0)
+    rows = 60
+    frame = pd.DataFrame({
+        "customer_id": [f"c{number:02d}" for number in range(rows)],
+        "age": rng.uniform(20, 60, size=rows),
+        "visits": rng.uniform(0, 10, size=rows),
+        "region": np.array(["east", "west", "north"] * 20),
+        "coupon": np.array([0, 1] * 30),
+        "purchased": rng.integers(0, 2, size=rows)
+    })
+    source = root / "log.csv"
+    frame.to_csv(source, index=False)
+    dataset = root / "log"
+    ml_eda.export_dataset(ml_eda.load_data(source), {
+        "task": "uplift", "target": "purchased", "treatment": "coupon",
+        "id": "customer_id",
+        "steps": [{"op": "one_hot", "columns": ["region"]}],
+        "split": {"method": "stratified", "valid": 0.2, "test": 0.2}
+    }, dataset)
+
+    return dataset
+
+
+def test_dataset_inputs_uplift(client: TestClient, tmp_path: Path) -> None:
+    """
+    介入の記録の表では, 入力 x の幅を処置の列を除いた学習に使う列の数にし,
+    出す値の数を 1 にし, 問題の設定の処置の列と行の id の列を返すことを
+    確かめる関数 (ML-EDA と ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 効果の見積もりと列の予測の問題の設定
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    places = {}
+    for name, problem in (
+        ("uplift", uplift_problem(ml_quest)),
+        ("column", ml_quest.example_problem("総菜の作る量")),
+    ):
+        places[name] = tmp_path / f"{name}.yaml"
+        ml_quest.save_problem(problem, places[name])
+    dataset = write_uplift_dataset(ml_eda, tmp_path)
+
+    # 入力 x の 5 列 (処置の列, 結果の列, 行の id の列を除く) と, 出す値の
+    # 数 1
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(dataset), "problem": str(places["uplift"])}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["task"] == "uplift" and body["target"] == "purchased"
+    assert body["inputs"] == [{
+        "name": "x", "shape": [4, 5], "dtype": "float32",
+        "dataset_shape": [None, 5], "vocabulary": None
+    }]
+    assert body["outputs"] == 1
+    assert body["uplift"] == {
+        "columns": 5, "outcome": "purchased", "treatment": "coupon",
+        "id": "customer_id", "problem": "解約の引き止め"
+    }
+
+    # 雛形 tabular_uplift の入力の幅に入れた定義の形の推定 (誤り無し. 2 つの
+    # 出力はどちらも (バッチ, 1). 隠れ層の幅はそのまま)
+    spec = client.get("/api/examples/tabular_uplift").json()["spec"]
+    spec["inputs"]["x"]["shape"] = body["inputs"][0]["shape"]
+    for node in ("treated1", "control1"):
+        spec["nodes"][node]["params"]["in_features"] = 5
+    result = client.post("/api/check", json={"spec": spec}).json()
+    assert result["issues"] == [] and result["inferred"]
+    for node in ("treated2", "control2"):
+        assert result["nodes"][node]["outputs"]["out"]["shape"] == [4, 1]
+    assert result["nodes"]["treated1"]["outputs"]["out"]["shape"] == [4, 32]
+
+    # 問題の設定を渡さないか効果の見積もりでない問題の設定でも, データ
+    # セットの説明の処置の列と行の id の列 (問題の設定の名前は無し)
+    for extra in ({}, {"problem": str(places["column"])}):
+        response = client.post(
+            "/api/dataset/inputs", json={"path": str(dataset), **extra}
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["uplift"] == {
+            "columns": 5, "outcome": "purchased", "treatment": "coupon",
+            "id": "customer_id", "problem": None
+        }
+
+    # 介入の記録の表でないデータセットの uplift の無しと, 効果の見積もりの
+    # 問題の設定を渡した場合の 422
+    frame = pd.DataFrame({"age": np.arange(30.0), "visits": np.arange(30.0)})
+    frame.to_csv(tmp_path / "table.csv", index=False)
+    other = tmp_path / "other"
+    ml_eda.export_dataset(ml_eda.load_data(tmp_path / "table.csv"), {
+        "task": "none", "steps": [],
+        "split": {"method": "random", "valid": 0.2, "test": 0.2}
+    }, other)
+    response = client.post("/api/dataset/inputs", json={"path": str(other)})
+    assert response.status_code == 200, response.text
+    assert response.json()["uplift"] is None
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(other), "problem": str(places["uplift"])}
+    )
+    assert response.status_code == 422
+    assert "介入の記録の表として書き出したものではありません" in (
+        response.json()["detail"]
+    )
+
+
+def test_problem_uplift(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    骨組みを書き出した効果の見積もりの問題の設定が選べて, 雛形
+    tabular_uplift を返すことを確かめる関数 (ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        環境変数の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    # 骨組みを書き出したプロジェクトの記録を持つ問題の設定
+    quest = pytest.importorskip("ml_quest")
+    home = tmp_path / "pathfinder"
+    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
+    problem = uplift_problem(quest)
+    project = tmp_path / "uplift"
+    quest.make_project(problem, project)
+    save_problem(quest, home, "uplift", quest.record_project(problem, project))
+    response = client.get("/api/problems")
+    assert response.status_code == 200, response.text
+    entries = {
+        Path(entry["path"]).parent.name: entry
+        for entry in response.json()["problems"]
+    }
+    assert entries["uplift"]["usable"] is True, entries["uplift"]
+    assert entries["uplift"]["example"] == "tabular_uplift"
