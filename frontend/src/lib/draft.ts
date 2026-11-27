@@ -147,8 +147,12 @@ export function useDraftWriter(
     if (shown !== null && shown.tab === tab) {
       aside.current ??= `${tab}:${Date.now()}`
       tab = aside.current
+      writeDraft({ ...item, time: new Date().toISOString() }, tab)
+      return
     }
+    // この画面の印で書いたので, 聞いている間に別に書いた下書きは要らない
     writeDraft({ ...item, time: new Date().toISOString() }, tab)
+    dropAside()
   })
   // 聞き終えて今の変更をこの画面の印で扱うようになったら, 別に書いた下書きを消す
   const dropAside = () => {

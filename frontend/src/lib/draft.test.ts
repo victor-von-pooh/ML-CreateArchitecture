@@ -71,6 +71,31 @@ describe('useDraftWriter', () => {
     expect(aside.map((item) => Object.keys(item.spec.nodes))).toEqual([['linear1']])
   })
 
+  it('聞き終えてすぐ外すと, この画面の印で書き, 別に書いた下書きを消す', () => {
+    writeDraft({
+      spec: emptySpec('old'),
+      fileName: 'old',
+      ownFile: null,
+      time: new Date().toISOString(),
+    })
+    const asking = readDraft() as Draft
+    const { rerender, unmount } = renderHook(
+      ({ shown, key }: { shown: Draft | null; key: string }) =>
+        useDraftWriter(true, nextOf(changed()), shown, key),
+      { initialProps: { shown: asking as Draft | null, key: 'a' } },
+    )
+    // 聞いている間に殻で替えると, 別の画面の下書きとして書く
+    rerender({ shown: asking, key: 'b' })
+    // 「下書きを捨てる」で聞き終え, 待つ間 (1 秒以内) に外す
+    rerender({ shown: null, key: 'b' })
+    unmount()
+    const drafts = JSON.parse(
+      window.localStorage.getItem('ml-createarchitecture:drafts') ?? '{}',
+    ) as Record<string, Draft>
+    expect(Object.keys(drafts)).toEqual([tabId()])
+    expect(Object.keys(drafts[tabId()]?.spec.nodes ?? {})).toEqual(['linear1'])
+  })
+
   it('殻で選んだ問題の設定が替わると, 待たずに書く', () => {
     const { rerender } = renderHook(
       ({ project }: { project: string | null }) =>
