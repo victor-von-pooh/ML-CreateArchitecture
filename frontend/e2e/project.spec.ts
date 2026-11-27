@@ -413,6 +413,15 @@ test('問題の設定を一覧から選ぶと, 記録のデータセットと保
   await target.getByRole('button', { name: 'この場所に保存' }).click()
   await expect(save.getByRole('status')).toContainText(`${modelFile} に保存しました`)
   expect(readFileSync(modelFile, 'utf-8')).toContain('out_features: 3')
+
+  // 置き場には保存していないので印 (*) は残るが, 書いた定義と同じものは下書きに残さない
+  // (下書きを書くまで待ってから読み込み直しても, 戻すかを聞かない)
+  await dialog.getByRole('button', { name: '閉じる' }).click()
+  await expect(page.getByRole('button', { name: '保存 *' })).toBeVisible()
+  await page.waitForTimeout(1500)
+  await page.reload()
+  await expect(page.locator('.react-flow')).toBeVisible()
+  await expect(page.getByRole('region', { name: '保存していない定義の下書き' })).toHaveCount(0)
 })
 
 test('雛形のある問題の設定を新しく始めるときに選ぶと雛形を開き, 定義があるときは選べるようにする', async ({

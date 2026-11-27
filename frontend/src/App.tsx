@@ -224,12 +224,24 @@ function Editor() {
   const [notice, setNotice] = useState<{ text: string } | null>(null)
   const notify = (text: string) => setNotice({ text })
   const dirty = useMemo(() => JSON.stringify(whole) !== saved, [whole, saved])
+  // 最後にプロジェクトに書いた定義 (書いていなければ null). 置き場の定義とは別の
+  // ファイルなので保存していない変更の印は変えないが, 書いたものと同じ定義は下書きに
+  // 残さない (段階を移って戻ったときに, 書いたものと同じ定義を戻すかを聞かないため)
+  const [projectSaved, setProjectSaved] = useState<Spec | null>(null)
+  const unwritten = useMemo(
+    () =>
+      dirty &&
+      (projectSaved === null ||
+        JSON.stringify({ ...whole, name: projectSaved.name }) !== JSON.stringify(projectSaved)),
+    [dirty, whole, projectSaved],
+  )
   const { project } = useStage()
   // 保存していない変更は, 少し待ってからブラウザに下書きとして残す (閉じたり
-  // 読み込み直したりしても失わないように. 保存, 新規, 開く, 捨てるで消す).
+  // 読み込み直したりしても失わないように. 保存, 新規, 開く, 捨てるで消し, プロジェクトに
+  // 書いた定義と同じ間は残さない).
   // 部品が外されるときと殻で選んだ問題の設定が替わるときは待たずに書く
   useDraftWriter(
-    dirty,
+    unwritten,
     {
       spec: whole,
       fileName,
@@ -645,6 +657,7 @@ function Editor() {
           onLoad={(name, loaded, source) => {
             clearDraft()
             setDraft(null)
+            setProjectSaved(null)
             setTypedName(null)
             setNameEpoch((count) => count + 1)
             // 前の定義の部分モデルの知らせは消す. 実験の写しは, 保存の仕方を知らせる
@@ -731,7 +744,10 @@ function Editor() {
             notify(lines.join('. '))
             return lines
           }}
-          onProjectSaved={(path) => {
+          onProjectSaved={(path, savedSpec) => {
+            // 書いた定義と同じ間は下書きに残さず, この画面の下書きも消す (戻すかを聞いて
+            // いる前の下書きは, 書いた定義と別のものなので残す)
+            setProjectSaved(savedSpec)
             setSavedNotice(`${path} に保存しました`)
             window.setTimeout(() => setSavedNotice(''), 3000)
           }}
@@ -741,6 +757,7 @@ function Editor() {
             // 開いた知らせはダイアログの中に出す. 前の定義の知らせは消す
             setNotice(null)
             setOwnFile(null)
+            setProjectSaved(null)
             const placed = withStateVersion(placeMissing(loaded, unitsFor(loaded)))
             history.reset(placed)
             setEditing(null)
@@ -793,6 +810,7 @@ function Editor() {
                 setOwnFile(draft.ownFile)
                 // 保存していない変更として戻す
                 setSaved('')
+                setProjectSaved(null)
                 setEditPath([])
                 setSelected(null)
                 setDraft(null)

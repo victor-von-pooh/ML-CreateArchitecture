@@ -681,8 +681,8 @@ function ProjectSaveSection({
   spec: Spec
   /** 一覧から選んだ問題の設定 (選ぶたびに新しい値. 欄に入れて保存先を確かめる) */
   choice: { path: string } | null
-  /** 書いた (書いたファイルの場所) */
-  onSaved: (path: string) => void
+  /** 書いた (書いたファイルの場所と, 書いた定義) */
+  onSaved: (path: string, spec: Spec) => void
   /** 保存先を確かめた (記録のデータセットの場所をデータセットの欄に入れるため. chosen は一覧から選んだ場合) */
   onTarget: (target: ProjectTarget, text: string, chosen: boolean) => void
   /** 保存先の確かめに失敗した (確かめた場所とデータセットの欄の候補を消すため) */
@@ -784,8 +784,8 @@ function ProjectSaveSection({
   const save = useMutation({
     mutationFn: ({ text, named, checkedPath, overwrite, saved, accept }: SaveRequest) =>
       api.saveProjectModel(text, named, saved, checkedPath, overwrite, accept),
-    onSuccess: (saved, { text, named }) => {
-      onSaved(saved.path)
+    onSuccess: (saved, { text, named, saved: spec }) => {
+      onSaved(saved.path, spec)
       // 書いた後は既にある扱い (続けて保存すると上書きを確かめる). 保存の
       // 間に別の場所を確かめた場合は, その場所には付けない
       markExists(text, named)
@@ -971,8 +971,8 @@ export function ProjectDialog({
   dirty: boolean
   /** データセットから読んだ結果 (と雛形のままの定義を書き換えた結果) を本体の定義に入れ, 知らせる文を返す */
   onApply: (info: DatasetInputs, template: DatasetTemplate) => string[]
-  /** プロジェクトに書いた (書いたファイルの場所) */
-  onSaved: (path: string) => void
+  /** プロジェクトに書いた (書いたファイルの場所と, 書いた定義) */
+  onSaved: (path: string, spec: Spec) => void
   /** 問題の設定の雛形の定義を開く (開いた知らせはこのダイアログに出す) */
   onTemplate: (spec: Spec) => void
   onClose: () => void
