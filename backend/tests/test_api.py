@@ -232,7 +232,7 @@ def test_create_api_problems_dir(tmp_path: Path) -> None:
         create_api(tmp_path / "home", problems_dir=problems_dir, modules=[])
     )
     listed = TestClient(shell).get("/api/model/problems").json()
-    assert listed["root"] == str(problems_dir)
+    assert listed["root"] == str(problems_dir.resolve())
     assert [item["name"] for item in listed["problems"]] == ["試し"]
 
     # problems_dir を渡さなければ ML_PATHFINDER_HOME の下の problems

@@ -3,7 +3,7 @@ import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
-import { api } from './api/client'
+import { useApi } from './api/client'
 import { ErrorBox, Spinner } from './components/ui'
 import { Canvas } from './features/editor/Canvas'
 import { Inspector } from './features/editor/Inspector'
@@ -40,6 +40,7 @@ import { applyDatasetInputs, datasetSummary, sameDefinition } from './lib/datase
 import { useDebounced } from './lib/debounce'
 import { clearDraft, readDraft, tabId, writeDraft, type Draft } from './lib/draft'
 import { useHistory } from './lib/history'
+import { outsideStage } from './lib/stage'
 import { withStateVersion } from './lib/state'
 import { arrangeSpec, freeSpot, placeMissing, unitSize } from './lib/layout'
 
@@ -54,6 +55,7 @@ export function App() {
 
 /** 編集の画面の本体 (キャンバスの表示範囲を使うので ReactFlowProvider の中) */
 function Editor() {
+  const api = useApi()
   const units = useQuery({ queryKey: ['units'], queryFn: api.listUnits, staleTime: Infinity })
   // 定義は元に戻す・やり直すができる値で持つ
   const history = useHistory<Spec>(() => emptySpec())
@@ -523,6 +525,8 @@ function Editor() {
   // ダイアログの中では定義を戻さない
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // 部品の外 (殻の上の帯など) で押したキーは扱わない
+      if (outsideStage(event.target)) return
       const target = event.target as HTMLElement | null
       // Ctrl+S (Mac は Cmd+S) は文字の欄の中でも保存 (ブラウザのページの保存の
       // 代わり). 欄の打ちかけの値は, 欄を離れて反映してから保存. ダイアログの
@@ -623,7 +627,7 @@ function Editor() {
 
   return (
     <>
-      <div className="flex h-screen flex-col bg-bg text-ink">
+      <div className="flex h-full flex-col bg-bg text-ink">
         {/* キーボードで, 上の操作と部品の一覧を飛ばしてキャンバスへ移る */}
         <a
           href="#canvas"

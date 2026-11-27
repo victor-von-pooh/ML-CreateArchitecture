@@ -1,21 +1,25 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { ClipboardList, FlaskConical, LayoutTemplate } from 'lucide-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import {
-  api,
   ApiError,
   contractDetail,
+  useApi,
+  type Api,
   type ContractFinding,
   type DatasetInputs,
   type ExperimentList,
+  type ProblemEntry,
+  type ProblemList,
   type ProjectTarget,
 } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
 import { Button, ErrorBox, Spinner } from '../../components/ui'
 import { templateValues, type TemplateApplied } from '../../lib/dataset'
 import type { Spec } from '../../lib/graph'
+import { problemIdOf, useStage } from '../../lib/stage'
 import { templateAction, templateConfirm, templateReason } from '../../lib/template'
 
 // 最後に確かめたプロジェクトとデータセットの場所を覚えるブラウザの保存場所
@@ -52,7 +56,7 @@ export type DatasetTemplate = { base: Spec; applied: TemplateApplied | null; not
  * null). 照らすか書き換えるのに失敗した場合も, 雛形でない定義の決め方で入れられるよう applied を
  * null にして理由を知らせる (データセットを読んだ結果を捨てないため)
  */
-async function adaptToDataset(spec: Spec, info: DatasetInputs): Promise<DatasetTemplate> {
+async function adaptToDataset(api: Api, spec: Spec, info: DatasetInputs): Promise<DatasetTemplate> {
   if (info.anomaly?.score === 'distance') return { base: spec, applied: null, notes: [] }
   try {
     const match = await api.matchTemplate(spec)
@@ -118,6 +122,80 @@ function PathField({
 type Suggestion = { path: string | null; chosen: boolean }
 
 /**
+ * 殻で選んだ問題の設定の, 置き場の一覧の 1 件 (entry は置き場にあれば. reason は使えない理由.
+ * pending は一覧を読んでいる間)
+ */
+type StageProblem = {
+  project: string
+  entry: ProblemEntry | null
+  reason: string | null
+  pending: boolean
+}
+
+/**
+ * 殻で選んだ問題の設定 (識別子) を, 置き場の一覧 (`GET /problems`) の場所の親のディレクトリの
+ * 名前で探す. 選んでいなければ null
+ */
+function useStageProblem(): StageProblem | null {
+  const api = useApi()
+  const { project } = useStage()
+  const problems = useQuery({
+    queryKey: ['problems'],
+    queryFn: api.listProblems,
+    enabled: project !== null,
+  })
+  if (project === null) return null
+  const base = { project, entry: null, reason: null, pending: false }
+  if (problems.isPending) return { ...base, pending: true }
+  if (problems.error) {
+    return { ...base, reason: `問題の設定の一覧を読めません: ${problems.error.message}` }
+  }
+  const list = problems.data
+  const entry = list.problems.find((item) => problemIdOf(item.path) === project) ?? null
+  if (!entry) {
+    return {
+      ...base,
+      reason: list.error ?? `問題の設定 ${project} は置き場 (${list.root}) にありません`,
+    }
+  }
+  if (!entry.usable) return { ...base, entry, reason: entry.reason ?? '使えません' }
+  return { ...base, entry }
+}
+
+/** 殻で選んだ問題の設定の名前か, 使えない理由 (ダイアログの頭に出す) */
+function StageProblemNote({ stage }: { stage: StageProblem }) {
+  const titleId = useId()
+  return (
+    <section
+      aria-labelledby={titleId}
+      className="space-y-1 rounded-lg border border-line bg-surface-2 px-3 py-2"
+    >
+      <h3 id={titleId} className="text-sm font-semibold">
+        選んだ問題の設定
+      </h3>
+      {stage.pending && <Spinner />}
+      {stage.entry && (
+        <p className="text-sm">
+          {stage.entry.name}{' '}
+          <span className="font-mono text-xs break-all text-ink-3">({stage.project})</span>
+        </p>
+      )}
+      {stage.reason ? (
+        <p role="alert" className="text-xs text-warning-text">
+          {stage.reason}. 下の一覧か欄で場所を選べます
+        </p>
+      ) : (
+        stage.entry && (
+          <p className="text-xs text-ink-3">
+            この問題の設定の記録のデータセットと保存先を, 下の欄の既定にします
+          </p>
+        )
+      )}
+    </section>
+  )
+}
+
+/**
  * ML-Pathfinder の置き場にある問題の設定の一覧. 押すとその問題の設定を選ぶ.
  * 使えないもの (プロジェクトを書き出していないなど) も理由を付けて並べる
  */
@@ -129,6 +207,7 @@ function StoredProblems({
   picked: string | null
   onPick: (path: string) => void
 }) {
+  const api = useApi()
   const problems = useQuery({ queryKey: ['problems'], queryFn: api.listProblems })
   const list = problems.data
   const titleId = useId()
@@ -234,7 +313,17 @@ export function ExperimentCopies({
   /** 写しを開けなかった誤り (この欄の中に出す) */
   openError: unknown
 }) {
+  const api = useApi()
   const [path, setPath] = useState(() => remembered(PROJECT_KEY))
+  // 殻で選んだ問題の設定のプロジェクトの場所 (この欄に打つ前だけ欄に入れる)
+  const stagePath = useStageProblem()?.entry?.project ?? null
+  const [touched, setTouched] = useState(false)
+  const [seenStage, setSeenStage] = useState<string | null>(null)
+  if (stagePath === null && seenStage !== null) setSeenStage(null)
+  if (stagePath !== null && stagePath !== seenStage && !touched) {
+    setSeenStage(stagePath)
+    setPath(stagePath)
+  }
   // 探した場所と結果 (場所を書き換えたら探し直す)
   const [found, setFound] = useState<{ path: string; value: ExperimentList } | null>(null)
   const titleId = useId()
@@ -264,7 +353,10 @@ export function ExperimentCopies({
           label="プロジェクトか問題の設定"
           hint="実験 (ML-Found の実験のディレクトリ) に残った, 学習に使った定義の写しを開きます. 開いた後に「データセットとプロジェクト」の「プロジェクトに保存」で, models/ の下の名前を付けて保存できます"
           value={path}
-          onChange={setPath}
+          onChange={(value) => {
+            setTouched(true)
+            setPath(value)
+          }}
           placeholder="/path/to/project"
         />
         <Button type="submit" disabled={!path.trim() || search.isPending}>
@@ -351,6 +443,7 @@ function DatasetSection({
   /** 読んだ結果 (と雛形のままの定義を書き換えた結果) を定義に入れ, 知らせる文を返す */
   onApply: (info: DatasetInputs, template: DatasetTemplate) => string[]
 }) {
+  const api = useApi()
   const [path, setPath] = useState(() => remembered(DATASET_KEY))
   // この欄に打ったか (打った後は記録の場所で書き換えない)
   const [touched, setTouched] = useState(false)
@@ -379,7 +472,7 @@ function DatasetSection({
   const read = useMutation({
     mutationFn: async ({ target, from }: { target: string; from: string | null }) => {
       const info = await api.datasetInputs(target, from)
-      return { info, template: await adaptToDataset(spec, info) }
+      return { info, template: await adaptToDataset(api, spec, info) }
     },
   })
   return (
@@ -595,6 +688,7 @@ function ProjectSaveSection({
   /** 保存先の確かめに失敗した (確かめた場所とデータセットの欄の候補を消すため) */
   onFailed: () => void
 }) {
+  const api = useApi()
   const [path, setPath] = useState(() => remembered(PROJECT_KEY))
   // models/ の下の名前 (候補ごとに変えるので覚えない. 空なら既定の保存先)
   const [name, setName] = useState('')
@@ -666,7 +760,8 @@ function ProjectSaveSection({
   })
   // 一覧から選んだ問題の設定を欄に入れ, 今の名前のまま保存先を確かめる
   // (欄は描画の中で, 確かめる要求は描画の後)
-  const [seenChoice, setSeenChoice] = useState(choice)
+  // (最初から渡された選びも扱う. 一覧を読み込み済みで, 開いた最初の描画で選んだ場合)
+  const [seenChoice, setSeenChoice] = useState<{ path: string } | null>(null)
   const [pending, setPending] = useState<{ text: string; named: string } | null>(null)
   if (choice !== seenChoice) {
     setSeenChoice(choice)
@@ -882,13 +977,27 @@ export function ProjectDialog({
   onTemplate: (spec: Spec) => void
   onClose: () => void
 }) {
+  const api = useApi()
+  const queryClient = useQueryClient()
+  const { project, onProjectChange } = useStage()
+  const stage = useStageProblem()
   // 学習のスクリプトが読むデータセットの場所 (記録か config の data.dataset)
   const [suggested, setSuggested] = useState<Suggestion | null>(null)
   // 一覧から選んだ問題の設定と, 最後に保存先を確かめた場所
   const [choice, setChoice] = useState<{ path: string } | null>(null)
-  const [checked, setChecked] = useState<string | null>(null)
-  // 最後に確かめた保存先の問題の設定のファイル (データセットの欄に渡す)
+  // 最後に保存先を確かめた問題の設定のファイル (データセットの欄に渡す)
   const [problemPath, setProblemPath] = useState<string | null>(null)
+  // 殻で選んだ問題の設定を, 開いたときと殻で選び直したときに, 一覧から選んだのと同じく
+  // 欄に入れる (followed は扱った殻の選び). 確かめてある保存先が既にその問題の設定の
+  // ものなら入れ直さない (このダイアログが知らせた値が殻から返ってきた場合など)
+  const [followed, setFollowed] = useState<string | null>(null)
+  const stagePath = stage?.entry && stage.reason === null ? stage.entry.path : null
+  if (project === null && followed !== null) setFollowed(null)
+  if (project !== null && stagePath !== null && followed !== project) {
+    setFollowed(project)
+    if (problemPath !== stagePath) setChoice({ path: stagePath })
+  }
+  const [checked, setChecked] = useState<string | null>(null)
   // 最後に確かめた問題の設定の雛形 (無ければ null)
   const [template, setTemplate] = useState<Template | null>(null)
   // 最後に送った雛形の読み込みの番号 (読み込みの間に別の問題の設定を確かめた
@@ -910,6 +1019,7 @@ export function ProjectDialog({
   return (
     <Dialog title="データセットとプロジェクト" onClose={onClose}>
       <div className="space-y-6">
+        {stage && <StageProblemNote stage={stage} />}
         <StoredProblems picked={checked} onPick={(path) => setChoice({ path })} />
         {template && (
           <TemplateNote
@@ -941,6 +1051,15 @@ export function ProjectDialog({
           choice={choice}
           onSaved={onSaved}
           onTarget={(target, text, chosen) => {
+            // 置き場の別の問題の設定から決めた保存先なら, 殻にその識別子を知らせる (置き場に
+            // あるかは, 記録を読んだ場所と一覧の場所 (どちらも実際のパス) で比べる. 殻の選びと
+            // 同じか, 前に確かめた保存先と同じ問題の設定なら知らせない)
+            const stored = queryClient.getQueryData<ProblemList>(['problems'])
+            const known = stored?.problems.find((item) => item.path === target.problem_path)
+            const id = known ? problemIdOf(known.path) : null
+            if (id !== null && id !== project && target.problem_path !== problemPath) {
+              onProjectChange(id)
+            }
             setChecked(text)
             setProblemPath(target.problem_path ?? null)
             setSuggested({ path: target.dataset ?? null, chosen })
