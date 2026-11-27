@@ -224,18 +224,25 @@ function Editor() {
   const [notice, setNotice] = useState<{ text: string } | null>(null)
   const notify = (text: string) => setNotice({ text })
   const dirty = useMemo(() => JSON.stringify(whole) !== saved, [whole, saved])
-  // 最後にプロジェクトに書いた定義 (書いていなければ null). 置き場の定義とは別の
-  // ファイルなので保存していない変更の印は変えないが, 書いたものと同じ定義は下書きに
-  // 残さない (段階を移って戻ったときに, 書いたものと同じ定義を戻すかを聞かないため)
-  const [projectSaved, setProjectSaved] = useState<Spec | null>(null)
+  const { project } = useStage()
+  // 最後にプロジェクトに書いた定義と, 書いたときの殻の問題の設定 (書いていなければ null).
+  // 置き場の定義とは別のファイルなので保存していない変更の印は変えないが, 書いたものと
+  // 同じ定義 (保存する名前は除いて比べる) は下書きに残さない (段階を移って戻ったときに,
+  // 書いたものと同じ定義を戻すかを聞かないため). 殻で問題の設定を替えた後は書いていない
+  // ものとして扱う (替えた先のプロジェクトには書いていないため)
+  const [projectSaved, setProjectSaved] = useState<{
+    spec: Spec
+    project: string | null
+  } | null>(null)
   const unwritten = useMemo(
     () =>
       dirty &&
       (projectSaved === null ||
-        JSON.stringify({ ...whole, name: projectSaved.name }) !== JSON.stringify(projectSaved)),
-    [dirty, whole, projectSaved],
+        projectSaved.project !== project ||
+        JSON.stringify({ ...whole, name: projectSaved.spec.name }) !==
+          JSON.stringify(projectSaved.spec)),
+    [dirty, whole, projectSaved, project],
   )
-  const { project } = useStage()
   // 保存していない変更は, 少し待ってからブラウザに下書きとして残す (閉じたり
   // 読み込み直したりしても失わないように. 保存, 新規, 開く, 捨てるで消し, プロジェクトに
   // 書いた定義と同じ間は残さない).
@@ -490,6 +497,15 @@ function Editor() {
         const next = writeSubgraph(whole, name, placed)
         history.replace(next)
         if (!dirty) setSaved(JSON.stringify(next))
+        // プロジェクトに書いた定義と同じなら, 書いた定義にも位置を書く (位置だけで下書きに
+        // 残さないため)
+        if (
+          projectSaved !== null &&
+          JSON.stringify({ ...whole, name: projectSaved.spec.name }) ===
+            JSON.stringify(projectSaved.spec)
+        ) {
+          setProjectSaved({ ...projectSaved, spec: { ...next, name: projectSaved.spec.name } })
+        }
       }
     }
     window.requestAnimationFrame(() => {
@@ -747,7 +763,7 @@ function Editor() {
           onProjectSaved={(path, savedSpec) => {
             // 書いた定義と同じ間は下書きに残さず, この画面の下書きも消す (戻すかを聞いて
             // いる前の下書きは, 書いた定義と別のものなので残す)
-            setProjectSaved(savedSpec)
+            setProjectSaved({ spec: savedSpec, project })
             setSavedNotice(`${path} に保存しました`)
             window.setTimeout(() => setSavedNotice(''), 3000)
           }}

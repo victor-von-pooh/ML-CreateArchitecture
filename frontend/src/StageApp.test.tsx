@@ -118,6 +118,18 @@ function stubApi(base = '/api/model', example: string | null = null) {
   return fetchMock
 }
 
+/** ブラウザに残った下書き (1 つだけあることも確かめる) */
+function onlyDraft(): { spec: { inputs: object; nodes: object } } {
+  const drafts = Object.values(
+    JSON.parse(window.localStorage.getItem('ml-createarchitecture:drafts') ?? '{}') as Record<
+      string,
+      { spec: { inputs: object; nodes: object } }
+    >,
+  )
+  expect(drafts).toHaveLength(1)
+  return drafts[0]!
+}
+
 /** 殻の下の形 (経路の頭 `/model`, API の頭 `/api/model`) で描く */
 function renderStage(props: Partial<StageAppProps> = {}) {
   const onProjectChange = vi.fn()
@@ -432,7 +444,37 @@ describe('StageApp', () => {
     // 保存した後に定義を変える (入力を加える)
     fireEvent.click(screen.getByRole('button', { name: '入力' }))
     first.unmount()
+    // 下書きは変えた後の定義 (加えた入力を持つ)
+    expect(Object.keys(onlyDraft().spec.inputs).sort()).toEqual(['input1', 'x'])
     renderStage({ project: 'aaaaaaaaaaaa' })
+    expect(
+      await screen.findByRole('region', { name: '保存していない定義の下書き' }),
+    ).toBeInTheDocument()
+  })
+
+  it('プロジェクトに保存してから殻で問題の設定を替えると, 書いた定義も下書きに書く', async () => {
+    stubApi('/api/model', 'tabular_mlp')
+    const first = renderStage({ project: 'aaaaaaaaaaaa' })
+    const dialog = await openProjectDialog()
+    await within(dialog).findByText(/雛形 tabular_mlp を開きました/)
+    const saving = within(dialog).getByRole('region', { name: 'プロジェクトに保存' })
+    fireEvent.click(within(saving).getByRole('button', { name: 'この場所に保存' }))
+    await within(saving).findByText('/work/aaaaaaaaaaaa/models/model.yaml に保存しました')
+    fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }))
+    // 替えた先のプロジェクトには書いていないので, 替えたときに待たずに下書きに書く
+    first.rerender(
+      <StageApp
+        basename="/model"
+        apiBase="/api/model"
+        project="bbbbbbbbbbbb"
+        onProjectChange={() => {}}
+        onProjectsChange={() => {}}
+        embedded
+      />,
+    )
+    await waitFor(() => expect(Object.keys(onlyDraft().spec.nodes)).toEqual(['head']))
+    first.unmount()
+    renderStage({ project: 'bbbbbbbbbbbb' })
     expect(
       await screen.findByRole('region', { name: '保存していない定義の下書き' }),
     ).toBeInTheDocument()
