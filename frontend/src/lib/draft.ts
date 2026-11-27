@@ -144,15 +144,14 @@ export function useDraftWriter(
     pending.current = null
     const shown = askingRef.current
     let tab = tabId()
-    if (shown !== null && shown.tab === tab) {
+    const besideShown = shown !== null && shown.tab === tab
+    if (besideShown) {
       aside.current ??= `${tab}:${Date.now()}`
       tab = aside.current
-      writeDraft({ ...item, time: new Date().toISOString() }, tab)
-      return
     }
-    // この画面の印で書いたので, 聞いている間に別に書いた下書きは要らない
     writeDraft({ ...item, time: new Date().toISOString() }, tab)
-    dropAside()
+    // この画面の印で書いた場合は, 聞いている間に別に書いた下書きは要らない
+    if (!besideShown) dropAside()
   })
   // 聞き終えて今の変更をこの画面の印で扱うようになったら, 別に書いた下書きを消す
   const dropAside = () => {
