@@ -37,6 +37,17 @@ const PROBLEMS: ProblemList = {
   error: null,
 }
 
+/** 問題の設定の受け持ちに合う雛形の定義 (入力から出力へ 1 つの部品でつなぐ) */
+const TEMPLATE = {
+  format_version: 1,
+  name: 'tabular_mlp',
+  inputs: { x: { shape: [8, 3], ui: { x: 40, y: 160 } } },
+  nodes: {
+    head: { unit: 'nn.Linear', args: { in_features: 3, out_features: 2 }, inputs: 'x' },
+  },
+  outputs: { logits: 'head' },
+}
+
 /** 確かめの結果 (空の定義) */
 const CHECKED = {
   issues: [],
@@ -80,7 +91,7 @@ function targetOf(text: string): ProjectTarget {
 }
 
 /** API の頭 `/api/model` の下だけに答える fetch (他の場所を呼べば 404) */
-function stubApi(base = '/api/model') {
+function stubApi(base = '/api/model', example: string | null = null) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const method = init?.method ?? 'GET'
@@ -92,12 +103,31 @@ function stubApi(base = '/api/model') {
     if (path === '/problems') return Response.json(PROBLEMS)
     if (path === '/project/target' && method === 'POST') {
       const { path: text } = JSON.parse(String(init?.body)) as { path: string }
-      return Response.json(targetOf(text))
+      return Response.json({ ...targetOf(text), example })
+    }
+    if (example !== null && path === `/examples/${example}`) {
+      return Response.json({ name: example, spec: TEMPLATE })
+    }
+    if (path === '/project/model' && method === 'PUT') {
+      const { target } = JSON.parse(String(init?.body)) as { target: string }
+      return Response.json({ path: target, updated_at: '2026-01-03T00:00:00', notes: [] })
     }
     return new Response(null, { status: 404 })
   })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
+}
+
+/** ブラウザに残った下書き (1 つだけあることも確かめる) */
+function onlyDraft(): { spec: { inputs: object; nodes: object } } {
+  const drafts = Object.values(
+    JSON.parse(window.localStorage.getItem('ml-createarchitecture:drafts') ?? '{}') as Record<
+      string,
+      { spec: { inputs: object; nodes: object } }
+    >,
+  )
+  expect(drafts).toHaveLength(1)
+  return drafts[0]!
 }
 
 /** 殻の下の形 (経路の頭 `/model`, API の頭 `/api/model`) で描く */
@@ -375,6 +405,79 @@ describe('StageApp', () => {
         '/work/bbbbbbbbbbbb',
       ),
     )
+  })
+
+  it('プロジェクトに保存してから外すと下書きを残さず, 戻すと下書きを聞かない', async () => {
+    stubApi('/api/model', 'tabular_mlp')
+    const first = renderStage({ project: 'aaaaaaaaaaaa' })
+    const dialog = await openProjectDialog()
+    // 新しく始める定義なので, 殻の問題の設定の雛形を開く (保存していない変更になる)
+    await within(dialog).findByText(/雛形 tabular_mlp を開きました/)
+    const saving = within(dialog).getByRole('region', { name: 'プロジェクトに保存' })
+    fireEvent.click(within(saving).getByRole('button', { name: 'この場所に保存' }))
+    await within(saving).findByText('/work/aaaaaaaaaaaa/models/model.yaml に保存しました')
+    // 置き場には保存していないので印 (*) は残る
+    expect(screen.getByRole('button', { name: '保存 *' })).toBeInTheDocument()
+    // 段階を移る (部品が外される) と, 書いたものと同じ定義は下書きに書かない
+    first.unmount()
+    const drafts = JSON.parse(
+      window.localStorage.getItem('ml-createarchitecture:drafts') ?? '{}',
+    ) as object
+    expect(Object.keys(drafts)).toHaveLength(0)
+    // 段階に戻っても下書きを戻すかを聞かない
+    renderStage({ project: 'aaaaaaaaaaaa' })
+    await screen.findByRole('button', { name: 'データセットとプロジェクト' })
+    expect(
+      screen.queryByRole('region', { name: '保存していない定義の下書き' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('プロジェクトに保存した後に変えた定義は, 外すときに下書きに書く', async () => {
+    stubApi('/api/model', 'tabular_mlp')
+    const first = renderStage({ project: 'aaaaaaaaaaaa' })
+    const dialog = await openProjectDialog()
+    await within(dialog).findByText(/雛形 tabular_mlp を開きました/)
+    const saving = within(dialog).getByRole('region', { name: 'プロジェクトに保存' })
+    fireEvent.click(within(saving).getByRole('button', { name: 'この場所に保存' }))
+    await within(saving).findByText('/work/aaaaaaaaaaaa/models/model.yaml に保存しました')
+    fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }))
+    // 保存した後に定義を変える (入力を加える)
+    fireEvent.click(screen.getByRole('button', { name: '入力' }))
+    first.unmount()
+    // 下書きは変えた後の定義 (加えた入力を持つ)
+    expect(Object.keys(onlyDraft().spec.inputs).sort()).toEqual(['input1', 'x'])
+    renderStage({ project: 'aaaaaaaaaaaa' })
+    expect(
+      await screen.findByRole('region', { name: '保存していない定義の下書き' }),
+    ).toBeInTheDocument()
+  })
+
+  it('プロジェクトに保存してから殻で問題の設定を替えると, 書いた定義も下書きに書く', async () => {
+    stubApi('/api/model', 'tabular_mlp')
+    const first = renderStage({ project: 'aaaaaaaaaaaa' })
+    const dialog = await openProjectDialog()
+    await within(dialog).findByText(/雛形 tabular_mlp を開きました/)
+    const saving = within(dialog).getByRole('region', { name: 'プロジェクトに保存' })
+    fireEvent.click(within(saving).getByRole('button', { name: 'この場所に保存' }))
+    await within(saving).findByText('/work/aaaaaaaaaaaa/models/model.yaml に保存しました')
+    fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }))
+    // 替えた先のプロジェクトには書いていないので, 替えたときに待たずに下書きに書く
+    first.rerender(
+      <StageApp
+        basename="/model"
+        apiBase="/api/model"
+        project="bbbbbbbbbbbb"
+        onProjectChange={() => {}}
+        onProjectsChange={() => {}}
+        embedded
+      />,
+    )
+    await waitFor(() => expect(Object.keys(onlyDraft().spec.nodes)).toEqual(['head']))
+    first.unmount()
+    renderStage({ project: 'bbbbbbbbbbbb' })
+    expect(
+      await screen.findByRole('region', { name: '保存していない定義の下書き' }),
+    ).toBeInTheDocument()
   })
 
   it('単独では名前と明暗の切り替えを出し, 問題の設定を選ばない', async () => {

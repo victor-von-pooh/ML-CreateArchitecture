@@ -239,8 +239,8 @@ export function Toolbar({
   onSavingChange?: (saving: boolean) => void
   /** データセットから読んだ入力と出す値の数 (と雛形のままの定義を書き換えた結果) を本体の定義に入れ, 知らせる文を返す */
   onDataset: (info: DatasetInputs, template: DatasetTemplate) => string[]
-  /** 定義をプロジェクトに書いた (書いたファイルの場所) */
-  onProjectSaved: (path: string) => void
+  /** 定義をプロジェクトに書いた (書いたファイルの場所と, 書いた定義) */
+  onProjectSaved: (path: string, spec: Spec) => void
   /** 問題の設定の受け持ちに合う雛形の定義を開く */
   onTemplate: (spec: Spec) => void
 }) {
