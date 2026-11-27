@@ -16,11 +16,10 @@ from types import ModuleType
 from typing import Any, Optional
 
 import yaml
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from ml_modelcontrol import infer, list_examples
 from pydantic import BaseModel, Field, ValidationError
 
-from ml_createarchitecture.settings import get_problems_dir
 from ml_createarchitecture.store import (
     NAME_PATTERN,
     ModelError,
@@ -28,7 +27,7 @@ from ml_createarchitecture.store import (
     write_atomic,
 )
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 # 追加の依存の入れ方 (無い場合の案内)
 SETUP_HINT = "make setup (EXTRAS を書く場合は project も含める)"
@@ -2346,13 +2345,14 @@ def updated_of(entry: ProblemEntry) -> str:
 
 
 @router.get("/problems")
-def list_problems() -> ProblemList:
+def list_problems(request: Request) -> ProblemList:
     """
     ML-Pathfinder の置き場にある問題の設定の一覧を返す関数
 
     Parameters
     ----------
-    None
+    request: Request
+        リクエスト (request.app は問題の設定の置き場を持つ)
 
     Returns
     ----------
@@ -2367,7 +2367,7 @@ def list_problems() -> ProblemList:
     """
     # problems/<識別子>/problem.yaml (置き場が無ければ空. ML-Fathom と同じ)
     load_library("ml_quest", "handoff")
-    root = get_problems_dir()
+    root: Path = request.app.state.problems_dir
     files: list[Path] = []
     error = None
     try:

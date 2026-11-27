@@ -459,7 +459,7 @@
     "/api/problems": {
       "get": {
         "summary": "List Problems",
-        "description": "ML-Pathfinder の置き場にある問題の設定の一覧を返す関数\n\nParameters\n----------\nNone\n\nReturns\n----------\nresult: ProblemList\n    置き場の problems, 問題の設定 (更新の新しい順), 置き場を読めない\n    場合の理由\n\nRaises\n----------\nHTTPException\n    ML-Quest が無い場合は 501",
+        "description": "ML-Pathfinder の置き場にある問題の設定の一覧を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト (request.app は問題の設定の置き場を持つ)\n\nReturns\n----------\nresult: ProblemList\n    置き場の problems, 問題の設定 (更新の新しい順), 置き場を読めない\n    場合の理由\n\nRaises\n----------\nHTTPException\n    ML-Quest が無い場合は 501",
         "operationId": "list_problems",
         "responses": {
           "200": {

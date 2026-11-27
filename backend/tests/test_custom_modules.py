@@ -4,11 +4,13 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from ml_modelcontrol import register_units_from
 from ml_modelcontrol.custom import LOADED_MODULES
 from ml_modelcontrol.registry import REGISTRY
 
-from ml_createarchitecture.app import create_app
+from ml_createarchitecture.app import create_api, create_app
 from ml_createarchitecture.settings import MODULES_ENV, get_custom_modules
 
 # 起動の設定から読み込む見本のモジュールの置き場
@@ -196,3 +198,55 @@ def test_bad_module_stops_startup(tmp_path: Path, lab_path: Path) -> None:
     """
     with pytest.raises(ValueError, match="no_such_gui_lab を読み込めません"):
         make_client(tmp_path, ["no_such_gui_lab"])
+
+
+def test_create_api_twice_and_shared_registry(
+    tmp_path: Path, lab_path: Path
+) -> None:
+    """
+    自作の部品のモジュールを渡した create_api を 2 度呼べ, 同じプロセスの
+    別のアプリが先に同じモジュールを登録していても誤りにならないことを
+    確かめる関数
+
+    殻 (ML-Studio) は 1 つのプロセスで 5 つのアプリを動かし, ML-Provide
+    も ML-Inference を通して同じ ML-ModelControl の登録簿に部品を入れる
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    lab_path: Path
+        見本のモジュールの置き場
+
+    Returns
+    ----------
+    None
+    """
+    # 別のアプリの代わりに, 先に同じモジュールを登録
+    assert register_units_from(["gui_lab_units"]) == {
+        "gui_lab_units": ["gui_lab.Shift"]
+    }
+
+    # 同じモジュールで 2 度作っても, どちらも同じ部品を持つ
+    shell = FastAPI()
+    shell.mount(
+        "/api/model",
+        create_api(tmp_path / "a", modules=["gui_lab_units"])
+    )
+    shell.mount(
+        "/api/again",
+        create_api(tmp_path / "b", modules=["gui_lab_units"])
+    )
+    client = TestClient(shell)
+    expected = [{"name": "gui_lab_units", "units": ["gui_lab.Shift"]}]
+    for head in ["/api/model", "/api/again"]:
+        assert client.get(f"{head}/modules").json()["modules"] == expected
+        names = [
+            unit["name"] for unit in client.get(f"{head}/units").json()
+        ]
+        assert names.count("gui_lab.Shift") == 1
+
+    # モジュールを渡さないアプリは, 読み込んだモジュールを持たない
+    # (登録簿の部品は同じプロセスの全てのアプリから見える)
+    empty = TestClient(create_api(tmp_path / "c", modules=[]))
+    assert empty.get("/modules").json()["modules"] == []
