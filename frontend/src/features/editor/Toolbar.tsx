@@ -17,12 +17,13 @@ import {
 } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 
-import { api, type CheckResult, type DatasetInputs } from '../../api/client'
+import { useApi, type CheckResult, type DatasetInputs } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
 import { Button, ErrorBox, ExampleButton, Spinner } from '../../components/ui'
 import { failedNodes, formatCount } from '../../lib/format'
 import { danglingNodes, emptySpec, freshName, type Spec, type UnitSpec } from '../../lib/graph'
 import { subgraphCheckTarget } from '../../lib/subgraph'
+import { useStage } from '../../lib/stage'
 import { useTheme } from '../../lib/themeContext'
 import { startsFresh } from '../../lib/template'
 import { ExperimentCopies, ProjectDialog, type DatasetTemplate } from './ProjectDialogs'
@@ -93,6 +94,7 @@ function OpenDialog({
   /** 保存した定義を消した後 (今開いている定義なら, 保存していない扱いにする) */
   onDeleted: (name: string) => void
 }) {
+  const api = useApi()
   const models = useQuery({ queryKey: ['models'], queryFn: api.listModels })
   const queryClient = useQueryClient()
   // 保存した定義を消す (確かめてから. 消した後は一覧を読み直す)
@@ -242,9 +244,12 @@ export function Toolbar({
   /** 問題の設定の受け持ちに合う雛形の定義を開く */
   onTemplate: (spec: Spec) => void
 }) {
+  const api = useApi()
   const queryClient = useQueryClient()
   const nameId = useId()
   const { theme, toggle } = useTheme()
+  // 殻の下では, アプリの名前と明暗の切り替えを殻の上の帯が持つ
+  const { embedded } = useStage()
   const [name, setName] = useState(initialName ?? fileName)
   const [dialog, setDialog] = useState<'open' | 'yaml' | 'python' | 'project' | null>(null)
 
@@ -379,7 +384,9 @@ export function Toolbar({
   return (
     <header className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-3 py-2">
       {/* 狭い画面では名前を隠し, 上の操作を 1 行に収める (読み上げには残す) */}
-      <h1 className="mr-2 text-sm font-semibold max-xl:sr-only">ML-CreateArchitecture</h1>
+      {!embedded && (
+        <h1 className="mr-2 text-sm font-semibold max-xl:sr-only">ML-CreateArchitecture</h1>
+      )}
       {/* 保存の結果が別の定義に反映されないよう, 保存の間は新規と開くを止める */}
       <Button
         variant="secondary"
@@ -539,14 +546,16 @@ export function Toolbar({
             誤り {errors} 件
           </span>
         )}
-        <Button
-          variant="ghost"
-          icon={theme === 'dark' ? Sun : Moon}
-          onClick={toggle}
-          aria-label="暗い表示"
-          aria-pressed={theme === 'dark'}
-          title={theme === 'dark' ? '明るい表示にする' : '暗い表示にする'}
-        />
+        {!embedded && (
+          <Button
+            variant="ghost"
+            icon={theme === 'dark' ? Sun : Moon}
+            onClick={toggle}
+            aria-label="暗い表示"
+            aria-pressed={theme === 'dark'}
+            title={theme === 'dark' ? '明るい表示にする' : '暗い表示にする'}
+          />
+        )}
       </div>
       {save.error && (
         <div className="w-full">

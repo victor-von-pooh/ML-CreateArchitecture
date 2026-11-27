@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { api, type Issue } from '../../api/client'
+import { useApi, type Issue } from '../../api/client'
 
 /**
  * 登録されていない部品の誤りがある場合に, 自作の部品を起動の設定に足す案内を出す
  * (定義に書いた名前からは読み込まないので, 起動し直してもらう)
  */
 export function CustomModuleHint({ issues }: { issues: Issue[] }) {
+  const api = useApi()
   const unknown = issues.some((issue) => issue.code === 'unknown_unit')
   const modules = useQuery({
     queryKey: ['modules'],

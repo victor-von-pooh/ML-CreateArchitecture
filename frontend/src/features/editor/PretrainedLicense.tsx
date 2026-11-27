@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2 } from 'lucide-react'
 
-import { api, type PretrainedInfo } from '../../api/client'
+import { useApi, type PretrainedInfo } from '../../api/client'
 import { useDebounced } from '../../lib/debounce'
 import { formatBytes, licenseParams } from '../../lib/license'
 
@@ -30,6 +30,7 @@ export function PretrainedLicense({
   params: Record<string, unknown>
   weightsParams: string[]
 }) {
+  const api = useApi()
   // 打っている途中のモデルの名前で読みに行かないように, 落ち着いてから聞く
   const current = licenseParams(params, weightsParams)
   const target = useDebounced(current, 600)

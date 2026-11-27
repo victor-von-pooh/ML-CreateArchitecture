@@ -3,7 +3,7 @@ import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
-import { api } from './api/client'
+import { useApi } from './api/client'
 import { ErrorBox, Spinner } from './components/ui'
 import { Canvas } from './features/editor/Canvas'
 import { Inspector } from './features/editor/Inspector'
@@ -54,6 +54,7 @@ export function App() {
 
 /** 編集の画面の本体 (キャンバスの表示範囲を使うので ReactFlowProvider の中) */
 function Editor() {
+  const api = useApi()
   const units = useQuery({ queryKey: ['units'], queryFn: api.listUnits, staleTime: Infinity })
   // 定義は元に戻す・やり直すができる値で持つ
   const history = useHistory<Spec>(() => emptySpec())
@@ -623,7 +624,7 @@ function Editor() {
 
   return (
     <>
-      <div className="flex h-screen flex-col bg-bg text-ink">
+      <div className="flex h-full flex-col bg-bg text-ink">
         {/* キーボードで, 上の操作と部品の一覧を飛ばしてキャンバスへ移る */}
         <a
           href="#canvas"

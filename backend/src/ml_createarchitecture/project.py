@@ -2365,12 +2365,14 @@ def list_problems(request: Request) -> ProblemList:
     HTTPException
         ML-Quest が無い場合は 501
     """
-    # problems/<識別子>/problem.yaml (置き場が無ければ空. ML-Fathom と同じ)
+    # problems/<識別子>/problem.yaml (置き場が無ければ空. ML-Fathom と同じ).
+    # 保存先の problem_path と比べられるように, 置き場は実際のパスにする
     load_library("ml_quest", "handoff")
     root: Path = request.app.state.problems_dir
     files: list[Path] = []
     error = None
     try:
+        root = root.resolve()
         if root.is_dir():
             files = [
                 child / PROBLEM_FILE for child in sorted(root.iterdir())
