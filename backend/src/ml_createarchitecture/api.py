@@ -26,7 +26,7 @@ from ml_createarchitecture.store import (
     ModelStore,
 )
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 
 class Issue(BaseModel):

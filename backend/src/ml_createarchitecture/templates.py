@@ -19,7 +19,7 @@ from ml_modelcontrol.templates import (
 )
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 # 照らさない定義の項目 (位置, 名前と説明. 画面と保存の名前で変わるため)
 LOOSE_KEYS = ("ui", "name", "description")

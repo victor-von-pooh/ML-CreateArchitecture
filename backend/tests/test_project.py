@@ -595,9 +595,7 @@ def test_project_named_sibling(client: TestClient, tmp_path: Path) -> None:
     assert response.json()["default"] is True
 
 
-def test_project_save_bound_target(
-    client: TestClient, tmp_path: Path
-) -> None:
+def test_project_save_bound_target(client: TestClient, tmp_path: Path) -> None:
     """
     確かめた保存先と, 書くときに決め直した保存先が違えば, 上書きの許しが
     あっても書かない (409) ことを確かめる関数
@@ -1353,9 +1351,7 @@ def test_project_parent_is_file(
     assert response.status_code == 422
 
 
-def test_project_named_models_file(
-    client: TestClient, tmp_path: Path
-) -> None:
+def test_project_named_models_file(client: TestClient, tmp_path: Path) -> None:
     """
     名前で選ぶ保存先で models がファイルの場合に, 確かめの時点で断る
     ことを確かめる関数
@@ -1448,9 +1444,7 @@ def save_problem(
     return path
 
 
-def test_list_problems(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_list_problems(client: TestClient, tmp_path: Path) -> None:
     """
     ML-Pathfinder の置き場の問題の設定を並べ, プロジェクトを書き出した
     ものだけを使えるとし, 他は理由を付けることを確かめる関数
@@ -1461,8 +1455,6 @@ def test_list_problems(
         API を呼ぶクライアント
     tmp_path: Path
         pytest が用意する一時ディレクトリ
-    monkeypatch: pytest.MonkeyPatch
-        環境変数の差し替え
 
     Returns
     ----------
@@ -1471,7 +1463,6 @@ def test_list_problems(
     # 置き場が無ければ空
     quest = pytest.importorskip("ml_quest")
     home = tmp_path / "pathfinder"
-    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
     response = client.get("/api/problems")
     assert response.status_code == 200, response.text
     assert response.json() == {
@@ -1591,9 +1582,7 @@ def rank_problem(quest: Any) -> dict[str, Any]:
     return problem
 
 
-def test_problem_example(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_problem_example(client: TestClient, tmp_path: Path) -> None:
     """
     本物の ML-Quest の受け渡しの雛形の名前を, 一覧と保存先に渡すことを
     確かめる関数
@@ -1604,8 +1593,6 @@ def test_problem_example(
         API を呼ぶクライアント
     tmp_path: Path
         pytest が用意する一時ディレクトリ
-    monkeypatch: pytest.MonkeyPatch
-        環境変数の差し替え
 
     Returns
     ----------
@@ -1614,7 +1601,6 @@ def test_problem_example(
     # 並べるを一から学習するものと, 見本 (表の列の予測. 雛形無し)
     quest = pytest.importorskip("ml_quest")
     home = tmp_path / "pathfinder"
-    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
     example = quest.example_problem(next(iter(quest.EXAMPLES)))
     project = tmp_path / "proj"
     quest.make_project(example, project)
@@ -2245,9 +2231,7 @@ def test_dataset_inputs_anomaly(client: TestClient, tmp_path: Path) -> None:
     )
 
 
-def test_problem_anomaly(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_problem_anomaly(client: TestClient, tmp_path: Path) -> None:
     """
     異常の検知の問題の設定は, 自己符号化器なら雛形 tabular_autoencoder を
     返し, 距離に基づく度合いなら定義が要らない理由で選べなくすることを
@@ -2259,8 +2243,6 @@ def test_problem_anomaly(
         API を呼ぶクライアント
     tmp_path: Path
         pytest が用意する一時ディレクトリ
-    monkeypatch: pytest.MonkeyPatch
-        環境変数の差し替え
 
     Returns
     ----------
@@ -2269,7 +2251,6 @@ def test_problem_anomaly(
     # 骨組みを書き出したプロジェクトの記録を持つ 2 つの問題の設定
     quest = pytest.importorskip("ml_quest")
     home = tmp_path / "pathfinder"
-    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
     places = {}
     for score in ("autoencoder", "distance"):
         problem = anomaly_problem(quest, score=score)
@@ -2527,9 +2508,7 @@ def test_dataset_inputs_uplift(client: TestClient, tmp_path: Path) -> None:
     )
 
 
-def test_problem_uplift(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_problem_uplift(client: TestClient, tmp_path: Path) -> None:
     """
     骨組みを書き出した効果の見積もりの問題の設定が選べて, 雛形
     tabular_uplift を返すことを確かめる関数 (ML-Quest が無ければ飛ばす)
@@ -2540,8 +2519,6 @@ def test_problem_uplift(
         API を呼ぶクライアント
     tmp_path: Path
         pytest が用意する一時ディレクトリ
-    monkeypatch: pytest.MonkeyPatch
-        環境変数の差し替え
 
     Returns
     ----------
@@ -2550,7 +2527,6 @@ def test_problem_uplift(
     # 骨組みを書き出したプロジェクトの記録を持つ問題の設定
     quest = pytest.importorskip("ml_quest")
     home = tmp_path / "pathfinder"
-    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
     problem = uplift_problem(quest)
     project = tmp_path / "uplift"
     quest.make_project(problem, project)
@@ -2814,9 +2790,7 @@ def test_dataset_inputs_price_answers(
     }
 
 
-def test_problem_price(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_problem_price(client: TestClient, tmp_path: Path) -> None:
     """
     骨組みを書き出した値段を変える判断の問題の設定が選べて, 雛形
     tabular_price を返すことを確かめる関数 (ML-Quest が無ければ飛ばす)
@@ -2827,8 +2801,6 @@ def test_problem_price(
         API を呼ぶクライアント
     tmp_path: Path
         pytest が用意する一時ディレクトリ
-    monkeypatch: pytest.MonkeyPatch
-        環境変数の差し替え
 
     Returns
     ----------
@@ -2837,7 +2809,6 @@ def test_problem_price(
     # 骨組みを書き出したプロジェクトの記録を持つ問題の設定
     quest = pytest.importorskip("ml_quest")
     home = tmp_path / "pathfinder"
-    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
     problem = price_problem(quest)
     project = tmp_path / "price"
     quest.make_project(problem, project)
@@ -3171,9 +3142,7 @@ def test_dataset_inputs_demand_levels(
     assert body["demand"]["problem"] == "解約の引き止め"
 
 
-def test_problem_demand(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_problem_demand(client: TestClient, tmp_path: Path) -> None:
     """
     骨組みを書き出した時間をまたぐ量の判断の問題の設定が選べて, 雛形
     tabular_demand を返すことを確かめる関数 (ML-Quest が無ければ飛ばす)
@@ -3184,8 +3153,6 @@ def test_problem_demand(
         API を呼ぶクライアント
     tmp_path: Path
         pytest が用意する一時ディレクトリ
-    monkeypatch: pytest.MonkeyPatch
-        環境変数の差し替え
 
     Returns
     ----------
@@ -3194,7 +3161,6 @@ def test_problem_demand(
     # 骨組みを書き出したプロジェクトの記録を持つ問題の設定
     quest = pytest.importorskip("ml_quest")
     home = tmp_path / "pathfinder"
-    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
     problem = demand_problem(quest)
     project = tmp_path / "demand"
     quest.make_project(problem, project)

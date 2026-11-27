@@ -4,12 +4,13 @@ from typing import Any
 
 import pytest
 import torch
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from ml_modelcontrol import clear_pretrained_cache, pretrained
 from ml_modelcontrol import model as model_module
 
 from ml_createarchitecture import api as api_module
-from ml_createarchitecture.app import create_app
+from ml_createarchitecture.app import cookie_name, create_api, create_app
 
 # 全結合と ReLU の小さなモデルの定義
 SPEC = {
@@ -82,6 +83,162 @@ def test_requires_token(tmp_path: Path) -> None:
         headers={"origin": "http://evil.example"}
     )
     assert response.status_code == 403
+
+
+def test_standalone_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    単独の起動のアプリが確かめ, /api/auth, 画面の配信を持つことを
+    確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        画面の置き場の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    # ビルド済みの画面の代わり
+    static_dir = (tmp_path / "static").resolve()
+    (static_dir / "assets").mkdir(parents=True)
+    (static_dir / "index.html").write_text("画面", encoding="utf-8")
+    (static_dir / "assets" / "a.js").write_text("1", encoding="utf-8")
+    monkeypatch.setattr("ml_createarchitecture.app.STATIC_DIR", static_dir)
+    standalone = create_app(
+        data_dir=tmp_path / "home", token="secret",
+        allowed_hosts=["testserver"], modules=[]
+    )
+    client = TestClient(standalone)
+
+    # 違うトークンは 401, 合うトークンは Cookie を置いて画面へ
+    assert client.get("/api/auth?token=x").status_code == 401
+    # GET でない /api/auth もトークンの確かめの対象
+    assert client.post("/api/auth?token=secret").status_code == 401
+    assert client.get("/api/models").status_code == 401
+    moved = client.get("/api/auth?token=secret", follow_redirects=False)
+    assert moved.status_code == 303 and moved.headers["location"] == "/"
+    assert cookie_name("secret") in moved.cookies
+    assert client.get("/api/models").json() == []
+
+    # ヘッダーのトークンでも呼べる
+    header = TestClient(standalone).get(
+        "/api/models", headers={"x-createarchitecture-token": "secret"}
+    )
+    assert header.status_code == 200
+
+    # 別の Origin の書き込みは 403, 同じ Origin は受け付ける
+    foreign = client.put(
+        "/api/models/a", json={"spec": SPEC},
+        headers={"origin": "http://evil.example"}
+    )
+    assert foreign.status_code == 403
+    same = client.put(
+        "/api/models/a", json={"spec": SPEC},
+        headers={"origin": "http://testserver"}
+    )
+    assert same.status_code == 200, same.text
+    assert (tmp_path / "home" / "models" / "a.yaml").is_file()
+
+    # 別のホスト名は断る
+    other = client.get("/api/models", headers={"host": "evil.example"})
+    assert other.status_code == 400
+
+    # 画面の配信と, 無い API と仕様の画面の 404 (根の仕様の画面も出さず,
+    # 画面の中の移動先として index.html)
+    assert client.get("/").text == "画面"
+    assert client.get("/somewhere").text == "画面"
+    assert client.get("/assets/a.js").text == "1"
+    for path in ["/api", "/api/nothing", "/api/openapi.json", "/api/docs"]:
+        assert client.get(path).status_code == 404, path
+    for path in ["/docs", "/openapi.json"]:
+        assert client.get(path).text == "画面", path
+
+
+def test_create_api_mounted(tmp_path: Path) -> None:
+    """
+    API だけのアプリを別の頭の下に mount して, 部品の一覧, 確認, 定義の
+    保存と読み込み, 問題の設定の一覧が動き, 確かめを持たないことを
+    確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 殻の代わりのアプリ (確かめは殻が持つので, ここでは付けない)
+    problems_dir = tmp_path / "shared" / "problems"
+    shell = FastAPI()
+    shell.mount(
+        "/api/model",
+        create_api(tmp_path / "home", problems_dir=problems_dir, modules=[])
+    )
+    client = TestClient(shell)
+
+    # トークン無しで, 別の Origin からも呼べる (確かめは殻の役目)
+    names = {unit["name"] for unit in client.get("/api/model/units").json()}
+    assert "nn.Linear" in names
+    checked = client.post("/api/model/check", json={"spec": SPEC}).json()
+    assert checked["ok"] and checked["params"] == 8
+    saved = client.put(
+        "/api/model/models/a", json={"spec": SPEC},
+        headers={"origin": "http://other.example"}
+    )
+    assert saved.status_code == 200, saved.text
+    assert (tmp_path / "home" / "models" / "a.yaml").is_file()
+    listed = client.get("/api/model/models").json()
+    assert [item["name"] for item in listed] == ["a"]
+
+    # /auth も仕様の画面も持たない
+    for path in ["/auth", "/openapi.json", "/docs", "/redoc"]:
+        assert client.get(f"/api/model{path}").status_code == 404, path
+
+    # 2 度呼んでも誤りにならず, 別の置き場の別のアプリ
+    again = TestClient(create_api(tmp_path / "other", modules=[]))
+    assert again.get("/models").json() == []
+
+
+def test_create_api_problems_dir(tmp_path: Path) -> None:
+    """
+    問題の設定の一覧が, create_api に渡した置き場か, 渡さなければ
+    ML_PATHFINDER_HOME の下を読むことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 渡した問題の設定の置き場に 1 つ置く (環境変数の置き場とは別)
+    quest = pytest.importorskip("ml_quest")
+    problems_dir = tmp_path / "shared" / "problems"
+    problem = quest.example_problem(next(iter(quest.EXAMPLES)))
+    problem["name"] = "試し"
+    quest.save_problem(problem, problems_dir / "churn" / "problem.yaml")
+    shell = FastAPI()
+    shell.mount(
+        "/api/model",
+        create_api(tmp_path / "home", problems_dir=problems_dir, modules=[])
+    )
+    listed = TestClient(shell).get("/api/model/problems").json()
+    assert listed["root"] == str(problems_dir)
+    assert [item["name"] for item in listed["problems"]] == ["試し"]
+
+    # problems_dir を渡さなければ ML_PATHFINDER_HOME の下の problems
+    default = TestClient(create_api(tmp_path / "home", modules=[]))
+    expected = (tmp_path / "pathfinder").resolve() / "problems"
+    assert default.get("/problems").json()["root"] == str(expected)
 
 
 def test_units_and_check(client: TestClient) -> None:
@@ -216,10 +373,16 @@ def test_review_fixes(client: TestClient, tmp_path: Path) -> None:
     (tmp_path / "models" / "bad.yaml").write_text("a: [\n", encoding="utf-8")
     assert client.get("/api/models/bad").status_code == 404
 
-    # 末尾に改行のある名前は不可
+    # 末尾に改行のある名前は不可 (単独では /api の mount の照合が改行を
+    # 含む経路に合わずに 404, API だけのアプリでは名前の確かめで 400)
     assert client.put(
         "/api/models/abc%0A", json={"spec": SPEC}
+    ).status_code == 404
+    only_api = TestClient(create_api(tmp_path, modules=[]))
+    assert only_api.put(
+        "/models/abc%0A", json={"spec": SPEC}
     ).status_code == 400
+    assert not list((tmp_path / "models").glob("abc*"))
 
     # 大きすぎる入力の例は形を推定せずに注意
     huge = {**SPEC, "inputs": {"x": {"shape": [100000, 100000]}}}

@@ -33,7 +33,7 @@ from ml_createarchitecture.project import (
 )
 from ml_createarchitecture.store import NAME_PATTERN
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 # 実験の置き場を書く config (ML-Dashboard の get_output_dirs と同じ. 既定の
 # config の値 (無ければ ML-Found の既定の outputs) に, 他の default の config

@@ -29,13 +29,12 @@ ML-Dashboard と同じ構成と道具 (uv, pnpm, Ruff, mypy, Prettier, oxlint, O
 | データセットから入力と出力を決める | `POST /api/dataset/inputs` (ML-EDA と ML-Quest を通す). 場所は画面のダイアログに利用者が入れる | 殻で選んだプロジェクトのデータセットを, 場所を入れずに受け取る (統合) |
 | 問題の設定の受け持ちに合う雛形と既製のモデルから始める | `GET /api/problems`, `GET /api/examples`, `POST /api/templates/match` と `adapt`. 問題の設定の一覧は ML-Pathfinder の置き場から読む | 統合以外は無し (まだ扱っていない型の雛形は低) |
 | 定義をプロジェクトに保存し, 学習の段階へ渡す | `PUT /api/project/model`. 骨組みの入力と出力に合うかを確かめて書く. 学習の実験の定義の写しも開ける (`/api/project/experiments`) | 保存した後に学習の段階へ移る導線 (殻の段階の並び. 統合) |
-| 置き場, トークン, 待ち受けを外から決められる | `create_app(data_dir, token, allowed_hosts, modules)` と環境変数 `ML_CREATEARCHITECTURE_HOME`, `ML_CREATEARCHITECTURE_TOKEN`. ポートは `--port` (起動のコマンドだけ) | 下の「統合に向けて足りないこと」 |
+| 置き場, トークン, 待ち受けを外から決められる | `create_app(data_dir, token, allowed_hosts, modules)` と環境変数 `ML_CREATEARCHITECTURE_HOME`, `ML_CREATEARCHITECTURE_TOKEN`. ポートは `--port` (起動のコマンドだけ). 確かめを持たない API だけのアプリ (`create_api`) を殻の頭の下に mount できる (「4. API」) | 下の「統合に向けて足りないこと」 |
 
 ### 統合に向けて足りないこと
 
 殻 (ML-Studio) は 5 つのアプリを submodule で持ち, 1 つのコマンドで 1 つのポートを開く. 起動ごとのトークンと Origin の確かめは殻が 1 つだけ持つ. 各アプリは自分のバックエンドを `/api/<段階>`, 画面を `/<段階>` の下に載せられる形にし, 単独でも今まで通り動く.
 
-- バックエンド: API の経路の頭 `/api` が, `api.py`, `project.py`, `experiments.py`, `templates.py` の 4 つの router の `APIRouter(prefix="/api")`, 起動時の認証の経路 `/api/auth` (移動先は `/`), ビルド済みの画面の配信 (`mount_frontend` が `/` に置く) に固定されている. `create_app` は token と Origin と Host の確認を自分の middleware として必ず付け, 認証の Cookie の名前はトークンから作る. 殻が `/api/<段階>` の下に載せるには, 経路の頭を渡せる router (か sub-app) の作り方を公開し, 確認の middleware と画面の配信を切って, 殻が渡したトークンの確認だけを使う形にする. 置き場 (`data_dir`) とトークンは引数で渡せるので, その形は保つ
 - 画面: API の呼び出しが `src/api/client.ts` で `/api/...` の絶対のパスに固定され (`request` が `fetch(path)`), 画面の資産も `/favicon.svg` など `/` 始まり, Vite の `base` は既定の `/`. 画面は経路を持たない 1 画面 (React Router を使っていない) で, ルートの要素は `main.tsx` が `#root` に直接描く. 殻が `/<段階>` の下に載せるには, 画面の根の部品を公開し, 経路の頭 (basename) と API の頭を props で渡せるようにし, 資産を相対にする
 - プロジェクト: データセットとプロジェクトの場所は「データセットとプロジェクト」のダイアログに利用者が入れる (`POST /api/dataset/inputs`, `POST /api/project/target`). 殻で選んだ 1 つのプロジェクトを受け取り, そのデータセットと保存先を既定にして, 場所を手で入れ直さずに済むようにする
 - 共通の部品と言葉: 見出し, 段階の並び, 誤りの出し方は各アプリの画面が別々に持つ. 殻の段階の並びと共通の部品にそろえ, 段階の名前と画面の言葉を 5 つのアプリでそろえる
@@ -164,6 +163,26 @@ ML-Dashboard と同じ構成と道具 (uv, pnpm, Ruff, mypy, Prettier, oxlint, O
 
 ## 4. API
 
+単独の起動では全て `/api` の下. 起動ごとのトークン (Cookie か `x-createarchitecture-token` ヘッダー) が要る. 殻の下では下の表の `/api` が殻の頭 (`/api/model`) に替わる.
+
+### アプリの組み立て
+
+API と, 確かめと画面の配信を, 2 つの FastAPI のアプリに分ける (殻の下では確かめを殻の 1 つだけにするため).
+
+- `create_api(data_dir=None, *, problems_dir=None, modules=None)`: API だけのアプリ. 殻はこれを `/api/model` の頭の下に mount する
+    - 4 つの router (`api`, `project`, `experiments`, `templates`) は全て頭なし (`APIRouter()`) で, このアプリに加える. mount の下の経路の照合は mount の頭を除いた経路で行われるため
+    - トークン, Origin, ホスト名の確かめ, `/api/auth`, 画面の配信を持たない (載せる側が持つ). 仕様の画面 (`/docs`, `/redoc`, `/openapi.json`) も閉じる
+    - 置き場は `app.state.store` (定義のファイル) と `app.state.problems_dir` (ML-Pathfinder の問題の設定の置き場), 読み込んだ自作の部品のモジュールは `app.state.custom_modules` に持ち, ルートは `request.app.state` から取る. Starlette では mount した sub-app の中の `request.app` は sub-app を指すので, 殻の下でもルートはそのまま動く
+    - `data_dir` はこのアプリのデータの置き場 (無ければ既定の置き場. 下の「6. 置き場」). `problems_dir` は問題の設定の置き場. 渡さなければ作ったときの `ML_PATHFINDER_HOME` (無ければ既定) の下の `problems`. 殻は ML-Pathfinder と同じ置き場を渡す. `modules` は起動の設定の自作の部品のモジュール (無ければ `ML_CREATEARCHITECTURE_MODULES`. 上の「3. 画面」の「自作の部品 (起動の設定のモジュール)」)
+    - lifespan と startup, shutdown の処理を使わず, 自作の部品のモジュールの読み込みも呼んだときに済ませる (mount した sub-app の lifespan は動かないため). 読み込めないモジュールがあれば `ValueError` で止める
+    - 部品の登録簿 (ML-ModelControl の `REGISTRY`) はプロセスで 1 つで, 同じプロセスの他のアプリ (ML-Provide が ML-Inference を通して入れる自作の部品など) と共有する. 読み込み済みのモジュールは ML-ModelControl が前の結果を返すので, `create_api` を何度呼んでも, 他のアプリが先に同じモジュールを読み込んでいても重ねて登録しない. 部品の一覧 (`GET /api/units`) は登録簿の全ての部品を出し, `GET /api/modules` はこのアプリに渡したモジュールだけを出す
+    - 呼ぶたびに新しいアプリを返す (テストと殻で別の置き場を渡せるように)
+- `create_app(data_dir=None, token=None, allowed_hosts=None, modules=None)`: 単独で起動するアプリ. 確かめ (トークン, Origin, ホスト名), `/api/auth`, 画面の配信を持つ外側のアプリに, `create_api(data_dir, modules=modules)` を `/api` で mount する. 確かめは外側の middleware なので, mount した API にも効く. トークンを確かめないのは `GET /api/auth` だけ (他のメソッドの `/api/auth` も確かめる). `/api/auth` は mount より先に登録し, 画面の配信 (他のパスは index.html) は最後に置く. `/api` ちょうどと `/api/` の下の無いパスは画面でなく 404 を返す. 仕様の画面 (`/docs`, `/redoc`, `/openapi.json`) は外側のアプリでも閉じる (トークン無しで API の形を見せないため)
+- 仕様の書き出し (`ml-createarchitecture --openapi`) は `create_api` の仕様のパスに `/api` を付けて書き出す (外側のアプリの仕様には mount した API が入らないため). 自作の部品のモジュールは読み込まない
+- ポートはアプリが持たず, 起動の `ml-createarchitecture --port` (か殻) が決める
+
+### 経路
+
 | 経路 | 内容 |
 | --- | --- |
 | `GET /api/units` | 部品の一覧 (ML-ModelControl の `describe_units`. 起動の設定のモジュールから読み込んだ自作の部品は `module` にモジュールの名前) |
@@ -204,8 +223,11 @@ ML-Dashboard と同じ構成と道具 (uv, pnpm, Ruff, mypy, Prettier, oxlint, O
 - `models/<名前>.yaml`: 保存した定義. 名前はファイル名の規則 (英数字, `_`, `-`) に限り, 置き場の外には書かない
 - 置き場の外に書くのは「プロジェクトに保存」の保存先だけ (下の「7. 安全」)
 - 保存していない変更の下書きは置き場に置かず, ブラウザ (`localStorage`) に残す (上の「3. 画面」の「下書き」)
+- 問題の設定の一覧は ML-Pathfinder の置き場 (`ML_PATHFINDER_HOME`. 無ければ `~/.ml-pathfinder`) の `problems/<識別子>/problem.yaml` を読む (2 つのアプリを同じ置き場で使うため, 環境変数も同じもの). 殻の下では `create_api` の `problems_dir` で問題の設定の置き場を渡す (上の「4. API」)
 
 ## 7. 安全
+
+確かめ (トークン, Origin, ホスト名) と `/api/auth` は `create_app` の外側のアプリだけが持ち, `create_api` は持たない. 殻の下では殻が 1 つだけ持つ (段階ごとに確かめが重ならないように). `create_api` を確かめの無いアプリに載せて待ち受けない.
 
 既定では `127.0.0.1` だけで待ち受ける (他のホストを指定すると警告を出す). 起動ごとのトークン (Cookie かヘッダー) を持つ要求だけを API で受け付け, 他のサイトからの書き込み (Origin が接続先と違うもの) と別のホスト名での接続を断る. 手元のファイルを読めるので, トークンは他の人に渡さない.
 

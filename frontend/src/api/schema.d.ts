@@ -425,7 +425,8 @@ export interface paths {
          *
          *     Parameters
          *     ----------
-         *     None
+         *     request: Request
+         *         リクエスト (request.app は問題の設定の置き場を持つ)
          *
          *     Returns
          *     ----------
