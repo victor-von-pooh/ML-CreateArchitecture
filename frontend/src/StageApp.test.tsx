@@ -166,9 +166,15 @@ describe('StageApp', () => {
     await screen.findByRole('button', { name: 'データセットとプロジェクト' })
     expect(screen.queryByRole('heading', { name: 'ML-CreateArchitecture' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '暗い表示' })).not.toBeInTheDocument()
-    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    // 殻が html のクラスを替えると, キャンバスの明暗 (React Flow の colorMode) も替わり,
+    // 部品は html のクラスを書き戻さない
+    const canvas = document.querySelector('.react-flow')!
+    expect(canvas).toHaveClass('dark')
     document.documentElement.classList.remove('dark')
-    await waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(false))
+    await waitFor(() => expect(canvas).not.toHaveClass('dark'))
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+    document.documentElement.classList.add('dark')
+    await waitFor(() => expect(canvas).toHaveClass('dark'))
   })
 
   it('読むだけの明暗は html のクラスを書き換えず, 殻の切り替えを読み直す', async () => {
@@ -283,6 +289,70 @@ describe('StageApp', () => {
     ).toBeInTheDocument()
     expect(count()).toBe(3)
     expect(onProjectChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('一覧を読み込み済みで開き直しても, 殻の問題の設定を既定にする', async () => {
+    stubApi()
+    renderStage({ project: 'aaaaaaaaaaaa' })
+    let dialog = await openProjectDialog()
+    const dataset = () =>
+      within(dialog).getByRole('textbox', { name: 'データセットのディレクトリ' })
+    await waitFor(() => expect(dataset()).toHaveValue('/work/aaaaaaaaaaaa/outputs/dataset'))
+    fireEvent.change(dataset(), { target: { value: '/other' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }))
+    await waitFor(() => expect(dialog).not.toBeInTheDocument())
+    // 覚えた場所からでなく, 殻の問題の設定から入ることを見るため, 覚えた場所を替える
+    window.localStorage.setItem('ml-createarchitecture:project-path', '/remembered')
+    window.localStorage.setItem('ml-createarchitecture:dataset-path', '/remembered')
+    dialog = await openProjectDialog()
+    await waitFor(() => expect(dataset()).toHaveValue('/work/aaaaaaaaaaaa/outputs/dataset'))
+    expect(within(dialog).getByRole('textbox', { name: 'プロジェクトか問題の設定' })).toHaveValue(
+      `${ROOT}/aaaaaaaaaaaa/problem.yaml`,
+    )
+  })
+
+  it('知らせた値を殻が受け付けず, 後で殻がその値に選び直したら入れる', async () => {
+    stubApi()
+    const onProjectChange = vi.fn()
+    const props = {
+      basename: '/model',
+      apiBase: '/api/model',
+      onProjectChange,
+      onProjectsChange: () => {},
+      embedded: true,
+    }
+    const { rerender } = render(<StageApp {...props} project="aaaaaaaaaaaa" />)
+    const dialog = await openProjectDialog()
+    const field = within(dialog).getByRole('textbox', { name: 'プロジェクトか問題の設定' })
+    await waitFor(() => expect(field).toHaveValue(`${ROOT}/aaaaaaaaaaaa/problem.yaml`))
+    // B を選んで知らせ (殻は受け付けない), A に戻す (殻の選びと同じなので知らせない)
+    fireEvent.click(within(dialog).getByRole('button', { name: /解約の予測/ }))
+    await waitFor(() => expect(field).toHaveValue(`${ROOT}/bbbbbbbbbbbb/problem.yaml`))
+    fireEvent.click(within(dialog).getByRole('button', { name: /総菜の作る量/ }))
+    await waitFor(() => expect(field).toHaveValue(`${ROOT}/aaaaaaaaaaaa/problem.yaml`))
+    // 同じ保存先を確かめ直しても知らせない
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存先を確かめる' }))
+    await within(dialog).findByText('/work/aaaaaaaaaaaa/models/model.yaml')
+    expect(onProjectChange.mock.calls).toEqual([['bbbbbbbbbbbb']])
+    // 殻が B に選び直すと入れる
+    rerender(<StageApp {...props} project="bbbbbbbbbbbb" />)
+    await waitFor(() => expect(field).toHaveValue(`${ROOT}/bbbbbbbbbbbb/problem.yaml`))
+    expect(within(dialog).getByRole('textbox', { name: 'データセットのディレクトリ' })).toHaveValue(
+      '/work/bbbbbbbbbbbb/outputs/dataset',
+    )
+    expect(onProjectChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('実験の定義の写しの場所の欄を, 殻の問題の設定のプロジェクトにする', async () => {
+    stubApi()
+    renderStage({ project: 'bbbbbbbbbbbb' })
+    fireEvent.click(await screen.findByRole('button', { name: '開く' }))
+    const dialog = await screen.findByRole('dialog', { name: '定義を開く', hidden: true })
+    await waitFor(() =>
+      expect(within(dialog).getByRole('textbox', { name: 'プロジェクトか問題の設定' })).toHaveValue(
+        '/work/bbbbbbbbbbbb',
+      ),
+    )
   })
 
   it('単独では名前と明暗の切り替えを出し, 問題の設定を選ばない', async () => {

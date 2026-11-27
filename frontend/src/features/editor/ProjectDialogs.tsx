@@ -319,6 +319,7 @@ export function ExperimentCopies({
   const stagePath = useStageProblem()?.entry?.project ?? null
   const [touched, setTouched] = useState(false)
   const [seenStage, setSeenStage] = useState<string | null>(null)
+  if (stagePath === null && seenStage !== null) setSeenStage(null)
   if (stagePath !== null && stagePath !== seenStage && !touched) {
     setSeenStage(stagePath)
     setPath(stagePath)
@@ -759,7 +760,8 @@ function ProjectSaveSection({
   })
   // 一覧から選んだ問題の設定を欄に入れ, 今の名前のまま保存先を確かめる
   // (欄は描画の中で, 確かめる要求は描画の後)
-  const [seenChoice, setSeenChoice] = useState(choice)
+  // (最初から渡された選びも扱う. 一覧を読み込み済みで, 開いた最初の描画で選んだ場合)
+  const [seenChoice, setSeenChoice] = useState<{ path: string } | null>(null)
   const [pending, setPending] = useState<{ text: string; named: string } | null>(null)
   if (choice !== seenChoice) {
     setSeenChoice(choice)
@@ -983,19 +985,19 @@ export function ProjectDialog({
   const [suggested, setSuggested] = useState<Suggestion | null>(null)
   // 一覧から選んだ問題の設定と, 最後に保存先を確かめた場所
   const [choice, setChoice] = useState<{ path: string } | null>(null)
+  // 最後に保存先を確かめた問題の設定のファイル (データセットの欄に渡す)
+  const [problemPath, setProblemPath] = useState<string | null>(null)
   // 殻で選んだ問題の設定を, 開いたときと殻で選び直したときに, 一覧から選んだのと同じく
-  // 欄に入れる. followed は扱った殻の選び, reported はこのダイアログが殻に知らせた識別子
-  // (知らせた値が返ってきたときは, 既に欄に入っているので入れ直さない)
+  // 欄に入れる (followed は扱った殻の選び). 確かめてある保存先が既にその問題の設定の
+  // ものなら入れ直さない (このダイアログが知らせた値が殻から返ってきた場合など)
   const [followed, setFollowed] = useState<string | null>(null)
-  const [reported, setReported] = useState<string | null>(null)
   const stagePath = stage?.entry && stage.reason === null ? stage.entry.path : null
+  if (project === null && followed !== null) setFollowed(null)
   if (project !== null && stagePath !== null && followed !== project) {
     setFollowed(project)
-    if (reported !== project) setChoice({ path: stagePath })
+    if (problemPath !== stagePath) setChoice({ path: stagePath })
   }
   const [checked, setChecked] = useState<string | null>(null)
-  // 最後に確かめた保存先の問題の設定のファイル (データセットの欄に渡す)
-  const [problemPath, setProblemPath] = useState<string | null>(null)
   // 最後に確かめた問題の設定の雛形 (無ければ null)
   const [template, setTemplate] = useState<Template | null>(null)
   // 最後に送った雛形の読み込みの番号 (読み込みの間に別の問題の設定を確かめた
@@ -1051,12 +1053,11 @@ export function ProjectDialog({
           onTarget={(target, text, chosen) => {
             // 置き場の別の問題の設定から決めた保存先なら, 殻にその識別子を知らせる (置き場に
             // あるかは, 記録を読んだ場所と一覧の場所 (どちらも実際のパス) で比べる. 殻の選びと
-            // 同じなら知らせない)
+            // 同じか, 前に確かめた保存先と同じ問題の設定なら知らせない)
             const stored = queryClient.getQueryData<ProblemList>(['problems'])
             const known = stored?.problems.find((item) => item.path === target.problem_path)
             const id = known ? problemIdOf(known.path) : null
-            if (id !== null && id !== project) {
-              setReported(id)
+            if (id !== null && id !== project && target.problem_path !== problemPath) {
               onProjectChange(id)
             }
             setChecked(text)
