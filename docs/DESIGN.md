@@ -39,7 +39,7 @@ ML-Dashboard と同じ構成と道具 (uv, pnpm, Ruff, mypy, Prettier, oxlint, O
 
 ## 2. 使うライブラリと約束
 
-ライブラリは ML-ModelControl (submodule. ML-Dashboard と ML-Found の関係と同じ). ML-EDA と ML-Quest は追加の依存 `project` にし (「データセットとプロジェクト」のダイアログだけで使うため), `make setup` の既定で入れる. 2 つは git の依存で持ち, `backend/uv.lock` の版を殻 (ML-Studio) の設計の「共通のライブラリの版」の表の版にそろえる (殻の 1 つの環境には 1 つの版しか入らず, 表の版でこのアプリのテストを通しておくため. 上げるときは `uv lock --upgrade-package ml-eda --upgrade-package ml-quest` で表の版になったことを確かめる). ML-ModelControl はまだ表に無いので submodule の版のまま. 入れていない場合は, その操作で入れ方 (「make setup (EXTRAS を書く場合は project も含める)」) を出す.
+ライブラリは ML-ModelControl (submodule. ML-Dashboard と ML-Found の関係と同じ). ML-EDA と ML-Quest は追加の依存 `project` にし (「データセットとプロジェクト」のダイアログだけで使うため), `make setup` の既定で入れる. 2 つは git の依存で持ち, `backend/uv.lock` の版を殻 (ML-Studio) の設計の「共通のライブラリの版」の表の版にそろえる (殻の 1 つの環境には 1 つの版しか入らず, 表の版でこのアプリのテストを通しておくため. 上げるときは `uv lock --upgrade-package ml-eda --upgrade-package ml-quest` で表の版になったことを確かめる). ML-ModelControl の submodule の版も同じ表の版にそろえる (推論の段階のアプリも ML-ModelControl を使い, 殻の 1 つの環境で自作の部品の登録簿を共有するため). 入れていない場合は, その操作で入れ方 (「make setup (EXTRAS を書く場合は project も含める)」) を出す.
 
 - **他の段階のファイルは, その約束を持つライブラリを通して読む**: データセットの説明 (`dataset.yaml`) は ML-EDA, 問題の設定は ML-Quest を通して読み, このアプリは自分では開かない. ML-Inference がデータセットを ML-EDA で読むのと同じ理由で, 版の確かめと読み方を持ち主の 1 か所にまとめ, 約束の版が上がっても読む側を直さずに済むようにするため (知らない版は持ち主の誤りの文で止まる)
 
