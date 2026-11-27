@@ -14,7 +14,7 @@ ML-ModelControl の部品を GUI で並べてつなぎ, モデルを組み立て
 - Python: [ML-ModelControl/CODING_STYLE.md](ML-ModelControl/CODING_STYLE.md) に従う (日本語の NumPy 形式の docstring, コメントは体言止め, 79 文字以内など). Ruff と mypy (strict) を通す
 - TypeScript: Prettier と oxlint に従い, `strict` で型検査を通す. コメントは日本語で書く
 - API を変えたら `make api` で画面の型を作り直し, `openapi.json` と `src/api/schema.d.ts` もコミットする
-- ドキュメントとコードのコメントでは, 「機械学習を全て GUI 上で行う」という目的のために開発しているリポジトリ (今は ML-Found, ML-Dashboard, ML-ModelControl, ML-CreateArchitecture, ML-EDA, ML-Fathom, ML-Inference, ML-Provide, ML-Quest, ML-Pathfinder, ML_tester, ML-Studio) 以外に触れない. ローカルのディレクトリ構成やパスも書かない
+- ドキュメントとコードのコメントでは, 「機械学習を全て GUI 上で行う」という目的のために開発しているリポジトリ (今は ML-Found, ML-Dashboard, ML-ModelControl, ML-CreateArchitecture, ML-EDA, ML-Fathom, ML-Inference, ML-Provide, ML-Quest, ML-Pathfinder, ML-Studio) 以外に触れない. ローカルのディレクトリ構成やパスも書かない
 
 ## 文書
 
