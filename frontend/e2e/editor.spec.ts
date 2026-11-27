@@ -88,6 +88,21 @@ test('線を選んで Delete で外すと, 誤りが出る', async ({ page }) =>
     await edge.locator('path').first().click({ force: true })
     await expect(edge).toHaveClass(/selected/, { timeout: 1000 })
   }).toPass({ timeout: 10_000 })
+
+  // 部品の範囲の外 (殻の上の帯のボタンの代わり) に focus があるときの Delete では消さない
+  await page.evaluate(() => {
+    const button = document.createElement('button')
+    button.textContent = '殻のボタン'
+    document.body.prepend(button)
+  })
+  await page.getByRole('button', { name: '殻のボタン' }).focus()
+  await page.keyboard.press('Delete')
+  await page.keyboard.press('Backspace')
+  await expect(page.locator('.react-flow__edge')).toHaveCount(2)
+  await expect(edge).toHaveClass(/selected/)
+
+  // focus を外す (どこにも focus が無い) と, Delete で消える
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   await page.keyboard.press('Delete')
   await expect(page.locator('.react-flow__edge')).toHaveCount(1)
   await expect(page.locator('header')).toContainText('誤り 1 件', { timeout: 20_000 })

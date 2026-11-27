@@ -23,6 +23,7 @@ import {
   type Spec,
   type UnitSpec,
 } from '../../lib/graph'
+import { outsideStage } from '../../lib/stage'
 import { InputNode, OutputNode, UnitNode } from './nodes'
 
 // キャンバスのノードの種類と表示
@@ -188,6 +189,9 @@ export function Canvas({
         setSelectedEdge(null)
       }}
       deleteKeyCode={['Backspace', 'Delete']}
+      // React Flow は Delete を document で聞くので, focus が部品の範囲の外 (殻の上の帯など)
+      // にあるときは消さない
+      onBeforeDelete={() => Promise.resolve(!outsideStage(document.activeElement))}
       fitView
       fitViewOptions={FIT_OPTIONS}
       // 長いモデルの全体も見られるように, 小さくする限度を下げる
