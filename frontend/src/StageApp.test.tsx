@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ProblemEntry, ProblemList, ProjectTarget } from './api/client'
@@ -255,6 +256,27 @@ describe('StageApp', () => {
     expect(within(dialog).getByRole('textbox', { name: 'データセットのディレクトリ' })).toHaveValue(
       '/work/bbbbbbbbbbbb/outputs/dataset',
     )
+    expect(onProjectChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('StrictMode でも, 別の問題の設定を選んだ知らせは 1 度だけ', async () => {
+    stubApi()
+    const onProjectChange = vi.fn()
+    render(
+      <StrictMode>
+        <StageApp
+          basename="/model"
+          apiBase="/api/model"
+          project="aaaaaaaaaaaa"
+          onProjectChange={onProjectChange}
+          onProjectsChange={() => {}}
+          embedded
+        />
+      </StrictMode>,
+    )
+    const dialog = await openProjectDialog()
+    fireEvent.click(await within(dialog).findByRole('button', { name: /解約の予測/ }))
+    await waitFor(() => expect(onProjectChange).toHaveBeenCalledWith('bbbbbbbbbbbb'))
     expect(onProjectChange).toHaveBeenCalledTimes(1)
   })
 

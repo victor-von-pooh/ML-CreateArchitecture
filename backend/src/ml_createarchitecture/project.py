@@ -2366,7 +2366,7 @@ def list_problems(request: Request) -> ProblemList:
         ML-Quest が無い場合は 501
     """
     # problems/<識別子>/problem.yaml (置き場が無ければ空. ML-Fathom と同じ).
-    # 保存先の problem_path と比べられるように, 置き場は実際のパスにする
+    # 保存先の problem_path と比べるための, 実際のパスの置き場
     load_library("ml_quest", "handoff")
     root: Path = request.app.state.problems_dir
     files: list[Path] = []

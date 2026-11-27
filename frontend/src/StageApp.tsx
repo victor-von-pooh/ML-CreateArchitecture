@@ -54,7 +54,10 @@ export function StageApp({ apiBase, project, onProjectChange, embedded }: StageA
       <QueryClientProvider client={queryClient}>
         <ApiContext.Provider value={api}>
           <StageContext.Provider value={stage}>
-            <App />
+            {/* 部品の範囲の印 (殻の画面で押したキーを拾わないため. 箱は作らない) */}
+            <div data-stage-root className="contents">
+              <App />
+            </div>
           </StageContext.Provider>
         </ApiContext.Provider>
       </QueryClientProvider>
