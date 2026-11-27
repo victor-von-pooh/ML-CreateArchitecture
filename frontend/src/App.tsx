@@ -38,9 +38,9 @@ import {
 } from './lib/subgraph'
 import { applyDatasetInputs, datasetSummary, sameDefinition } from './lib/dataset'
 import { useDebounced } from './lib/debounce'
-import { clearDraft, readDraft, tabId, writeDraft, type Draft } from './lib/draft'
+import { clearDraft, readDraft, tabId, useDraftWriter, type Draft } from './lib/draft'
 import { useHistory } from './lib/history'
-import { outsideStage } from './lib/stage'
+import { outsideStage, useStage } from './lib/stage'
 import { withStateVersion } from './lib/state'
 import { arrangeSpec, freeSpot, placeMissing, unitSize } from './lib/layout'
 
@@ -224,30 +224,21 @@ function Editor() {
   const [notice, setNotice] = useState<{ text: string } | null>(null)
   const notify = (text: string) => setNotice({ text })
   const dirty = useMemo(() => JSON.stringify(whole) !== saved, [whole, saved])
+  const { project } = useStage()
   // 保存していない変更は, 少し待ってからブラウザに下書きとして残す (閉じたり
-  // 読み込み直したりしても失わないように. 保存, 新規, 開く, 捨てるで消す)
-  useEffect(() => {
-    // 変更を元に戻して保存した時点と同じになった場合は, 下書きも消す (前の
-    // 画面の下書きを戻すかを聞いている間は消さない)
-    if (!dirty) {
-      if (draft === null) clearDraft()
-      return
-    }
-    // 前の下書きを戻すかを聞いている間は, 前の下書きを上書きしない
-    if (draft !== null) return
-    const timer = window.setTimeout(
-      () =>
-        writeDraft({
-          spec: whole,
-          fileName,
-          ...(typedName && typedName !== fileName ? { saveName: typedName } : {}),
-          ownFile,
-          time: new Date().toISOString(),
-        }),
-      1000,
-    )
-    return () => window.clearTimeout(timer)
-  }, [dirty, whole, fileName, typedName, ownFile, draft])
+  // 読み込み直したりしても失わないように. 保存, 新規, 開く, 捨てるで消す).
+  // 部品が外されるときと殻で選んだ問題の設定が替わるときは待たずに書く
+  useDraftWriter(
+    dirty,
+    {
+      spec: whole,
+      fileName,
+      ...(typedName && typedName !== fileName ? { saveName: typedName } : {}),
+      ownFile,
+    },
+    draft,
+    project,
+  )
 
   // 新しく置くものは, キャンバスに見えている範囲の真ん中の近くで, 他の
   // ノードと重ならない所
