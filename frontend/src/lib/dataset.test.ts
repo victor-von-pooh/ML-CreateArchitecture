@@ -821,6 +821,57 @@ describe('applyDatasetInputs (効果を見積もる)', () => {
     const { notes } = applyDatasetInputs(relu, log, units)
     expect(notes).toContain('出力 control の大きさ 1 は, 最後の部品の引数に手で入れてください')
   })
+  /** 同梱の例 tabular_uplift_s の形 (特徴の 16 列と処置の 1 列を 1 つの予測に通す) */
+  const oneHead: Spec = {
+    ...emptySpec(),
+    inputs: { x: { shape: [8, 17] } },
+    nodes: {
+      outcome1: { unit: 'nn.Linear', params: { in_features: 17, out_features: 32 }, inputs: 'x' },
+      outcome_act: { unit: 'nn.ReLU', inputs: 'outcome1' },
+      outcome2: {
+        unit: 'nn.Linear',
+        params: { in_features: 32, out_features: 1 },
+        inputs: 'outcome_act',
+      },
+    },
+    outputs: { outcome: 'outcome2' },
+  }
+  /** S-learner の問題の設定で読んだ記録 (骨組みが入力 x の終わりに処置の列を足す) */
+  const sLog: DatasetInfo = { ...log, offsets: { x: 1 } }
+
+  it('約束の入力の offset を入力の幅に足し, S-learner の決め方を初めに知らせる', () => {
+    const { spec, notes } = applyDatasetInputs(oneHead, sLog, units)
+    expect(spec.inputs.x!.shape).toEqual([4, 6])
+    expect(spec.nodes.outcome1!.params).toEqual({ in_features: 6, out_features: 32 })
+    expect(spec.nodes.outcome2!.params).toEqual({ in_features: 32, out_features: 1 })
+    expect(notes[0]).toBe(
+      '問題 クーポンの効果 が効果の見積もりで, 処置を入力に入れて 1 つの予測で学ぶ形 (S-learner) なので, ' +
+        '入力の幅を, 学習に使う列の数 5 に処置の列 coupon の 1 を足した 6 にしました ' +
+        '(学習のスクリプトが, 処置の値の 1 か 0 を入力の最後の列に足します). ' +
+        '入力に入れない列: 結果 (行動の後にどうなったか. 買ったかなど) の列 purchased, ' +
+        '行を見分ける id の列 customer_id. ' +
+        '出力 (結果の予測) は 1 行に 1 つの値を出し, 効果は処置を 1 にした予測から 0 にした予測を引いて数えます',
+    )
+    expect(notes).toContain('outcome1 の in_features を 6 にしました')
+    // データセットの要約は書き出した表の幅のまま
+    expect(datasetSummary(sLog)).toBe(
+      'データセットから入れました: 入力 x [4, 5], タスク uplift, 目的の列 purchased, 出す値 1',
+    )
+  })
+
+  it('雛形 tabular_uplift_s のままなら, features を学習に使う列の数 + 1 にし, 出力は 1 のままと知らせる', () => {
+    const places: Places = { features: [inputAt('x', 1), paramAt('outcome1', 'in_features')] }
+    const { spec, notes, values } = viaTemplate('tabular_uplift_s', oneHead, places, sLog)
+    expect(values).toEqual({ features: 6 })
+    expect(spec).toEqual(applyDatasetInputs(oneHead, sLog, units).spec)
+    expect(notes).toContain(
+      '雛形の引数 features (特徴の数) を 17 から 6 にしました ' +
+        '(入力 x の形の 2 番目, outcome1 の in_features)',
+    )
+    expect(notes.at(-1)).toBe(
+      '出力 outcome の値の数は, 雛形の 1 のままです (結果の予測は 1 行に 1 つの値を出します)',
+    )
+  })
 })
 
 describe('applyDatasetInputs (値段を変える判断)', () => {

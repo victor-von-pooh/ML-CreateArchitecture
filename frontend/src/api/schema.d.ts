@@ -795,6 +795,13 @@ export interface components {
             price?: components["schemas"]["PriceWidth"] | null;
             /** @description 需要の記録のデータセットか時間をまたぐ量の判断の問題の設定で, 入力 x の幅にした学習に使う列の数, 数えない列と, 出力の値の数にした学ぶ分位点の水準 (他は無し) */
             demand?: components["schemas"]["DemandWidth"] | null;
+            /**
+             * Offsets
+             * @description 入力の名前から, 骨組みがデータセットの入力の最後の次元に足す数 (ML-Quest の model_contract の入力の offset. 効果の見積もりの s_learner の処置の列の 1. 足さない入力は無し)
+             */
+            offsets?: {
+                [key: string]: number;
+            };
         };
         /** DemandWidth */
         DemandWidth: {

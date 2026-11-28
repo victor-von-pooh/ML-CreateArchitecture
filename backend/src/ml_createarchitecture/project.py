@@ -343,6 +343,12 @@ class DatasetInputs(BaseModel):
         "設定で, 入力 x の幅にした学習に使う列の数, 数えない列と, 出力の"
         "値の数にした学ぶ分位点の水準 (他は無し)"
     )
+    offsets: dict[str, int] = Field(
+        default_factory=dict,
+        description="入力の名前から, 骨組みがデータセットの入力の最後の"
+        "次元に足す数 (ML-Quest の model_contract の入力の offset. 効果の"
+        "見積もりの s_learner の処置の列の 1. 足さない入力は無し)"
+    )
 
 
 class ProjectTarget(BaseModel):
@@ -1540,7 +1546,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
             outputs=outputs if isinstance(outputs, int)
             and not isinstance(outputs, bool) and outputs > 0 else None,
             table=table, anomaly=anomaly, uplift=uplift,
-            price=price, demand=demand
+            price=price, demand=demand,
+            offsets={} if problem is None else contract_offsets(problem)
         )
     except ValidationError as error:
         raise HTTPException(
@@ -1548,6 +1555,48 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         ) from error
 
     return result
+
+
+def contract_offsets(problem: Any) -> dict[str, int]:
+    """
+    問題の設定の骨組みが, データセットの入力の最後の次元に足す数を求める
+    関数
+
+    数は ML-Quest の model_contract の入力の offset (効果の見積もりの
+    s_learner は処置の列を入力の終わりに足すので 1) で, このアプリには
+    写さない (雛形の名前で決めず, 骨組みの約束に合わせるため)
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+
+    Returns
+    ----------
+    offsets: dict[str, int]
+        入力の名前から足す数 (足さない入力と, 約束の無い骨組みは無し)
+
+    Raises
+    ----------
+    HTTPException
+        ML-Quest が無いか古い場合は 501
+    """
+    # 約束の入力のうち, 足す数のあるものだけ. 約束を読めない問題の設定は
+    # 足さない (読めない理由は保存の前の約束の確かめが出すため)
+    quest = load_library("ml_quest", "model_contract")
+    try:
+        contract = quest.model_contract(problem)
+    except READ_ERRORS:
+        return {}
+    listed = contract.get("inputs") if isinstance(contract, dict) else None
+    offsets = {}
+    for item in listed if isinstance(listed, list) else []:
+        offset = item.get("offset") if isinstance(item, dict) else None
+        if (isinstance(offset, int) and not isinstance(offset, bool)
+                and offset > 0):
+            offsets[str(item.get("name"))] = offset
+
+    return offsets
 
 
 def optional_text(record: dict[str, Any], key: str) -> Optional[str]:
@@ -2800,6 +2849,36 @@ def batch_free_size(shape: list[int]) -> int:
     return size
 
 
+def output_size(item: dict[str, Any], widths: dict[str, int]) -> Any:
+    """
+    約束の出力の項目の大きさの数を求める関数
+
+    ML-Quest の check_model_contract と同じ決め方 (最後の大きさの鍵の数が
+    あれば, その数に足す数 offset を足し, 無ければ決まった数 size)
+
+    Parameters
+    ----------
+    item: dict[str, Any]
+        約束の出力の項目
+    widths: dict[str, int]
+        データセットから求めた最後の大きさの鍵から数
+
+    Returns
+    ----------
+    size: Any
+        大きさの数 (鍵の数も決まった数も無ければ None)
+    """
+    # 足す数の無い項目は 0
+    width = str(item.get("width"))
+    offset = item.get("offset")
+    if width in widths:
+        added = (offset if isinstance(offset, int)
+                 and not isinstance(offset, bool) else 0)
+        return widths[width] + added
+
+    return item.get("size")
+
+
 def output_size_findings(
     contract: Any, spec: dict[str, Any], widths: dict[str, int]
 ) -> tuple[list[dict[str, Any]], list[str]]:
@@ -2832,7 +2911,7 @@ def output_size_findings(
     outputs = listed if isinstance(listed, dict) else {}
     pairs: list[tuple[dict[str, Any], str, int]] = []
     for item, name in output_pairs(contract, outputs):
-        size = widths.get(str(item.get("width")), item.get("size"))
+        size = output_size(item, widths)
         if isinstance(size, int):
             pairs.append((item, name, size))
     if not pairs:

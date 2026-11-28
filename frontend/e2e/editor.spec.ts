@@ -475,6 +475,27 @@ test('誤りのある定義を部分モデルにする前に確かめる', async
   await expect(page.getByRole('button', { name: /^sub\.e2e_broken/ })).toHaveCount(0)
 })
 
+// 殻の「段階をまたぐ言葉」の表で使わない言い方 (ML-ModelControl が返す文も表の語で出す)
+const AVOIDED = ['確認', 'エラー', '削除', '追加', 'キャンセル']
+
+test('ML-ModelControl が返す誤りと知らせの文は, 殻の言葉の表の語で出る', async ({ page }) => {
+  // 誤りのある定義 (必須の引数とつなぎ先の無い層) を開き, 確かめの誤りを詳細に出す
+  await page.goto('/')
+  await page.getByRole('button', { name: '開く' }).click()
+  await page.getByRole('button', { name: /^e2e_broken \d/ }).click()
+  await expect(page.locator('header')).toContainText(/誤り [1-9]\d* 件/, { timeout: 20_000 })
+  await page.locator('[data-id="linear1"]').click()
+  for (const word of AVOIDED) await expect(page.locator('body')).not.toContainText(word)
+
+  // 学習済みの重みのライセンスの知らせ (ML-ModelControl の文)
+  await page.getByRole('button', { name: '開く' }).click()
+  await page.getByRole('button', { name: /^bert_classifier/ }).click()
+  await page.locator('[data-id="bert"]').click()
+  const license = page.getByRole('region', { name: '学習済みの重みのライセンス' })
+  await expect(license).toContainText('警告', { timeout: 20_000 })
+  for (const word of AVOIDED) await expect(page.locator('body')).not.toContainText(word)
+})
+
 test('部分モデルの中身を編集し, 本体に戻ると使うノードの形が変わる', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '別の定義を部品にする' }).click()
