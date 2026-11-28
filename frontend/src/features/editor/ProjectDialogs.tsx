@@ -646,7 +646,7 @@ function ContractFindings({
       <h4 id={titleId} className="font-semibold">
         骨組みの入力と出力に合わない所
       </h4>
-      <p role="alert">保存しませんでした: {contract.message}</p>
+      <ErrorBox error={`保存しませんでした: ${contract.message}`} />
       <ul className="list-disc space-y-1 pl-5">
         {contract.findings.map((item) => (
           <li key={`${item.id}:${item.message}`}>
@@ -903,13 +903,9 @@ function ProjectSaveSection({
             </p>
           )}
           {conflict && (
-            <p
-              role="alert"
-              className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text"
-            >
-              保存しませんでした: {conflict}. 保存先を確かめ直したので,
-              見直してからもう一度保存してください
-            </p>
+            <ErrorBox
+              error={`保存しませんでした: ${conflict}. 保存先を確かめ直したので, 見直してからもう一度保存してください`}
+            />
           )}
           {checked.exists && (
             <p className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text">
@@ -925,13 +921,7 @@ function ProjectSaveSection({
         <ContractFindings contract={shownContract} pending={save.isPending} onAccept={acceptSave} />
       )}
       {staleContract && (
-        <p
-          role="alert"
-          className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text"
-        >
-          保存しませんでした: 骨組みの入力と出力に合わない所がありました.
-          その後に定義を書き換えたので, もう一度保存してください
-        </p>
+        <ErrorBox error="保存しませんでした: 骨組みの入力と出力に合わない所がありました. その後に定義を書き換えたので, もう一度保存してください" />
       )}
       {save.error && !(save.error instanceof ApiError && save.error.status === 409) && (
         <ErrorBox error={save.error} />

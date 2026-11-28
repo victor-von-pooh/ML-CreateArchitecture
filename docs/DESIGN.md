@@ -29,13 +29,11 @@ ML-Dashboard と同じ構成と道具 (uv, pnpm, Ruff, mypy, Prettier, oxlint, O
 | データセットから入力と出力を決める | `POST /api/dataset/inputs` (ML-EDA と ML-Quest を通す). 場所は画面のダイアログに利用者が入れるか, 殻で選んだ問題の記録から入る (「3. 画面」の「殻で選んだ問題」) | 統合以外は無し |
 | 問題の設定の受け持ちに合う雛形と既製のモデルから始める | `GET /api/problems`, `GET /api/examples`, `POST /api/templates/match` と `adapt`. 問題の一覧は ML-Pathfinder の置き場から読む | 統合以外は無し (まだ扱っていない型の雛形は低) |
 | 定義を学習のプロジェクトに保存し, 学習・評価の段階へ渡す | `PUT /api/project/model`. 骨組みの入力と出力に合うかを確かめて書く. 学習の実験の定義の写しも開ける (`/api/project/experiments`) | 保存した後に学習・評価の段階へ移る導線 (殻の段階の並び. 統合) |
-| 置き場, トークン, 待ち受けを外から決められる | `create_app(data_dir, token, allowed_hosts, modules)` と環境変数 `ML_CREATEARCHITECTURE_HOME`, `ML_CREATEARCHITECTURE_TOKEN`. ポートは `--port` (起動のコマンドだけ). 確かめを持たない API だけのアプリ (`create_api`) を殻の頭の下に mount できる (「4. API」). 画面の根の部品 (`StageApp`) に API の頭と殻で選んだ問題を渡して載せられる (「3. 画面」の「根の部品」) | 下の「統合に向けて足りないこと」 |
+| 置き場, トークン, 待ち受けを外から決められる | `create_app(data_dir, token, allowed_hosts, modules)` と環境変数 `ML_CREATEARCHITECTURE_HOME`, `ML_CREATEARCHITECTURE_TOKEN`. ポートは `--port` (起動のコマンドだけ). 確かめを持たない API だけのアプリ (`create_api`) を殻の頭の下に mount できる (「4. API」). 画面の根の部品 (`StageApp`) に API の頭と殻で選んだ問題を渡して載せられる (「3. 画面」の「根の部品」). 画面の部品は殻の共通の部品の写しを使う (「3. 画面」の「共通の部品」) | 無し |
 
-### 統合に向けて足りないこと
+### 統合先
 
 殻 (ML-Studio) は 5 つのアプリを submodule で持ち, 1 つのコマンドで 1 つのポートを開く. 起動ごとのトークンと Origin の確かめは殻が 1 つだけ持つ. 各アプリは自分のバックエンドを `/api/<段階>`, 画面を `/<段階>` の下に載せられる形にし, 単独でも今まで通り動く.
-
-無し
 
 ## 2. 使うライブラリと約束
 
