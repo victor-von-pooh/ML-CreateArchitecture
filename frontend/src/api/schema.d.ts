@@ -507,6 +507,10 @@ export interface paths {
          *     saved: ProjectSaved
          *         書いたファイル, 更新時刻と, 骨組みの約束の確かめの知らせ
          *
+         *     問題の記録から決めた保存先では, 定義の隣の models/<名前>.dataset.json
+         *     にデータセットの印 (dataset.yaml か, ファイル 1 つのデータセットの
+         *     ファイルの sha256 と, 書いた定義の sha256) を残す
+         *
          *     Raises
          *     ----------
          *     HTTPException
