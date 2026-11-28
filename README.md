@@ -24,7 +24,7 @@
     <td>パラメータの状態. 凍結, 零初期化, 外部の重み (キーの付け替え付き) を書き, 「重みを読んで確かめる」で読めた / 形の違う / 新しい / 使わない重みの数を見る</td>
   </tr>
   <tr>
-    <td><img src="docs/images/dataset.png" alt="データセットと学習のプロジェクト: 問題の設定を選ぶと, データセットから入力と出力を作り, 学習のプロジェクトの保存先が決まる"></td>
+    <td><img src="docs/images/dataset.png" alt="データセットと学習のプロジェクト: 問題を選ぶと, データセットから入力と出力を作り, 学習のプロジェクトの保存先が決まる"></td>
     <td><img src="docs/images/run_copy.png" alt="学習の実験の定義の写し: 学習のプロジェクトの実験を探し, 学習に使った定義の写しを開く"></td>
   </tr>
   <tr>
@@ -117,7 +117,7 @@ README の画面の例 (`docs/images/*.png`) は, `cd frontend && pnpm build && 
 
 | ディレクトリ | 内容 |
 | --- | --- |
-| `backend/` | API (Python, FastAPI). ML-ModelControl の確認, 形の推定, 書き出しを呼び, 定義のファイルを保存する |
+| `backend/` | API (Python, FastAPI). ML-ModelControl の確かめ, 形の推定, 書き出しを呼び, 定義のファイルを保存する |
 | `frontend/` | 画面 (TypeScript, React, Vite, React Flow) |
 | `ML-ModelControl/` | submodule (モデルの定義のライブラリ) |
 | `docs/` | 操作ガイド, 設計, README と操作ガイドの画面の例 (`images/`) |
