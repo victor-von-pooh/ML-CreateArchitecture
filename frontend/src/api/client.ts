@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 
+import { errorText } from '../components/common-utils'
 import type { components } from './schema'
 import type { Spec, UnitSpec } from '../lib/graph'
 
@@ -65,24 +66,24 @@ export function contractDetail(
   }
 }
 
-/** エラーのレスポンスから表示する文と, 文でない detail を取り出す */
+/**
+ * エラーのレスポンスから表示する文と, 文でない detail を取り出す. 文は共通の
+ * errorText で作る (422 は欄ごとに 1 行, 既定の 404 は経路の誤り, message を持つ
+ * detail はその文)
+ */
 async function readError(response: Response): Promise<{ message: string; detail: unknown }> {
+  let body: unknown = undefined
   try {
-    const body: unknown = await response.json()
-    if (body && typeof body === 'object' && 'detail' in body) {
-      const detail = (body as { detail: unknown }).detail
-      if (typeof detail === 'string') return { message: detail, detail: null }
-      // 画面の文 message を持つ detail はその文 (他は JSON の文)
-      if (detail && typeof detail === 'object' && 'message' in detail) {
-        const message = (detail as { message: unknown }).message
-        if (typeof message === 'string') return { message, detail }
-      }
-      return { message: JSON.stringify(detail), detail }
-    }
+    body = await response.json()
   } catch {
     // JSON でない場合は状態の文を使う
   }
-  return { message: `${response.status} ${response.statusText}`, detail: null }
+  const message = errorText(response.status, response.statusText, body)
+  const detail =
+    body && typeof body === 'object' && 'detail' in body
+      ? (body as { detail: unknown }).detail
+      : null
+  return { message, detail: typeof detail === 'string' ? null : (detail ?? null) }
 }
 
 /** JSON の API を呼ぶ */

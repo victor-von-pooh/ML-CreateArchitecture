@@ -15,8 +15,7 @@ import {
   type ProblemList,
   type ProjectTarget,
 } from '../../api/client'
-import { Dialog } from '../../components/Dialog'
-import { Button, ErrorBox, Spinner } from '../../components/ui'
+import { Button, Dialog, ErrorBox, Spinner } from '../../components/ui'
 import { templateValues, type TemplateApplied } from '../../lib/dataset'
 import type { Spec } from '../../lib/graph'
 import { problemIdOf, useStage } from '../../lib/stage'
@@ -224,7 +223,7 @@ function StoredProblems({
       </p>
       {problems.isPending && <Spinner />}
       {problems.error && <ErrorBox error={problems.error} />}
-      {list?.error && <p className="text-xs text-critical-text">{list.error}</p>}
+      {list?.error && <ErrorBox error={list.error} live={false} />}
       {list && list.problems.length === 0 && !list.error && (
         <p className="text-xs text-ink-3">
           置き場 (<span className="font-mono break-all">{list.root}</span>) に問題がありません.
@@ -647,7 +646,7 @@ function ContractFindings({
       <h4 id={titleId} className="font-semibold">
         骨組みの入力と出力に合わない所
       </h4>
-      <p role="alert">保存しませんでした: {contract.message}</p>
+      <ErrorBox error={`保存しませんでした: ${contract.message}`} />
       <ul className="list-disc space-y-1 pl-5">
         {contract.findings.map((item) => (
           <li key={`${item.id}:${item.message}`}>
@@ -676,6 +675,7 @@ function ProjectSaveSection({
   onSaved,
   onTarget,
   onFailed,
+  onSavingChange,
 }: {
   /** 保存する定義全体 */
   spec: Spec
@@ -687,6 +687,8 @@ function ProjectSaveSection({
   onTarget: (target: ProjectTarget, text: string, chosen: boolean) => void
   /** 保存先の確かめに失敗した (確かめた場所とデータセットの欄の候補を消すため) */
   onFailed: () => void
+  /** 保存の途中かが変わった (途中はダイアログを閉じないため) */
+  onSavingChange: (saving: boolean) => void
 }) {
   const api = useApi()
   const [path, setPath] = useState(() => remembered(PROJECT_KEY))
@@ -808,6 +810,9 @@ function ProjectSaveSection({
       resolveTarget({ text, named, chosen: false, reason: error.message })
     },
   })
+  useEffect(() => {
+    onSavingChange(save.isPending)
+  }, [save.isPending, onSavingChange])
   // 断られた保存は, 同じ定義と同じ保存先の間だけ出す (定義を直したら消す)
   const specText = useMemo(() => JSON.stringify(spec), [spec])
   const shownContract =
@@ -898,13 +903,9 @@ function ProjectSaveSection({
             </p>
           )}
           {conflict && (
-            <p
-              role="alert"
-              className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text"
-            >
-              保存しませんでした: {conflict}. 保存先を確かめ直したので,
-              見直してからもう一度保存してください
-            </p>
+            <ErrorBox
+              error={`保存しませんでした: ${conflict}. 保存先を確かめ直したので, 見直してからもう一度保存してください`}
+            />
           )}
           {checked.exists && (
             <p className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text">
@@ -920,13 +921,7 @@ function ProjectSaveSection({
         <ContractFindings contract={shownContract} pending={save.isPending} onAccept={acceptSave} />
       )}
       {staleContract && (
-        <p
-          role="alert"
-          className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text"
-        >
-          保存しませんでした: 骨組みの入力と出力に合わない所がありました.
-          その後に定義を書き換えたので, もう一度保存してください
-        </p>
+        <ErrorBox error="保存しませんでした: 骨組みの入力と出力に合わない所がありました. その後に定義を書き換えたので, もう一度保存してください" />
       )}
       {save.error && !(save.error instanceof ApiError && save.error.status === 409) && (
         <ErrorBox error={save.error} />
@@ -1012,12 +1007,15 @@ export function ProjectDialog({
       setTemplate({ example, problem, opened: true, reason: null })
     },
   })
+  // 学習のプロジェクトに保存している途中か
+  const [saving, setSaving] = useState(false)
   const openTemplate = (example: string, problem: string | null) => {
     latestTemplate.current += 1
     load.mutate({ example, problem, id: latestTemplate.current })
   }
   return (
-    <Dialog title="データセットと学習のプロジェクト" onClose={onClose}>
+    // 保存の途中は閉じない (書いた結果を見せるため)
+    <Dialog title="データセットと学習のプロジェクト" onClose={onClose} busy={saving}>
       <div className="space-y-6">
         {stage && <StageProblemNote stage={stage} />}
         <StoredProblems picked={checked} onPick={(path) => setChoice({ path })} />
@@ -1084,6 +1082,7 @@ export function ProjectDialog({
             latestTemplate.current += 1
             setTemplate(null)
           }}
+          onSavingChange={setSaving}
         />
       </div>
     </Dialog>

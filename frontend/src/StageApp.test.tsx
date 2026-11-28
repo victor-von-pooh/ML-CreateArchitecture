@@ -195,7 +195,11 @@ describe('StageApp', () => {
     document.documentElement.classList.add('dark')
     renderStage()
     await screen.findByRole('button', { name: 'データセットと学習のプロジェクト' })
-    expect(screen.queryByRole('heading', { name: 'ML-CreateArchitecture' })).not.toBeInTheDocument()
+    expect(screen.queryByText('ML-CreateArchitecture')).not.toBeInTheDocument()
+    // 見出し (h1) は段階の名前で, 殻の下でも 1 つ
+    expect(screen.getAllByRole('heading', { level: 1 }).map((item) => item.textContent)).toEqual([
+      'モデルの作成・選定',
+    ])
     expect(screen.queryByRole('button', { name: '暗い表示' })).not.toBeInTheDocument()
     // 殻が html のクラスを替えると, キャンバスの明暗 (React Flow の colorMode) も替わり,
     // 部品は html のクラスを書き戻さない
@@ -492,8 +496,10 @@ describe('StageApp', () => {
         embedded={false}
       />,
     )
+    // 単独ではアプリの名前を帯に出し, 見出し (h1) は段階の名前
+    expect(await screen.findByText('ML-CreateArchitecture')).toBeInTheDocument()
     expect(
-      await screen.findByRole('heading', { name: 'ML-CreateArchitecture' }),
+      screen.getByRole('heading', { level: 1, name: 'モデルの作成・選定' }),
     ).toBeInTheDocument()
     const dialog = await openProjectDialog()
     await within(dialog).findByRole('button', { name: /総菜の作る量/ })

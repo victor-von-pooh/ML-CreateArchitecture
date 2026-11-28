@@ -4,11 +4,6 @@
  * CSS は根の部品 (StageApp.tsx) が読む
  */
 
-/* 数値の桁をそろえる */
-.tabular {
-  font-variant-numeric: tabular-nums;
-}
-
 /*
  * キャンバスのノードと線のキーボードの focus を見えるようにする. React Flow の
  * CSS (outline: none) と読む順によらず勝つように, .react-flow を頭に付けて強くする

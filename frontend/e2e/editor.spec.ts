@@ -27,6 +27,9 @@ test.beforeAll(() => {
 
 test('例を開くと, 誤り無しで形とパラメータ数が出る', async ({ page }) => {
   await page.goto('/')
+  // 画面の見出し (h1) は段階の名前の 1 つ (狭い画面では見えなくするので名前で合わせる)
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/モデルの作成・選定/)
   await page.getByRole('button', { name: '開く' }).click()
   await page.getByRole('button', { name: /^cnn_classifier/ }).click()
 
@@ -122,6 +125,9 @@ test('合わない値はその場で理由を出し, ダイアログを閉じる
   await field.press('Enter')
   await expect(page.getByText('整数を入れてください', { exact: true })).toBeVisible()
   await expect(field).toHaveAttribute('aria-invalid', 'true')
+  // 欄の下の誤りは欄の説明として読み, 打つたびに読み上げない (alert にしない)
+  await expect(field).toHaveAccessibleDescription(/整数を入れてください/)
+  await expect(page.getByRole('alert')).toHaveCount(0)
   await field.fill('0')
   await field.press('Enter')
   await expect(page.getByText('1 以上にしてください', { exact: true })).toBeVisible()

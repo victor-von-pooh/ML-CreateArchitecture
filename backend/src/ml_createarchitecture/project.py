@@ -599,7 +599,7 @@ def read_problem(problem_path: Path) -> Any:
     """
     # 読み方と版の確かめは ML-Quest に任せる
     if not problem_path.is_file():
-        raise HTTPException(404, f"問題 {problem_path} がありません")
+        raise HTTPException(404, f"問題 {problem_path} が見つかりません")
     quest = load_library("ml_quest", "load_problem")
     try:
         problem = quest.load_problem(problem_path)
@@ -1258,9 +1258,13 @@ def rank_size(problem: Any, dataset: Path) -> Optional[RankSize]:
     try:
         encoding = quest.rank_encoding(problem, dataset, **rates)
     except FileNotFoundError as error:
-        raise HTTPException(
-            404, f"反応の表がありません: {error}"
-        ) from error
+        table = error.filename
+        message = (
+            f"反応の表 {table} が見つかりません"
+            if table
+            else f"反応の表が見つかりません: {error}"
+        )
+        raise HTTPException(404, message) from error
     except READ_ERRORS as error:
         raise HTTPException(
             422,
@@ -1388,14 +1392,14 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
 
     # 説明の版と読み方は ML-EDA に任せる
     if not path.is_dir():
-        raise HTTPException(404, f"{path} にディレクトリがありません")
+        raise HTTPException(404, f"ディレクトリ {path} が見つかりません")
     eda = load_library("ml_eda", "model_inputs")
     try:
         info = eda.model_inputs(path)
     except FileNotFoundError as error:
         raise HTTPException(
             404,
-            f"{path} は書き出したデータセットではありません "
+            f"データセット {path} が見つかりません "
             f"(dataset.yaml がありません): {error}"
         ) from error
     except READ_ERRORS as error:
@@ -2016,7 +2020,9 @@ def resolve_target(text: str, name: Optional[str] = None) -> ProjectTarget:
         target = check_target(with_name(found, name))
         return target
     if not path.is_dir():
-        raise HTTPException(404, f"{path} がありません")
+        raise HTTPException(
+            404, f"ファイルかディレクトリ {path} が見つかりません"
+        )
 
     # プロジェクトのディレクトリは中の問題の設定の記録, 無ければ骨組みの既定
     found = None
