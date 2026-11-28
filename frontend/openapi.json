@@ -475,6 +475,48 @@
         }
       }
     },
+    "/api/progress": {
+      "get": {
+        "summary": "Get Progress",
+        "description": "殻の段階の並びに出す, モデルの作成・選定の段階の進みを問題の単位で\n返す関数\n\n記録の場所の定義だけを数え (models/ の下の別の名前の定義は数えない),\n読むだけでファイルは動かさない. 動いている処理は無いので running は\n返さない\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproblem: str\n    問題の識別子 (置き場の直下のディレクトリの名前)\n\nReturns\n----------\nprogress: dict[str, Any]\n    state (skip, blocked, stale, done, none), summary (短い文), back\n    (blocked と stale では戻る段階の鍵 problem か data. 他は None)\n\nRaises\n----------\nHTTPException\n    問題が無いか識別子の形が違えば 404, 壊れた問題のファイルと読めない\n    場所は 422",
+        "operationId": "get_progress",
+        "parameters": [
+          {
+            "name": "problem",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Problem"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Progress"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/project/target": {
       "post": {
         "summary": "Project Target",

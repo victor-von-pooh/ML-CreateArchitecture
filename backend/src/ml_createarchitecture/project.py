@@ -10,7 +10,9 @@ import copy
 import datetime as dt
 import functools
 import importlib
+import logging
 import os
+import re
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Optional
@@ -20,7 +22,12 @@ from fastapi import APIRouter, HTTPException, Request
 from ml_modelcontrol import infer, list_examples
 from pydantic import BaseModel, Field, ValidationError
 
-from ml_createarchitecture.dataset_mark import remove_mark, write_mark
+from ml_createarchitecture.dataset_mark import (
+    dataset_sha256,
+    read_mark,
+    remove_mark,
+    write_mark,
+)
 from ml_createarchitecture.store import (
     NAME_PATTERN,
     ModelError,
@@ -29,6 +36,11 @@ from ml_createarchitecture.store import (
 )
 
 router = APIRouter()
+
+LOGGER = logging.getLogger(__name__)
+
+# 問題の識別子 (ML-Pathfinder と同じ 12 桁の 16 進)
+ID_PATTERN = re.compile(r"[0-9a-f]{12}")
 
 # 追加の依存の入れ方 (無い場合の案内)
 SETUP_HINT = "make setup (EXTRAS を書く場合は project も含める)"
@@ -2693,6 +2705,214 @@ def list_problems(request: Request) -> ProblemList:
     result = ProblemList(root=str(root), problems=problems, error=error)
 
     return result
+
+
+def progress_problem(
+    request: Request, problem_id: str
+) -> tuple[Any, Path]:
+    """
+    問題の置き場の直下の識別子から, 問題の設定とその場所を読む関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    problem_id: str
+        識別子 (ML-Pathfinder と同じ 12 桁の 16 進)
+
+    Returns
+    ----------
+    found: tuple[Any, Path]
+        問題の設定と, problem.yaml の場所
+
+    Raises
+    ----------
+    HTTPException
+        無いか形の違う識別子, リンクの problem.yaml は 404, 壊れた
+        ファイルは 422
+    """
+    # 形の違う識別子と, ファイルでないか置き場の外を指すものは無い物と同じ
+    missing = HTTPException(404, f"問題 {problem_id} が見つかりません")
+    if not ID_PATTERN.fullmatch(problem_id):
+        raise missing
+    root: Path = request.app.state.problems_dir
+    try:
+        place = root / problem_id
+        path = place / PROBLEM_FILE
+        if place.resolve().parent != root.resolve() or path.is_symlink() or (
+            not path.is_file()
+        ):
+            raise missing
+    except (OSError, ValueError, RuntimeError) as error:
+        raise missing from error
+    problem = read_problem(path)
+
+    return problem, path
+
+
+def record_place(value: Any) -> Optional[Path]:
+    """
+    問題の記録の場所を, 絶対のパスにする関数
+
+    Parameters
+    ----------
+    value: Any
+        記録の値 (~ から書ける)
+
+    Returns
+    ----------
+    path: Optional[Path]
+        リンクをたどった絶対のパス (無いか相対のパスなら None)
+    """
+    # 起動した場所に依る相対のパスは読まない
+    if not value:
+        return None
+    raw = Path(str(value).strip()).expanduser()
+    if not raw.is_absolute():
+        return None
+    path = raw.resolve()
+
+    return path
+
+
+def progress_of(problem: Any) -> dict[str, Any]:
+    """
+    問題の設定と記録の場所の様子から, モデルの作成・選定の段階の進みを
+    決める関数
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定
+
+    Returns
+    ----------
+    progress: dict[str, Any]
+        state, summary, back
+    """
+    # 要らない問題を先に採る (前提が足りなくても進める物が無いため)
+    quest = load_library("ml_quest", "stage_needs")
+    needs = quest.stage_needs(problem)
+    if needs["model"]["needed"] is False:
+        return {
+            "state": "skip", "back": None,
+            "summary": "この問題ではモデルの定義は要りません",
+        }
+    data_needed = needs["data"]["needed"] is not False
+    stages = quest.handoff(problem)
+    model = section(stages, "model")
+    data = section(stages, "data")
+
+    # 前提 (学習のプロジェクトと, 要るならデータセット)
+    root = record_place(section(stages, "project").get("path"))
+    if root is None:
+        return {
+            "state": "blocked", "back": "problem",
+            "summary": "学習のプロジェクトを書き出していません (問題の設定の"
+            "段階で書き出してください)",
+        }
+    if not (root / PROJECT_CONFIG).is_file():
+        return {
+            "state": "blocked", "back": "problem",
+            "summary": f"記録した学習のプロジェクトに {PROJECT_CONFIG} が"
+            "ありません (問題の設定の段階で書き出し直してください)",
+        }
+    sha256 = None
+    if data_needed:
+        value = data.get("project_dataset")
+        reason: Optional[str] = "missing"
+        if value:
+            sha256, reason = dataset_sha256(str(value), root)
+        if sha256 is None:
+            if reason == "unreadable":
+                raise OSError("データセットを読めません")
+            return {
+                "state": "blocked", "back": "data",
+                "summary": "データセットを書き出していません (データの分析の"
+                "段階で書き出してください)",
+            }
+
+    # 記録の場所の定義 (無ければまだ)
+    spec = record_place(model.get("project_model_spec"))
+    if spec is not None and not spec.is_relative_to(root):
+        return {
+            "state": "blocked", "back": "problem",
+            "summary": "記録したモデルの定義の保存先が学習のプロジェクトの"
+            "外にあります (問題の設定の段階で書き出し直してください)",
+        }
+    if spec is None or not spec.is_file():
+        return {
+            "state": "none", "back": None,
+            "summary": "モデルの定義をまだ保存していません",
+        }
+
+    # 印のデータセットと今のデータセット
+    if not data_needed:
+        return {
+            "state": "done", "back": None,
+            "summary": "モデルの定義を保存しています",
+        }
+    mark = read_mark(spec)
+    if mark is None:
+        return {
+            "state": "done", "back": None,
+            "summary": "モデルの定義を保存しています (いつのデータセットに"
+            "合わせたかは分かりません)",
+        }
+    if mark["sha256"] != sha256:
+        return {
+            "state": "stale", "back": "data",
+            "summary": "モデルの定義を保存した後にデータセットが変わりました"
+            " (入力と出力を確かめて保存し直してください)",
+        }
+
+    return {
+        "state": "done", "back": None,
+        "summary": "モデルの定義を保存しています",
+    }
+
+
+@router.get("/progress")
+def get_progress(request: Request, problem: str) -> dict[str, Any]:
+    """
+    殻の段階の並びに出す, モデルの作成・選定の段階の進みを問題の単位で
+    返す関数
+
+    記録の場所の定義だけを数え (models/ の下の別の名前の定義は数えない),
+    読むだけでファイルは動かさない. 動いている処理は無いので running は
+    返さない
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    problem: str
+        問題の識別子 (置き場の直下のディレクトリの名前)
+
+    Returns
+    ----------
+    progress: dict[str, Any]
+        state (skip, blocked, stale, done, none), summary (短い文), back
+        (blocked と stale では戻る段階の鍵 problem か data. 他は None)
+
+    Raises
+    ----------
+    HTTPException
+        問題が無いか識別子の形が違えば 404, 壊れた問題のファイルと読めない
+        場所は 422
+    """
+    # 読めない場所は 422 (例外の文は出さない). 形の誤りは握らず 500
+    found, _ = progress_problem(request, problem)
+    try:
+        progress = progress_of(found)
+    except (OSError, RuntimeError) as error:
+        LOGGER.warning("記録の場所を調べられません", exc_info=error)
+        raise HTTPException(
+            422, "記録の場所を調べられません (権限と, 循環したリンクが無い"
+            "ことを確かめてください)"
+        ) from error
+
+    return progress
 
 
 @router.post("/project/target")
