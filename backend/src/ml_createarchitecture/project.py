@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Request
 from ml_modelcontrol import infer, list_examples
 from pydantic import BaseModel, Field, ValidationError
 
+from ml_createarchitecture.dataset_mark import remove_mark, write_mark
 from ml_createarchitecture.store import (
     NAME_PATTERN,
     ModelError,
@@ -3256,6 +3257,10 @@ def save_project_model(body: ProjectSaveBody) -> ProjectSaved:
     saved: ProjectSaved
         書いたファイル, 更新時刻と, 骨組みの約束の確かめの知らせ
 
+    問題の記録から決めた保存先では, 定義の隣の models/<名前>.dataset.json
+    にデータセットの印 (dataset.yaml か, ファイル 1 つのデータセットの
+    ファイルの sha256 と, 書いた定義の sha256) を残す
+
     Raises
     ----------
     HTTPException
@@ -3306,6 +3311,17 @@ def save_project_model(body: ProjectSaveBody) -> ProjectSaved:
         raise HTTPException(
             500, f"{path} に書けません: {error}"
         ) from error
+
+    # 問題の記録から決めた保存先には, 元にしたデータセットの印を隣に残す.
+    # 学習のプロジェクトのディレクトリから決めた保存先では, 記録のデータ
+    # セットが分からないので残さず, 前の印は消す. 印を残せなくても保存は
+    # 落とさず, 知らせに書く
+    if target.problem_path is not None and target.project is not None:
+        note = write_mark(path, target.dataset, Path(target.project))
+        if note is not None:
+            notes = [*notes, note]
+    else:
+        remove_mark(path)
     saved = ProjectSaved(path=str(path), updated_at=updated_at, notes=notes)
 
     return saved
