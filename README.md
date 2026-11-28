@@ -114,6 +114,8 @@ cd frontend && pnpm exec playwright install chromium   # 通しのテストの�
 cd frontend && pnpm e2e   # 画面の通しのテスト (アプリを起動してブラウザで操作する)
 ```
 
+`make dev-frontend` の画面のサーバーは `/api` を Host を変えずに転送する (`frontend/vite.config.ts` の `changeOrigin: false`). バックエンドは Origin と Host が違う書き込みを断るので, Host を転送先に変えると画面からの書き込みが全て 403 になる.
+
 README の画面の例 (`docs/images/*.png`) は, `cd frontend && pnpm build && bash e2e/serve.sh` で通しのテストの見本を置いて起動し, 別の端末で `cd frontend && node e2e/screenshots.ts` を実行して撮り直す (Chrome を使う).
 
 | ディレクトリ | 内容 |
