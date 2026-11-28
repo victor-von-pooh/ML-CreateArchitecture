@@ -394,7 +394,7 @@ export interface paths {
          *     Raises
          *     ----------
          *     HTTPException
-         *         ML-EDA か ML-Quest が要るのに無い場合と, 表を読むライブラリ
+         *         ML-EDA か ML-Quest が要るのに無い場合と, 表を読む部品
          *         (parquet の pyarrow) が無い場合は 501, ディレクトリ, 説明か
          *         問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の
          *         組など) と, 表の生成の幅か並べるの数を求められない場合と, 表の生成

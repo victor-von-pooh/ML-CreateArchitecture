@@ -379,7 +379,7 @@ ML_CREATEARCHITECTURE_MODULES=my_lab.units PYTHONPATH=<my_lab を置いたディ
 | 「重みを読んで確かめる」で「申請制の重み … を読めません」と出る | 案内のリンクから配布元のページを開いて申請し, 通ったアカウントのトークンを環境変数 `HF_TOKEN` に設定して起動し直す. 「トークンが無効」と出る場合は, Hugging Face の設定のページでトークンを作り直す |
 | 保存した定義を消したい | 「開く」の一覧のごみ箱のボタン |
 | 「ml_eda が入っていません」(か ml_quest) と出る | `make setup` で入れて起動し直す. `EXTRAS` を書く場合は `project` も含める (例: `make setup EXTRAS="project torchvision"`) |
-| 「データセットの表を読むライブラリが入っていません」と出る | parquet の表を読む pyarrow が無い. `make setup` (`EXTRAS` を書く場合は `project` も含める) で入れて起動し直す |
+| 「データセットの parquet の表を読む pyarrow が入っていません」と出る | parquet の表を読む pyarrow が無い. `make setup` (`EXTRAS` を書く場合は `project` も含める) で入れて起動し直す |
 | 「dataset.yaml がありません」と出る | 書き出したデータセットのディレクトリ (学習のプロジェクトの `outputs/dataset` など) を選ぶ. 元のデータのファイルや学習のプロジェクトのディレクトリではない |
 | 「学習の設定のディレクトリ (configs/) の中です」と出る | config の `model.spec` が `configs/` の中を指している. `models/model.yaml` などに書き直す |
 | 「問題から選ぶ」に出ない, 選べない | 一覧は ML-Pathfinder の置き場 (`ML_PATHFINDER_HOME`) の問題だけ. 選べないものは理由を読み, 問題の設定の段階で学習のプロジェクトを書き出す. 置き場の外のものは, 下の欄に場所を書く |

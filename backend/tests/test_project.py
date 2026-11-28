@@ -2526,13 +2526,72 @@ def test_dataset_inputs_uplift(client: TestClient, tmp_path: Path) -> None:
     )
 
 
+# 表を読む部品の欠落 (例外と, 文に出る欠けた部品の名前)
+MISSING_READERS = [
+    (ImportError("Unable to find a usable engine; tried 'pyarrow'"),
+     "pyarrow"),
+    (ModuleNotFoundError("No module named 'pyarrow'", name="pyarrow"),
+     "pyarrow"),
+    (ModuleNotFoundError(
+        "No module named 'fastparquet'", name="fastparquet"
+    ), "fastparquet"),
+]
+
+# 表を読む部品の欠落でない import の誤り (ライブラリの中の誤り)
+OTHER_IMPORT_ERRORS = [
+    ModuleNotFoundError("No module named 'ml_eda.gone'", name="ml_eda.gone"),
+    ImportError("cannot import name 'gone' from 'ml_quest'"),
+]
+
+
+def missing_reader_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: ImportError
+) -> tuple[Path, Path]:
+    """
+    parquet で書き出した介入の記録の表と効果の見積もりの問題の設定を作り,
+    parquet を読むと error を出すようにする関数 (ML-EDA と ML-Quest が無け
+    れば飛ばす)
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pandas の parquet の読み込みを差し替える道具
+    error: ImportError
+        parquet を読むときに出す例外
+
+    Returns
+    ----------
+    dataset: Path
+        書き出したデータセット
+    place: Path
+        問題の設定のファイル
+    """
+    # 書き出しは本物の pyarrow で行い, 読み込みだけを差し替える
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    place = tmp_path / "uplift.yaml"
+    ml_quest.save_problem(uplift_problem(ml_quest), place)
+    dataset = write_uplift_dataset(ml_eda, tmp_path)
+
+    def no_reader(*args: Any, **kwargs: Any) -> None:
+        raise error
+
+    monkeypatch.setattr(pd, "read_parquet", no_reader)
+
+    return dataset, place
+
+
+@pytest.mark.parametrize(("error", "name"), MISSING_READERS)
 def test_dataset_inputs_missing_reader(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    error: ImportError, name: str
 ) -> None:
     """
-    表を読むライブラリ (parquet の pyarrow) が無い場合に, 500 ではなく
-    何が足りないかを書いた 501 を返すことを確かめる関数 (ML-EDA と
-    ML-Quest が無ければ飛ばす)
+    表を読む部品 (parquet の pyarrow か fastparquet) が無い場合に, 500 では
+    なく欠けた部品の名前を書いた 501 を返すことを, API と dataset_section
+    の道で確かめる関数 (ML-EDA と ML-Quest が無ければ飛ばす)
 
     Parameters
     ----------
@@ -2542,33 +2601,121 @@ def test_dataset_inputs_missing_reader(
         pytest が用意する一時ディレクトリ
     monkeypatch: pytest.MonkeyPatch
         pandas の parquet の読み込みを差し替える道具
+    error: ImportError
+        parquet を読むときに出す例外
+    name: str
+        文に出る欠けた部品の名前
 
     Returns
     ----------
     None
     """
-    # parquet で書き出した介入の記録の表と, 効果の見積もりの問題の設定
-    ml_eda = pytest.importorskip("ml_eda")
-    ml_quest = pytest.importorskip("ml_quest")
-    place = tmp_path / "uplift.yaml"
-    ml_quest.save_problem(uplift_problem(ml_quest), place)
-    dataset = write_uplift_dataset(ml_eda, tmp_path)
-
-    # pyarrow の無い環境と同じく, parquet を読むと ImportError
-    def no_reader(*args: Any, **kwargs: Any) -> None:
-        raise ImportError("Unable to find a usable engine; tried 'pyarrow'")
-
-    monkeypatch.setattr(pd, "read_parquet", no_reader)
-
-    # 問題の設定の有無によらず 501 と, 足りないライブラリと入れ方
+    # 問題の設定の有無によらず 501 と, 欠けた部品と入れ方
+    dataset, place = missing_reader_case(tmp_path, monkeypatch, error)
     for extra in ({}, {"problem": str(place)}):
         response = client.post(
             "/api/dataset/inputs", json={"path": str(dataset), **extra}
         )
         assert response.status_code == 501, response.text
         detail = response.json()["detail"]
-        assert "表を読むライブラリが入っていません" in detail
-        assert "pyarrow" in detail and "make setup" in detail
+        assert f"parquet の表を読む {name} が入っていません" in detail
+        assert "make setup" in detail
+
+    # データセットの説明を読む dataset_section も, 空にせず 501
+    with pytest.raises(HTTPException) as caught:
+        project_module.dataset_section(dataset, "uplift")
+    assert caught.value.status_code == 501
+    assert name in str(caught.value.detail)
+
+
+@pytest.mark.parametrize("error", OTHER_IMPORT_ERRORS)
+def test_dataset_inputs_other_import_error(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    error: ImportError
+) -> None:
+    """
+    表を読む部品の欠落でない import の誤りは, 501 にも 422 にもせず, 握り
+    つぶさずにそのまま出すことを確かめる関数 (ML-EDA と ML-Quest が無けれ
+    ば飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント (サーバーの例外をそのまま出す)
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pandas の parquet の読み込みを差し替える道具
+    error: ImportError
+        parquet を読むときに出す例外
+
+    Returns
+    ----------
+    None
+    """
+    # API は同じ例外で止まり (応答は 500), dataset_section も空にしない
+    dataset, place = missing_reader_case(tmp_path, monkeypatch, error)
+    with pytest.raises(type(error)) as caught:
+        client.post(
+            "/api/dataset/inputs",
+            json={"path": str(dataset), "problem": str(place)}
+        )
+    assert caught.value is error
+    with pytest.raises(type(error)) as caught:
+        project_module.dataset_section(dataset, "uplift")
+    assert caught.value is error
+
+
+@pytest.mark.parametrize(
+    ("error", "name"),
+    [*MISSING_READERS, *((error, None) for error in OTHER_IMPORT_ERRORS)]
+)
+def test_rank_size_missing_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    error: ImportError, name: str | None
+) -> None:
+    """
+    並べるの反応の表を読む rank_encoding の道でも, 表を読む部品の欠落は
+    501, 他の import の誤りはそのまま出すことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        ML-Quest の読み込みと並べるの見分けを差し替える道具
+    error: ImportError
+        rank_encoding が出す例外
+    name: str | None
+        文に出る欠けた部品の名前 (部品の欠落でなければ None)
+
+    Returns
+    ----------
+    None
+    """
+    # 並べるの問題の設定として扱い, rank_encoding が error を出す
+    def rank_encoding(*args: Any, **kwargs: Any) -> None:
+        raise error
+
+    monkeypatch.setattr(project_module, "is_rank", lambda problem: True)
+    monkeypatch.setattr(
+        project_module, "split_rates", lambda problem: ({}, [])
+    )
+    monkeypatch.setattr(
+        project_module, "load_library",
+        lambda module, attribute: SimpleNamespace(rank_encoding=rank_encoding)
+    )
+
+    # 部品の欠落は 501, 他はそのまま
+    if name is None:
+        with pytest.raises(type(error)) as other:
+            project_module.rank_size({}, tmp_path / "events.csv")
+        assert other.value is error
+        return
+    with pytest.raises(HTTPException) as caught:
+        project_module.rank_size({}, tmp_path / "events.csv")
+    assert caught.value.status_code == 501
+    assert f"{name} が入っていません" in str(caught.value.detail)
 
 
 def test_problem_uplift(client: TestClient, tmp_path: Path) -> None:
