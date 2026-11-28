@@ -66,11 +66,12 @@ RESHAPED_SKELETONS = frozenset({"uplift", "price", "demand"})
 # 書けるモデルの定義の拡張子
 SPEC_SUFFIXES = (".yaml", ".yml")
 
-# 他の段階のファイルを読めないときの例外 (ライブラリの中の形の崩れも
-# 含む)
+# 他の段階のファイルを読めないときの例外 (ライブラリの中の形の崩れと,
+# 表を読むライブラリが無い場合も含む. 表を読む所は missing_reader で先に
+# 501 にする)
 READ_ERRORS = (
     OSError, ValueError, TypeError, KeyError, AttributeError,
-    yaml.YAMLError
+    ImportError, yaml.YAMLError
 )
 
 
@@ -483,6 +484,31 @@ def load_library(name: str, attribute: str) -> ModuleType:
     return module
 
 
+def missing_reader(error: ImportError) -> HTTPException:
+    """
+    データセットの表を読むライブラリが無い場合の誤りを作る関数
+
+    Parameters
+    ----------
+    error: ImportError
+        表を読むときの例外 (parquet の表で pyarrow が無いなど)
+
+    Returns
+    ----------
+    exception: HTTPException
+        何が足りないかと入れ方を書いた 501
+    """
+    # ML-Fathom は表を parquet で書き出すので, 足りないのは多くが pyarrow
+    exception = HTTPException(
+        501,
+        f"データセットの表を読むライブラリが入っていません ({error}). "
+        f"parquet の表は pyarrow で読みます. {SETUP_HINT} で入れてから起動"
+        "し直してください"
+    )
+
+    return exception
+
+
 def absolute_path(text: str) -> Path:
     """
     画面から受け取った場所を絶対のパスにする関数
@@ -651,7 +677,8 @@ def table_width(problem: Any, dataset: Path) -> Optional[TableWidth]:
     Raises
     ----------
     HTTPException
-        ML-Quest が古い場合は 501, 幅を求められない場合 (目的の列か欠損の
+        ML-Quest が古い場合と, 表を読むライブラリ (parquet の pyarrow) が
+        無い場合は 501, 幅を求められない場合 (目的の列か欠損の
         ある列がある, 種類の値が多すぎる列があるなど) は 422
     """
     # 列の符号化の決まりは ML-Quest に任せる (学習のスクリプトと同じ幅に
@@ -659,6 +686,8 @@ def table_width(problem: Any, dataset: Path) -> Optional[TableWidth]:
     quest = load_library("ml_quest", "table_encoding")
     try:
         encoding = quest.table_encoding(problem, dataset)
+    except ImportError as error:
+        raise missing_reader(error) from error
     except READ_ERRORS as error:
         raise HTTPException(
             422,
@@ -979,11 +1008,19 @@ def dataset_section(path: Path, key: str) -> dict[str, Any]:
     ----------
     part: dict[str, Any]
         説明の項目 (無いか, 辞書でないか, 読めなければ空)
+
+    Raises
+    ----------
+    HTTPException
+        ML-EDA が無いか古い場合と, 表を読むライブラリ (parquet の
+        pyarrow) が無い場合は 501
     """
     # ML-EDA の説明の読み方
     eda = load_library("ml_eda", "load_dataset")
     try:
         info = eda.load_dataset(path).info
+    except ImportError as error:
+        raise missing_reader(error) from error
     except READ_ERRORS:
         info = {}
     part = section(info, key)
@@ -1244,7 +1281,8 @@ def rank_size(problem: Any, dataset: Path) -> Optional[RankSize]:
     Raises
     ----------
     HTTPException
-        並べるで ML-Quest が古い場合は 501, 反応の表が無い場合は 404,
+        並べるで ML-Quest が古い場合と, 表を読むライブラリ (parquet の
+        pyarrow) が無い場合は 501, 反応の表が無い場合は 404,
         数を求められない場合 (列が無い, 時刻を読めない, 学習用か検証用が
         空になるなど) は 422
     """
@@ -1265,6 +1303,8 @@ def rank_size(problem: Any, dataset: Path) -> Optional[RankSize]:
             else f"反応の表が見つかりません: {error}"
         )
         raise HTTPException(404, message) from error
+    except ImportError as error:
+        raise missing_reader(error) from error
     except READ_ERRORS as error:
         raise HTTPException(
             422,
@@ -1369,7 +1409,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     Raises
     ----------
     HTTPException
-        ML-EDA か ML-Quest が要るのに無い場合は 501, ディレクトリ, 説明か
+        ML-EDA か ML-Quest が要るのに無い場合と, 表を読むライブラリ
+        (parquet の pyarrow) が無い場合は 501, ディレクトリ, 説明か
         問題の設定が無い場合は 404, 読めない場合 (知らない版, 知らない項目の
         組など) と, 表の生成の幅か並べるの数を求められない場合と, 表の生成
         で入力が表の行 (バッチと列の 2 次元の 1 つ) でない場合と, 異常の
@@ -1402,6 +1443,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
             f"データセット {path} が見つかりません "
             f"(dataset.yaml がありません): {error}"
         ) from error
+    except ImportError as error:
+        raise missing_reader(error) from error
     except READ_ERRORS as error:
         raise HTTPException(
             422, f"データセットを読めません: {error}"

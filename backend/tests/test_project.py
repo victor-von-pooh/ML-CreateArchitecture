@@ -2455,6 +2455,12 @@ def test_dataset_inputs_uplift(client: TestClient, tmp_path: Path) -> None:
         ml_quest.save_problem(problem, places[name])
     dataset = write_uplift_dataset(ml_eda, tmp_path)
 
+    # ML-Fathom と同じく表は parquet (追加の依存 project の pyarrow)
+    splits = yaml.safe_load((dataset / "dataset.yaml").read_text())["splits"]
+    assert all(
+        item["file"].endswith(".parquet") for item in splits.values()
+    ), splits
+
     # 入力 x の 5 列 (処置の列, 結果の列, 行の id の列を除く) と, 出す値の
     # 数 1
     response = client.post(
@@ -2518,6 +2524,51 @@ def test_dataset_inputs_uplift(client: TestClient, tmp_path: Path) -> None:
     assert "介入の記録の表として書き出したものではありません" in (
         response.json()["detail"]
     )
+
+
+def test_dataset_inputs_missing_reader(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    表を読むライブラリ (parquet の pyarrow) が無い場合に, 500 ではなく
+    何が足りないかを書いた 501 を返すことを確かめる関数 (ML-EDA と
+    ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pandas の parquet の読み込みを差し替える道具
+
+    Returns
+    ----------
+    None
+    """
+    # parquet で書き出した介入の記録の表と, 効果の見積もりの問題の設定
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    place = tmp_path / "uplift.yaml"
+    ml_quest.save_problem(uplift_problem(ml_quest), place)
+    dataset = write_uplift_dataset(ml_eda, tmp_path)
+
+    # pyarrow の無い環境と同じく, parquet を読むと ImportError
+    def no_reader(*args: Any, **kwargs: Any) -> None:
+        raise ImportError("Unable to find a usable engine; tried 'pyarrow'")
+
+    monkeypatch.setattr(pd, "read_parquet", no_reader)
+
+    # 問題の設定の有無によらず 501 と, 足りないライブラリと入れ方
+    for extra in ({}, {"problem": str(place)}):
+        response = client.post(
+            "/api/dataset/inputs", json={"path": str(dataset), **extra}
+        )
+        assert response.status_code == 501, response.text
+        detail = response.json()["detail"]
+        assert "表を読むライブラリが入っていません" in detail
+        assert "pyarrow" in detail and "make setup" in detail
 
 
 def test_problem_uplift(client: TestClient, tmp_path: Path) -> None:
