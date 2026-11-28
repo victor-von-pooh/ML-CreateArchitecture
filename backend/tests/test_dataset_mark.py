@@ -9,6 +9,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
+from ml_createarchitecture import dataset_mark as dataset_mark_module
 from ml_createarchitecture.app import create_app
 from ml_createarchitecture.dataset_mark import (
     dataset_sha256,
@@ -436,3 +437,148 @@ def test_mark_project_dir(
     saved = save(client, problem)
     assert spec_path.is_file()
     assert any("印を書けません" in note for note in saved["notes"])
+
+
+def test_mark_read_errors(tmp_path: Path) -> None:
+    """
+    印の JSON が壊れている, 64 KiB を超える, 形が違う, 版が真偽値, 深すぎる,
+    印がリンクの場合に, 印が無い物として読むことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    spec = tmp_path / "m.yaml"
+    spec.write_text("a: 1\n")
+    mark = mark_path(spec)
+    good = {
+        "format_version": 1,
+        "dataset": {"path": "d", "sha256": "0" * 64},
+        "spec_sha256": sha256_of(spec),
+    }
+    mark.write_text(json.dumps(good))
+    assert read_mark(spec) is not None
+
+    # 読めない中身は印が無い物
+    bad: list[Any] = [
+        "{broken", "[" * 100000, " " * 70000 + json.dumps(good), "[]",
+        json.dumps({**good, "format_version": True}),
+        json.dumps({**good, "format_version": 2}),
+        json.dumps({**good, "dataset": []}),
+        json.dumps({**good, "spec_sha256": 1}),
+        json.dumps({**good, "spec_sha256": "1" * 64}),
+    ]
+    for text in bad:
+        mark.write_text(text)
+        assert read_mark(spec) is None, text[:30]
+
+    # 印がディレクトリか, 無いとき
+    mark.unlink()
+    mark.mkdir()
+    assert read_mark(spec) is None
+    mark.rmdir()
+    assert read_mark(spec) is None
+
+
+def test_hash_errors(tmp_path: Path) -> None:
+    """
+    読めない (権限), 循環リンク, 途中の .. の先が無い, NUL を含む値を
+    求めずに理由を返すことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 権限が無い (root は読めるので飛ばす)
+    table = tmp_path / "t.csv"
+    table.write_text("a\n")
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        table.chmod(0)
+        assert dataset_sha256(str(table), tmp_path) == (None, "unreadable")
+        table.chmod(0o644)
+
+    # 循環リンクは読めない (落ちない)
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop)
+    sha, reason = dataset_sha256(str(loop), tmp_path)
+    assert sha is None and reason in ("unreadable", "invalid", "missing")
+
+    # 途中の .. の先が無い
+    assert dataset_sha256(str(tmp_path / "no" / ".." / "t.csv"), tmp_path) == (
+        None, "missing"
+    )
+
+    # NUL を含む値
+    sha, reason = dataset_sha256("a\0b", tmp_path)
+    assert sha is None and reason is not None
+
+
+def test_mark_save_failures(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    保存の経路で, 一時ファイルが残らないことと, FIFO のデータセットで止まら
+    ず印を書かないことと, 記録が無いとき前の印を消すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        モジュールの差し替え
+
+    Returns
+    ----------
+    None
+    """
+    dataset = tmp_path / "outputs" / "dataset"
+    dataset.mkdir(parents=True)
+    (dataset / "dataset.yaml").write_text("format_version: 3\n")
+    problem, _, spec_path = make_problem(tmp_path, monkeypatch, dataset)
+    save(client, problem)
+    mark = mark_path(spec_path)
+    assert not list(spec_path.parent.glob("*.tmp"))
+    assert not list(spec_path.parent.glob(".*.tmp"))
+    record = sys.modules["ml_quest"].record  # type: ignore[attr-defined]
+
+    # 書き込みが失敗しても一時ファイルは残らず, 保存は落ちない
+    def broken(*args: Any, **kwargs: Any) -> None:
+        raise OSError("失敗")
+
+    # (一時ファイルを作った後の書き込みで失敗させる)
+    stub = type("StubJson", (), {"dumps": staticmethod(broken)})
+    monkeypatch.setattr(dataset_mark_module, "json", stub)
+    saved = save(client, problem)
+    assert any("印を書けません" in note for note in saved["notes"])
+    assert not list(spec_path.parent.glob(".*.tmp"))
+    assert not mark.exists()
+    monkeypatch.undo()
+    monkeypatch.setitem(sys.modules, "ml_quest", StubQuest(record))
+
+    # FIFO のデータセットは止まらず, 印を書かない
+    if hasattr(os, "mkfifo"):
+        fifo = tmp_path / "fifo.csv"
+        os.mkfifo(fifo)
+        record["data"]["project_dataset"] = str(fifo)
+        save(client, problem)
+        assert not mark.exists()
+
+    # 記録が無いとき, 前の印を消す
+    record["data"]["project_dataset"] = str(dataset)
+    save(client, problem)
+    assert mark.is_file()
+    record["data"].pop("project_dataset")
+    save(client, problem)
+    assert not mark.exists()

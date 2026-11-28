@@ -11,8 +11,11 @@ import hashlib
 import json
 import os
 import stat
+import tempfile
 from pathlib import Path
 from typing import Any, Optional
+
+from ml_createarchitecture.store import FILE_MODE
 
 # 印のファイルの拡張子 (YAML でない. 学習・評価の段階が models/ の下の YAML
 # を定義の候補に並べるため)
@@ -53,7 +56,7 @@ def open_regular(path: Path) -> tuple[Optional[int], Optional[str]]:
     reason: Optional[str]
         開けなかった理由 (missing, invalid, not_file, unreadable)
     """
-    # 開けない理由を分ける
+    # 開けない理由の分類
     flags = (
         os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
         | getattr(os, "O_BINARY", 0)
@@ -67,7 +70,7 @@ def open_regular(path: Path) -> tuple[Optional[int], Optional[str]]:
     except OSError:
         return None, "unreadable"
 
-    # 普通のファイルでなければ閉じる
+    # 普通のファイルでなければ閉じる処理
     try:
         regular = stat.S_ISREG(os.fstat(fd).st_mode)
     except OSError:
@@ -168,7 +171,7 @@ def dataset_sha256(
     reason: Optional[str]
         求められなかった理由 (missing, invalid, not_file, unreadable)
     """
-    # リンクの後の .. は, 正規化すると別の場所になるので求めない
+    # リンクの後の .. は正規化で別の場所になるので求めない
     try:
         raw = Path(value).expanduser()
         if not raw.is_absolute():
@@ -224,7 +227,7 @@ def remove_mark(spec_path: Path) -> None:
     ----------
     None
     """
-    # 消せない場合は, 印の中の定義の sha256 が合わなくなって無視される
+    # 消せない場合は印の中の定義の sha256 が合わず無視される
     try:
         mark_path(spec_path).unlink(missing_ok=True)
     except OSError:
@@ -255,7 +258,7 @@ def write_mark(
     note: Optional[str]
         印を書けなかった理由の文 (残した場合と, 残さない場合は None)
     """
-    # 記録が無ければ前の印だけ消す
+    # 記録が無い場合は前の印の削除だけ
     if not dataset:
         remove_mark(spec_path)
         return None
@@ -273,19 +276,26 @@ def write_mark(
         "spec_sha256": spec_sha256,
     }
     target = mark_path(spec_path)
+    temp: Optional[str] = None
     try:
         # 隣がリンクなら書かない (リンクの先を書き換えないため)
         if target.is_symlink():
             raise OSError("リンクです")
-        temp = target.with_name(f".{target.name}.tmp")
-        temp.write_text(
-            json.dumps(record, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8"
+        handle, temp = tempfile.mkstemp(
+            dir=target.parent, prefix=f".{target.stem}.", suffix=".tmp"
         )
-        temp.replace(target)
+        with os.fdopen(handle, "w", encoding="utf-8") as file:
+            file.write(json.dumps(record, ensure_ascii=False, indent=2))
+            file.write("\n")
+        os.chmod(temp, FILE_MODE)
+        Path(temp).replace(target)
     except OSError as error:
         remove_mark(spec_path)
         return f"データセットの印を書けません: {error}"
+    finally:
+        # 置き換えた後も失敗した後も一時ファイルは残さない
+        if temp is not None:
+            Path(temp).unlink(missing_ok=True)
 
     return None
 
@@ -321,15 +331,16 @@ def read_mark(spec_path: Path) -> Optional[dict[str, Any]]:
         return None
     try:
         record = json.loads(data.decode("utf-8"))
-    except (UnicodeDecodeError, ValueError):
+    except (UnicodeDecodeError, ValueError, RecursionError):
         return None
 
-    # 形と, 今の定義の印かを確かめる
+    # 形と今の定義の印かの確認
     if not isinstance(record, dict):
         return None
     dataset = record.get("dataset")
     if (
-        record.get("format_version") != MARK_VERSION
+        type(record.get("format_version")) is not int
+        or record["format_version"] != MARK_VERSION
         or not isinstance(dataset, dict)
         or not isinstance(dataset.get("path"), str)
         or not isinstance(dataset.get("sha256"), str)

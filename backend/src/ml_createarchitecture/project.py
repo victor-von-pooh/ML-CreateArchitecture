@@ -3312,7 +3312,6 @@ def save_project_model(body: ProjectSaveBody) -> ProjectSaved:
             500, f"{path} に書けません: {error}"
         ) from error
 
-
     # 問題の記録から決めた保存先には, 元にしたデータセットの印を隣に残す.
     # 学習のプロジェクトのディレクトリから決めた保存先では, 記録のデータ
     # セットが分からないので残さず, 前の印は消す. 印を残せなくても保存は
