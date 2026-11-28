@@ -71,7 +71,8 @@ FILE_FLAGS = (
 COPY_REASONS = {
     "missing": "学習の時に config の model.spec の定義が無かったので, "
     "写していません",
-    "outside": "config の model.spec がプロジェクトの外を指していたので, "
+    "outside": "config の model.spec が学習のプロジェクトの外を指して"
+    "いたので, "
     "写していません",
     "link": "config の model.spec の場所か途中がシンボリックリンクだった"
     "ので, 写していません",
@@ -170,8 +171,8 @@ def project_dir(text: str) -> Path:
         raise HTTPException(
             422,
             f"{path} は学習のプロジェクト ({PROJECT_CONFIG} を持つ"
-            "ディレクトリ) ではありません. プロジェクトのディレクトリか"
-            "問題の設定のファイルを選んでください"
+            "ディレクトリ) ではありません. 学習のプロジェクトのディレクトリ"
+            "か問題のファイルを選んでください"
         )
     found = from_problem(problem)
     if found is None or found.project is None:
@@ -325,8 +326,8 @@ def output_roots(project: Path) -> tuple[list[Path], list[str]]:
             continue
         if not root.is_relative_to(project) or root == project:
             notes.append(
-                f"実験の置き場 {value} がプロジェクトの外か, プロジェクト"
-                "そのものなので読みません"
+                f"実験の置き場 {value} が学習のプロジェクトの外か, "
+                "学習のプロジェクトそのものなので読みません"
             )
             continue
         if root != raw:

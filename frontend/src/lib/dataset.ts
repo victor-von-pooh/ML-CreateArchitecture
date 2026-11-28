@@ -301,7 +301,7 @@ function placeText(place: TemplatePlace): string {
 /** 雛形を書き換えた知らせ (書き換えたことと, 渡した引数ごとの前と後の値と場所. 決まらなかった値と変えない出力の知らせ) */
 function templateNotes(template: TemplateApplied, info: DatasetInfo): string[] {
   const notes = [
-    `定義は雛形 ${template.name} のままなので, データに合わせる引数を ML-ModelControl の書き換え ` +
+    `定義は雛形 ${template.name} のままなので, データに合わせる引数を雛形の書き換え ` +
       '(adapt_example) で, 関わるノードの引数と入力の形をそろえて書き換えました',
   ]
   const given = new Set(template.args.map((arg) => arg.name))
@@ -332,8 +332,8 @@ function templateNotes(template: TemplateApplied, info: DatasetInfo): string[] {
   const levelsArg = LEVELS_ARGS[template.name]
   if (levelsArg && !given.has(levelsArg)) {
     notes.push(
-      '学ぶ分位点の水準の数は問題の設定が決めるので, 出力の値の数は変えていません. ' +
-        '時間をまたぐ量の判断の問題の設定から保存先を確かめてから入れ直すと, 水準の数にします',
+      '学ぶ分位点の水準の数は問題が決めるので, 出力の値の数は変えていません. ' +
+        '時間をまたぐ量の判断の問題から保存先を確かめてから入れ直すと, 水準の数にします',
     )
   }
   const outputArg = OUTPUT_ARGS[template.name]
@@ -469,7 +469,7 @@ function fitReshape(
 
 /** 表の生成で, 入力と出力の幅をどう決めたかの文 */
 export function tableWidthNote(table: TableWidth): string {
-  const from = table.problem ? `問題の設定 ${table.problem} が表の生成` : '表の生成の問題の設定'
+  const from = table.problem ? `問題 ${table.problem} が表の生成` : '表の生成の問題'
   return (
     `${from}なので, 入力と出力の幅を, 学習で使う 1 行の長さ ${table.width} にしました ` +
     `(数の項目 ${table.numbers} は 1 つずつ, 分類の項目 ${table.categories} は選べる値の数の合計 ${table.values}. ` +
@@ -479,10 +479,10 @@ export function tableWidthNote(table: TableWidth): string {
 
 /** 並べるで, 入力 user と item の大きさをどう決めたかの文 */
 export function rankSizeNote(rank: RankSize): string {
-  const from = rank.problem ? `問題の設定 ${rank.problem} が並べる` : '並べるの問題の設定'
+  const from = rank.problem ? `問題 ${rank.problem} が並べる` : '並べるの問題'
   const rates =
     typeof rank.valid === 'number' && typeof rank.test === 'number'
-      ? `プロジェクトの学習の設定の検証用 ${rank.valid} とテスト用 ${rank.test}`
+      ? `学習のプロジェクトの学習の設定の検証用 ${rank.valid} とテスト用 ${rank.test}`
       : '学習のスクリプトの既定'
   const train = rank.rows.train ?? 0
   return (
@@ -501,7 +501,7 @@ export function rankSizeNote(rank: RankSize): string {
 export function anomalyWidthNote(anomaly: AnomalyWidth): string {
   const autoencoder = anomaly.score === 'autoencoder'
   const from = anomaly.problem
-    ? `問題の設定 ${anomaly.problem} が異常の検知${autoencoder ? ' (自己符号化器)' : ''}`
+    ? `問題 ${anomaly.problem} が異常の検知${autoencoder ? ' (自己符号化器)' : ''}`
     : '異常の検知のデータセット'
   const reason = autoencoder
     ? '自己符号化器は入力を作り直すので, 出力を入力と同じ幅にします'
@@ -520,7 +520,7 @@ export function anomalyWidthNote(anomaly: AnomalyWidth): string {
  */
 export function upliftWidthNote(uplift: UpliftWidth): string {
   const from = uplift.problem
-    ? `問題の設定 ${uplift.problem} が効果の見積もり`
+    ? `問題 ${uplift.problem} が効果の見積もり`
     : '効果を見積もるのデータセット'
   const named = (role: string, name: string | null | undefined) => (name ? `${role} ${name}` : role)
   const skipped = [
@@ -543,7 +543,7 @@ export function upliftWidthNote(uplift: UpliftWidth): string {
  */
 export function priceWidthNote(price: PriceWidth): string {
   const from = price.problem
-    ? `問題の設定 ${price.problem} が値段を変える判断`
+    ? `問題 ${price.problem} が値段を変える判断`
     : '値段を変える判断のデータセット'
   const named = (role: string, name: string | null | undefined) => (name ? `${role} ${name}` : role)
   const width =
@@ -571,7 +571,7 @@ export function priceWidthNote(price: PriceWidth): string {
  */
 export function demandWidthNote(demand: DemandWidth): string {
   const from = demand.problem
-    ? `問題の設定 ${demand.problem} が時間をまたぐ量の判断`
+    ? `問題 ${demand.problem} が時間をまたぐ量の判断`
     : '需要の記録のデータセット'
   const named = (role: string, name: string | null | undefined) => (name ? `${role} ${name}` : role)
   const width =
@@ -594,8 +594,8 @@ export function demandWidthNote(demand: DemandWidth): string {
 
 /** 学ぶ分位点の水準をどこから読んだかの文 */
 function levelsOrigin(demand: DemandWidth): string {
-  if (demand.levels_from === 'config') return 'プロジェクトの学習の設定の水準'
-  return demand.problem ? `問題の設定 ${demand.problem} の水準` : '問題の設定の水準'
+  if (demand.levels_from === 'config') return '学習のプロジェクトの学習の設定の水準'
+  return demand.problem ? `問題 ${demand.problem} の水準` : '問題の水準'
 }
 
 /** 時間をまたぐ量の判断の出力のつなぎ元からさかのぼる, 形を変えない部品 (雛形 tabular_demand の softplus と累積和) */
@@ -615,8 +615,8 @@ function fitDemandOutputs(
   const levels = demand.levels ?? null
   if (!levels || levels.length === 0) {
     notes.push(
-      '学ぶ分位点の水準の数は問題の設定が決めるので, 出力の値の数は変えていません. ' +
-        '時間をまたぐ量の判断の問題の設定から保存先を確かめてから入れ直すと, 水準の数にします',
+      '学ぶ分位点の水準の数は問題が決めるので, 出力の値の数は変えていません. ' +
+        '時間をまたぐ量の判断の問題から保存先を確かめてから入れ直すと, 水準の数にします',
     )
     return { spec, notes }
   }
@@ -661,7 +661,7 @@ function fitDemandOutputs(
 
 /** 異常の検知の距離に基づく度合いで, 何も変えない理由の文 */
 export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
-  const from = anomaly.problem ? `問題の設定 ${anomaly.problem} の` : '問題の設定の'
+  const from = anomaly.problem ? `問題 ${anomaly.problem} の` : '問題の'
   return (
     `${from}度合いの決め方は距離に基づく度合い (学習しない) なので, モデルの定義は要りません. ` +
     '何も変えていません'

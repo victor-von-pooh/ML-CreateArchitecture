@@ -680,7 +680,7 @@ function Editor() {
             setNotice(
               source === 'experiment'
                 ? {
-                    text: `実験の定義の写しを開きました. 「データセットとプロジェクト」の「プロジェクトに保存」で models/ の下の名前 (例: ${name}) を付けて保存できます`,
+                    text: `実験の定義の写しを開きました. 「データセットと学習のプロジェクト」の「学習のプロジェクトに保存」で models/ の下の名前 (例: ${name}) を付けて保存できます`,
                   }
                 : null,
             )
@@ -1048,8 +1048,8 @@ function Editor() {
             setHistory(embedded.spec)
             notify(
               embedded.name === name
-                ? `${unit} を部品の一覧に加えました`
-                : `${unit} として加えました (同じ名前で中身の違うものがあるか, 名前に使えないため)`,
+                ? `${unit} を部品の一覧に足しました`
+                : `${unit} として足しました (同じ名前で中身の違うものがあるか, 名前に使えないため)`,
             )
           }}
           onClose={() => setImporting(false)}

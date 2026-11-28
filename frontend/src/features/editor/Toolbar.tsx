@@ -476,10 +476,10 @@ export function Toolbar({
         <span className="max-2xl:sr-only">整列</span>
       </Button>
       <span className="mx-1 h-6 w-px bg-line" aria-hidden />
-      <Button variant="secondary" icon={LogIn} onClick={addInput} title="入力を加える">
+      <Button variant="secondary" icon={LogIn} onClick={addInput} title="入力を足す">
         <span className="max-2xl:sr-only">入力</span>
       </Button>
-      <Button variant="secondary" icon={LogOut} onClick={addOutput} title="出力を加える">
+      <Button variant="secondary" icon={LogOut} onClick={addOutput} title="出力を足す">
         <span className="max-2xl:sr-only">出力</span>
       </Button>
       <span className="mx-1 h-6 w-px bg-line" aria-hidden />
@@ -510,13 +510,13 @@ export function Toolbar({
         icon={FolderOutput}
         onClick={() => setDialog('project')}
         data-return="project"
-        aria-label="データセットとプロジェクト"
+        aria-label="データセットと学習のプロジェクト"
         title="データセットから入力と出力を作る, 学習のプロジェクトに保存する"
       >
-        <span className="max-[1800px]:sr-only">データセットとプロジェクト</span>
+        <span className="max-[1800px]:sr-only">データセットと学習のプロジェクト</span>
       </Button>
       <div className="ml-auto flex items-center gap-3 text-xs" aria-live="polite">
-        {checking && <span className="text-ink-3">確認中…</span>}
+        {checking && <span className="text-ink-3">確かめています…</span>}
         {/* 大きすぎて形を推定していない場合は, 誤りが無くても知らせる */}
         {!checking && notInferred && (
           <span className="flex items-center gap-1 text-warning-text" title={notInferred}>

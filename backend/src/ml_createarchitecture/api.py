@@ -232,7 +232,7 @@ def check_spec(body: SpecBody) -> CheckResult:
         result = CheckResult(
             issues=[Issue(
                 severity="error", code="check_failed",
-                message=f"確認できません: {type(error).__name__}: {error}"
+                message=f"確かめられません: {type(error).__name__}: {error}"
             )],
             inferred=False
         )

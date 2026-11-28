@@ -456,7 +456,7 @@ export function ExtraParams({
       ))}
       <div className="flex items-center gap-1">
         <label htmlFor={id} className="sr-only">
-          加える引数の名前
+          足す引数の名前
         </label>
         <input
           ref={draftRef}
@@ -474,7 +474,7 @@ export function ExtraParams({
           className="h-7 min-w-0 flex-1 rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
         />
         <Button variant="secondary" icon={Plus} onClick={add}>
-          加える
+          足す
         </Button>
       </div>
       {error && (
@@ -661,12 +661,12 @@ export function PortRefs({
         <select
           id={id}
           value=""
-          aria-label={`${port} につなぎ先を加える`}
+          aria-label={`${port} につなぎ先を足す`}
           aria-describedby={describedBy}
           onChange={(event) => event.target.value && onChange([...refs, event.target.value])}
           className="h-7 w-full rounded-md border border-line bg-bg px-1 font-mono text-xs"
         >
-          <option value="">(つなぎ先を加える)</option>
+          <option value="">(つなぎ先を足す)</option>
           {options.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}

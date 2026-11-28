@@ -32,7 +32,7 @@ const PROBLEMS: ProblemList = {
   problems: [
     entryOf('aaaaaaaaaaaa', '総菜の作る量'),
     entryOf('bbbbbbbbbbbb', '解約の予測'),
-    entryOf('cccccccccccc', '書き出していない課題', 'プロジェクトを書き出していません'),
+    entryOf('cccccccccccc', '書き出していない課題', '学習のプロジェクトを書き出していません'),
   ],
   error: null,
 }
@@ -148,10 +148,10 @@ function renderStage(props: Partial<StageAppProps> = {}) {
   return { ...view, onProjectChange, onProjectsChange }
 }
 
-/** 「データセットとプロジェクト」のダイアログを開く */
+/** 「データセットと学習のプロジェクト」のダイアログを開く */
 async function openProjectDialog() {
-  fireEvent.click(await screen.findByRole('button', { name: 'データセットとプロジェクト' }))
-  return screen.findByRole('dialog', { name: 'データセットとプロジェクト', hidden: true })
+  fireEvent.click(await screen.findByRole('button', { name: 'データセットと学習のプロジェクト' }))
+  return screen.findByRole('dialog', { name: 'データセットと学習のプロジェクト', hidden: true })
 }
 
 beforeEach(() => {
@@ -180,7 +180,7 @@ describe('StageApp', () => {
   it('API を全て apiBase の下に呼ぶ', async () => {
     const fetchMock = stubApi()
     renderStage()
-    await screen.findByRole('button', { name: 'データセットとプロジェクト' })
+    await screen.findByRole('button', { name: 'データセットと学習のプロジェクト' })
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/model/check')).toBe(
         true,
@@ -194,7 +194,7 @@ describe('StageApp', () => {
     stubApi()
     document.documentElement.classList.add('dark')
     renderStage()
-    await screen.findByRole('button', { name: 'データセットとプロジェクト' })
+    await screen.findByRole('button', { name: 'データセットと学習のプロジェクト' })
     expect(screen.queryByRole('heading', { name: 'ML-CreateArchitecture' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '暗い表示' })).not.toBeInTheDocument()
     // 殻が html のクラスを替えると, キャンバスの明暗 (React Flow の colorMode) も替わり,
@@ -229,14 +229,14 @@ describe('StageApp', () => {
     const fetchMock = stubApi()
     const { onProjectChange } = renderStage({ project: 'aaaaaaaaaaaa' })
     const dialog = await openProjectDialog()
-    const note = await within(dialog).findByRole('region', { name: '選んだ問題の設定' })
+    const note = await within(dialog).findByRole('region', { name: '選んだ問題' })
     expect(within(note).getByText(/総菜の作る量/)).toBeInTheDocument()
     await waitFor(() =>
       expect(
         within(dialog).getByRole('textbox', { name: 'データセットのディレクトリ' }),
       ).toHaveValue('/work/aaaaaaaaaaaa/outputs/dataset'),
     )
-    expect(within(dialog).getByRole('textbox', { name: 'プロジェクトか問題の設定' })).toHaveValue(
+    expect(within(dialog).getByRole('textbox', { name: '学習のプロジェクトか問題' })).toHaveValue(
       `${ROOT}/aaaaaaaaaaaa/problem.yaml`,
     )
     expect(within(dialog).getByText('/work/aaaaaaaaaaaa/models/model.yaml')).toBeInTheDocument()
@@ -252,9 +252,9 @@ describe('StageApp', () => {
     const { rerender } = renderStage({ project: 'cccccccccccc' })
     const dialog = await openProjectDialog()
     expect(
-      await within(dialog).findByText(/プロジェクトを書き出していません\. 下の一覧か欄/),
+      await within(dialog).findByText(/学習のプロジェクトを書き出していません\. 下の一覧か欄/),
     ).toBeInTheDocument()
-    expect(within(dialog).getByRole('textbox', { name: 'プロジェクトか問題の設定' })).toHaveValue(
+    expect(within(dialog).getByRole('textbox', { name: '学習のプロジェクトか問題' })).toHaveValue(
       '',
     )
     rerender(
@@ -268,7 +268,7 @@ describe('StageApp', () => {
       />,
     )
     expect(
-      await within(dialog).findByText(/問題の設定 dddddddddddd は置き場 .* にありません/),
+      await within(dialog).findByText(/問題 dddddddddddd は置き場 .* にありません/),
     ).toBeInTheDocument()
   })
 
@@ -277,7 +277,7 @@ describe('StageApp', () => {
     const { onProjectChange } = renderStage({ project: 'aaaaaaaaaaaa' })
     const dialog = await openProjectDialog()
     await waitFor(() =>
-      expect(within(dialog).getByRole('textbox', { name: 'プロジェクトか問題の設定' })).toHaveValue(
+      expect(within(dialog).getByRole('textbox', { name: '学習のプロジェクトか問題' })).toHaveValue(
         `${ROOT}/aaaaaaaaaaaa/problem.yaml`,
       ),
     )
@@ -322,7 +322,7 @@ describe('StageApp', () => {
     }
     const { rerender } = render(<StageApp {...props} project="aaaaaaaaaaaa" />)
     const dialog = await openProjectDialog()
-    const field = within(dialog).getByRole('textbox', { name: 'プロジェクトか問題の設定' })
+    const field = within(dialog).getByRole('textbox', { name: '学習のプロジェクトか問題' })
     await waitFor(() => expect(field).toHaveValue(`${ROOT}/aaaaaaaaaaaa/problem.yaml`))
     fireEvent.click(within(dialog).getByRole('button', { name: /解約の予測/ }))
     await waitFor(() => expect(onProjectChange).toHaveBeenCalledWith('bbbbbbbbbbbb'))
@@ -358,7 +358,7 @@ describe('StageApp', () => {
     window.localStorage.setItem('ml-createarchitecture:dataset-path', '/remembered')
     dialog = await openProjectDialog()
     await waitFor(() => expect(dataset()).toHaveValue('/work/aaaaaaaaaaaa/outputs/dataset'))
-    expect(within(dialog).getByRole('textbox', { name: 'プロジェクトか問題の設定' })).toHaveValue(
+    expect(within(dialog).getByRole('textbox', { name: '学習のプロジェクトか問題' })).toHaveValue(
       `${ROOT}/aaaaaaaaaaaa/problem.yaml`,
     )
   })
@@ -375,7 +375,7 @@ describe('StageApp', () => {
     }
     const { rerender } = render(<StageApp {...props} project="aaaaaaaaaaaa" />)
     const dialog = await openProjectDialog()
-    const field = within(dialog).getByRole('textbox', { name: 'プロジェクトか問題の設定' })
+    const field = within(dialog).getByRole('textbox', { name: '学習のプロジェクトか問題' })
     await waitFor(() => expect(field).toHaveValue(`${ROOT}/aaaaaaaaaaaa/problem.yaml`))
     // B を選んで知らせ (殻は受け付けない), A に戻す (殻の選びと同じなので知らせない)
     fireEvent.click(within(dialog).getByRole('button', { name: /解約の予測/ }))
@@ -401,19 +401,19 @@ describe('StageApp', () => {
     fireEvent.click(await screen.findByRole('button', { name: '開く' }))
     const dialog = await screen.findByRole('dialog', { name: '定義を開く', hidden: true })
     await waitFor(() =>
-      expect(within(dialog).getByRole('textbox', { name: 'プロジェクトか問題の設定' })).toHaveValue(
+      expect(within(dialog).getByRole('textbox', { name: '学習のプロジェクトか問題' })).toHaveValue(
         '/work/bbbbbbbbbbbb',
       ),
     )
   })
 
-  it('プロジェクトに保存してから外すと下書きを残さず, 戻すと下書きを聞かない', async () => {
+  it('学習のプロジェクトに保存してから外すと下書きを残さず, 戻すと下書きを聞かない', async () => {
     stubApi('/api/model', 'tabular_mlp')
     const first = renderStage({ project: 'aaaaaaaaaaaa' })
     const dialog = await openProjectDialog()
     // 新しく始める定義なので, 殻の問題の設定の雛形を開く (保存していない変更になる)
     await within(dialog).findByText(/雛形 tabular_mlp を開きました/)
-    const saving = within(dialog).getByRole('region', { name: 'プロジェクトに保存' })
+    const saving = within(dialog).getByRole('region', { name: '学習のプロジェクトに保存' })
     fireEvent.click(within(saving).getByRole('button', { name: 'この場所に保存' }))
     await within(saving).findByText('/work/aaaaaaaaaaaa/models/model.yaml に保存しました')
     // 置き場には保存していないので印 (*) は残る
@@ -426,22 +426,22 @@ describe('StageApp', () => {
     expect(Object.keys(drafts)).toHaveLength(0)
     // 段階に戻っても下書きを戻すかを聞かない
     renderStage({ project: 'aaaaaaaaaaaa' })
-    await screen.findByRole('button', { name: 'データセットとプロジェクト' })
+    await screen.findByRole('button', { name: 'データセットと学習のプロジェクト' })
     expect(
       screen.queryByRole('region', { name: '保存していない定義の下書き' }),
     ).not.toBeInTheDocument()
   })
 
-  it('プロジェクトに保存した後に変えた定義は, 外すときに下書きに書く', async () => {
+  it('学習のプロジェクトに保存した後に変えた定義は, 外すときに下書きに書く', async () => {
     stubApi('/api/model', 'tabular_mlp')
     const first = renderStage({ project: 'aaaaaaaaaaaa' })
     const dialog = await openProjectDialog()
     await within(dialog).findByText(/雛形 tabular_mlp を開きました/)
-    const saving = within(dialog).getByRole('region', { name: 'プロジェクトに保存' })
+    const saving = within(dialog).getByRole('region', { name: '学習のプロジェクトに保存' })
     fireEvent.click(within(saving).getByRole('button', { name: 'この場所に保存' }))
     await within(saving).findByText('/work/aaaaaaaaaaaa/models/model.yaml に保存しました')
     fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }))
-    // 保存した後に定義を変える (入力を加える)
+    // 保存した後に定義を変える (入力を足す)
     fireEvent.click(screen.getByRole('button', { name: '入力' }))
     first.unmount()
     // 下書きは変えた後の定義 (加えた入力を持つ)
@@ -452,12 +452,12 @@ describe('StageApp', () => {
     ).toBeInTheDocument()
   })
 
-  it('プロジェクトに保存してから殻で問題の設定を替えると, 書いた定義も下書きに書く', async () => {
+  it('学習のプロジェクトに保存してから殻で問題の設定を替えると, 書いた定義も下書きに書く', async () => {
     stubApi('/api/model', 'tabular_mlp')
     const first = renderStage({ project: 'aaaaaaaaaaaa' })
     const dialog = await openProjectDialog()
     await within(dialog).findByText(/雛形 tabular_mlp を開きました/)
-    const saving = within(dialog).getByRole('region', { name: 'プロジェクトに保存' })
+    const saving = within(dialog).getByRole('region', { name: '学習のプロジェクトに保存' })
     fireEvent.click(within(saving).getByRole('button', { name: 'この場所に保存' }))
     await within(saving).findByText('/work/aaaaaaaaaaaa/models/model.yaml に保存しました')
     fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }))
@@ -497,8 +497,8 @@ describe('StageApp', () => {
     ).toBeInTheDocument()
     const dialog = await openProjectDialog()
     await within(dialog).findByRole('button', { name: /総菜の作る量/ })
-    expect(within(dialog).queryByRole('region', { name: '選んだ問題の設定' })).toBeNull()
-    expect(within(dialog).getByRole('textbox', { name: 'プロジェクトか問題の設定' })).toHaveValue(
+    expect(within(dialog).queryByRole('region', { name: '選んだ問題' })).toBeNull()
+    expect(within(dialog).getByRole('textbox', { name: '学習のプロジェクトか問題' })).toHaveValue(
       '',
     )
     fireEvent.click(screen.getByRole('button', { name: '暗い表示' }))

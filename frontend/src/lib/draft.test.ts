@@ -96,7 +96,7 @@ describe('useDraftWriter', () => {
     expect(Object.keys(drafts[tabId()]?.spec.nodes ?? {})).toEqual(['linear1'])
   })
 
-  it('殻で選んだ問題の設定が替わると, 待たずに書く', () => {
+  it('殻で選んだ問題が替わると, 待たずに書く', () => {
     const { rerender } = renderHook(
       ({ project }: { project: string | null }) =>
         useDraftWriter(true, nextOf(changed()), null, project),

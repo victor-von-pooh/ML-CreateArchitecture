@@ -148,14 +148,14 @@ function useStageProblem(): StageProblem | null {
   const base = { project, entry: null, reason: null, pending: false }
   if (problems.isPending) return { ...base, pending: true }
   if (problems.error) {
-    return { ...base, reason: `問題の設定の一覧を読めません: ${problems.error.message}` }
+    return { ...base, reason: `問題の一覧を読めません: ${problems.error.message}` }
   }
   const list = problems.data
   const entry = list.problems.find((item) => problemIdOf(item.path) === project) ?? null
   if (!entry) {
     return {
       ...base,
-      reason: list.error ?? `問題の設定 ${project} は置き場 (${list.root}) にありません`,
+      reason: list.error ?? `問題 ${project} は置き場 (${list.root}) にありません`,
     }
   }
   if (!entry.usable) return { ...base, entry, reason: entry.reason ?? '使えません' }
@@ -171,7 +171,7 @@ function StageProblemNote({ stage }: { stage: StageProblem }) {
       className="space-y-1 rounded-lg border border-line bg-surface-2 px-3 py-2"
     >
       <h3 id={titleId} className="text-sm font-semibold">
-        選んだ問題の設定
+        選んだ問題
       </h3>
       {stage.pending && <Spinner />}
       {stage.entry && (
@@ -187,7 +187,7 @@ function StageProblemNote({ stage }: { stage: StageProblem }) {
       ) : (
         stage.entry && (
           <p className="text-xs text-ink-3">
-            この問題の設定の記録のデータセットと保存先を, 下の欄の既定にします
+            この問題の記録のデータセットと保存先を, 下の欄の既定にします
           </p>
         )
       )}
@@ -215,10 +215,10 @@ function StoredProblems({
   return (
     <section aria-labelledby={titleId} className="space-y-2">
       <h3 id={titleId} className="text-sm font-semibold">
-        問題の設定から選ぶ
+        問題から選ぶ
       </h3>
       <p className="text-[11px] text-ink-3">
-        ML-Pathfinder でプロジェクトを書き出した問題の設定を選ぶと,
+        問題の設定の段階で学習のプロジェクトを書き出した問題を選ぶと,
         その記録のデータセットと保存先を下の欄に入れます. 受け持ちに合う雛形があれば,
         新しく始める場合はその雛形を開きます
       </p>
@@ -227,13 +227,13 @@ function StoredProblems({
       {list?.error && <p className="text-xs text-critical-text">{list.error}</p>}
       {list && list.problems.length === 0 && !list.error && (
         <p className="text-xs text-ink-3">
-          置き場 (<span className="font-mono break-all">{list.root}</span>)
-          に問題の設定がありません. 下の欄に場所を書いて選べます
+          置き場 (<span className="font-mono break-all">{list.root}</span>) に問題がありません.
+          下の欄に場所を書いて選べます
         </p>
       )}
       {list && list.problems.length > 0 && (
         <ul
-          aria-label="ML-Pathfinder に保存した問題の設定"
+          aria-label="問題の設定の段階で保存した問題"
           className="max-h-48 overflow-auto rounded-lg border border-line"
         >
           {list.problems.map((item, index) => (
@@ -350,8 +350,8 @@ export function ExperimentCopies({
         }}
       >
         <PathField
-          label="プロジェクトか問題の設定"
-          hint="実験 (ML-Found の実験のディレクトリ) に残った, 学習に使った定義の写しを開きます. 開いた後に「データセットとプロジェクト」の「プロジェクトに保存」で, models/ の下の名前を付けて保存できます"
+          label="学習のプロジェクトか問題"
+          hint="実験 (学習のプロジェクトで学習を動かした記録) に残った, 学習に使った定義の写しを開きます. 開いた後に「データセットと学習のプロジェクト」の「学習のプロジェクトに保存」で, models/ の下の名前を付けて保存できます"
           value={path}
           onChange={(value) => {
             setTouched(true)
@@ -381,7 +381,7 @@ export function ExperimentCopies({
       )}
       {list && list.experiments.length > 0 && (
         <ul
-          aria-label="プロジェクトの実験"
+          aria-label="学習のプロジェクトの実験"
           className="max-h-60 overflow-auto rounded-lg border border-line"
         >
           {list.experiments.map((item, index) => (
@@ -500,7 +500,7 @@ function DatasetSection({
       >
         <PathField
           label="データセットのディレクトリ"
-          hint="ML-Fathom (ML-EDA) で書き出したディレクトリ (dataset.yaml を持つもの) の絶対のパス. 並べるの問題の設定では, 学習のスクリプトが読む反応の表のファイル. 入力の名前, 形, 型と出力の大きさを定義に入れます (元に戻すで戻せます)"
+          hint="データの分析の段階で書き出したディレクトリ (dataset.yaml を持つもの) の絶対のパス. 並べるの問題では, 学習のスクリプトが読む反応の表のファイル. 入力の名前, 形, 型と出力の大きさを定義に入れます (元に戻すで戻せます)"
           value={path}
           onChange={(value) => {
             setTouched(true)
@@ -510,18 +510,18 @@ function DatasetSection({
         />
         {problem && (
           <p className="text-[11px] text-ink-3">
-            問題の設定 <span className="font-mono break-all">{problem}</span> も渡します.
-            表の生成なら, 入力と出力の幅を, 学習で使う 1 行の長さにします (数の項目は 1 つずつ,
+            問題 <span className="font-mono break-all">{problem}</span> も渡します. 表の生成なら,
+            入力と出力の幅を, 学習で使う 1 行の長さにします (数の項目は 1 つずつ,
             分類の項目は選べる値の数の合計). 並べるなら, 入力 user と item の大きさを,
             反応を時刻の順に分けた学習用の反応にいる利用者と品物の数にします. 異常の検知で,
             度合いの決め方が距離に基づく度合いなら, モデルの定義が要らないので何も変えません.
             効果を見積もるなら, 入力に入れない処置 (行動したかどうか) の列と行を見分ける id
-            の列の名前を, データセットに書いていなければ問題の設定から読んで知らせます.
+            の列の名前を, データセットに書いていなければ問題から読んで知らせます.
             値段を変える判断なら, 入力の最後に入る値段 (商品の売り値) の列と, 入力に入れない
             売れた数 (予測する値), 原価 (仕入れか作るのにかかる値段), 商品の id (値段を選ぶ単位)
-            と行を見分ける id の列を知らせます (列の名前は, データセットに書いていなければ問題の
-            設定から読みます). 時間をまたぐ量の判断なら, 出力の値の数を, 学ぶ分位点の水準の数
-            (プロジェクトの学習の設定にあればそれ, 無ければ問題の設定の水準) にします
+            と行を見分ける id の列を知らせます (列の名前は, データセットに書いていなければ問題から
+            読みます). 時間をまたぐ量の判断なら, 出力の値の数を, 学ぶ分位点の水準の数
+            (学習のプロジェクトの学習の設定にあればそれ, 無ければ問題の水準) にします
           </p>
         )}
         <Button
@@ -578,7 +578,7 @@ export function TemplateNote({
   onOpen: () => void
 }) {
   const titleId = useId()
-  const from = template.problem ? `問題の設定 ${template.problem} ` : '問題の設定'
+  const from = template.problem ? `問題 ${template.problem} ` : '問題'
   return (
     <section
       aria-labelledby={titleId}
@@ -606,12 +606,12 @@ export function TemplateNote({
 /** 保存先の決め方の説明 */
 function targetSource(target: ProjectTarget): string {
   if (target.source === 'name') {
-    return 'models/ の下の名前の保存先 (config の model.spec は変えません. ML-Dashboard の学習の起動の「モデルの定義の候補」で選べます)'
+    return 'models/ の下の名前の保存先 (config の model.spec は変えません. 学習・評価の段階の学習の起動の「モデルの定義の候補」で選べます)'
   }
   if (target.source === 'problem') {
-    return `問題の設定${target.problem ? ` ${target.problem}` : ''} の記録の保存先`
+    return `問題${target.problem ? ` ${target.problem}` : ''} の記録の保存先`
   }
-  return 'プロジェクトの既定の保存先 (configs/default/train.yaml の model.spec の既定)'
+  return '学習のプロジェクトの既定の保存先 (configs/default/train.yaml の model.spec の既定)'
 }
 
 /** プロジェクトに保存する要求 (saved は送る定義, accept は骨組みの約束に合わなくても書くか) */
@@ -850,7 +850,7 @@ function ProjectSaveSection({
   return (
     <section aria-labelledby={titleId} className="space-y-3">
       <h3 id={titleId} className="text-sm font-semibold">
-        プロジェクトに保存
+        学習のプロジェクトに保存
       </h3>
       <form
         className="space-y-3"
@@ -862,15 +862,15 @@ function ProjectSaveSection({
         }}
       >
         <PathField
-          label="プロジェクトか問題の設定"
-          hint="ML-Pathfinder (ML-Quest) で書き出した学習のプロジェクトのディレクトリか, 問題の設定のファイル (problem.yaml など) の絶対のパス. 定義全体を, 学習のスクリプトが読む場所 (下の名前を書いた場合は, このプロジェクトの models/<名前>.yaml) に書きます"
+          label="学習のプロジェクトか問題"
+          hint="問題の設定の段階で書き出した学習のプロジェクトのディレクトリか, 問題のファイル (problem.yaml など) の絶対のパス. 定義全体を, 学習のスクリプトが読む場所 (下の名前を書いた場合は, この学習のプロジェクトの models/<名前>.yaml) に書きます"
           value={path}
           onChange={setPath}
           placeholder="/path/to/project"
         />
         <PathField
           label="models/ の下の名前"
-          hint="モデルの候補を並べる場合に, プロジェクトの models/<名前>.yaml に書きます (英数字, _, -. 先頭に - は使えない. 64 文字まで. 拡張子は書かない. 同じ名前の .yml があればそこに書く). 空なら上の既定の保存先. config の model.spec は変えず, ML-Dashboard の学習の起動の「モデルの定義の候補」で選びます"
+          hint="モデルの候補を並べる場合に, 学習のプロジェクトの models/<名前>.yaml に書きます (英数字, _, -. 先頭に - は使えない. 64 文字まで. 拡張子は書かない. 同じ名前の .yml があればそこに書く). 空なら上の既定の保存先. config の model.spec は変えず, 学習・評価の段階の学習の起動の「モデルの定義の候補」で選びます"
           value={name}
           onChange={setName}
           placeholder="空なら既定の保存先 (例: mlp)"
@@ -1017,7 +1017,7 @@ export function ProjectDialog({
     load.mutate({ example, problem, id: latestTemplate.current })
   }
   return (
-    <Dialog title="データセットとプロジェクト" onClose={onClose}>
+    <Dialog title="データセットと学習のプロジェクト" onClose={onClose}>
       <div className="space-y-6">
         {stage && <StageProblemNote stage={stage} />}
         <StoredProblems picked={checked} onPick={(path) => setChoice({ path })} />

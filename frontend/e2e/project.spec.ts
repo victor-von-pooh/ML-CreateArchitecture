@@ -46,18 +46,18 @@ test.beforeAll(() => {
   for (const file of written) rmSync(file, { force: true })
 })
 
-/** データセットとプロジェクトのダイアログを開く */
+/** データセットと学習のプロジェクトのダイアログを開く */
 async function openDialog(page: Page) {
-  await page.getByRole('button', { name: 'データセットとプロジェクト' }).click()
-  return page.getByRole('dialog', { name: 'データセットとプロジェクト' })
+  await page.getByRole('button', { name: 'データセットと学習のプロジェクト' }).click()
+  return page.getByRole('dialog', { name: 'データセットと学習のプロジェクト' })
 }
 
 /**
- * 今の定義をプロジェクトに保存すると, 骨組みの入力と出力に合わない所 (直す場所と文) が出て,
+ * 今の定義を学習のプロジェクトに保存すると, 骨組みの入力と出力に合わない所 (直す場所と文) が出て,
  * 書かないことを確かめ, 合わない所の欄を返す
  */
 async function expectContract(dialog: Locator, file: string, places: string[]) {
-  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
+  const save = dialog.getByRole('region', { name: '学習のプロジェクトに保存' })
   await save
     .getByRole('group', { name: '保存先' })
     .getByRole('button', { name: 'この場所に保存' })
@@ -73,11 +73,11 @@ async function expectContract(dialog: Locator, file: string, places: string[]) {
 }
 
 /**
- * データセットから作った定義をプロジェクトに保存すると, 合わない所を出さずに書く
+ * データセットから作った定義を学習のプロジェクトに保存すると, 合わない所を出さずに書く
  * (overwrite は既に書いた定義があり, 上書きを確かめる場合)
  */
 async function expectSaved(page: Page, dialog: Locator, file: string, overwrite = false) {
-  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
+  const save = dialog.getByRole('region', { name: '学習のプロジェクトに保存' })
   let asked = ''
   if (overwrite) {
     page.once('dialog', (confirm) => {
@@ -137,7 +137,7 @@ test('同梱の U-Net の例を, ファイルの組のデータセットのチ�
   await expect(result).toContainText('入力 image [4, 1, ?, ?]')
   await expect(result).toContainText('正解 mask (mask), クラス 3, 出す値 3')
   await expect(result).toContainText(
-    '定義は雛形 unet_segmentation のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+    '定義は雛形 unet_segmentation のままなので, データに合わせる引数を雛形の書き換え',
   )
   await expect(result).toContainText(
     '雛形の引数 channels (チャンネル数) を 3 から 1 にしました (入力 image の形の 2 番目, enc1a の in_channels)',
@@ -171,7 +171,7 @@ test('同梱の点群の例を, ファイルの組のデータセットの入力
   const result = section.getByRole('status')
   await expect(result).toContainText('入力 observed [4, 128, 3]')
   await expect(result).toContainText(
-    '定義は雛形 point_cloud_predictor のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+    '定義は雛形 point_cloud_predictor のままなので, データに合わせる引数を雛形の書き換え',
   )
   await expect(result).toContainText(
     '雛形の引数 points_in (入力の点の数) を 512 から 128 にしました (入力 observed の形の 2 番目)',
@@ -216,7 +216,7 @@ test('同梱の拡散の例に表のデータセットを入れると, 残す時
     '入力 t はデータセットに無いですが, つないでいるので残し, 最初の次元 (バッチ) を例の大きさ 4 にしました ([4])',
   )
   await expect(result).toContainText(
-    '定義は雛形 diffusion_denoiser のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+    '定義は雛形 diffusion_denoiser のままなので, データに合わせる引数を雛形の書き換え',
   )
   await expect(result).toContainText(
     '雛形の引数 features (特徴の数) を 16 から 3 にしました (入力 x の形の 2 番目, x_fc の in_features, head の out_features)',
@@ -240,7 +240,7 @@ test('データセットでない場所は, 理由を出して定義を変えな
   await expect(section.getByRole('alert')).toContainText('dataset.yaml がありません')
 })
 
-test('プロジェクトに保存すると, 学習のスクリプトが読む場所に書き, 2 回目は上書きを確かめる', async ({
+test('学習のプロジェクトに保存すると, 学習のスクリプトが読む場所に書き, 2 回目は上書きを確かめる', async ({
   page,
 }) => {
   await page.goto('/')
@@ -251,8 +251,8 @@ test('プロジェクトに保存すると, 学習のスクリプトが読む場
   await expect(data.getByRole('status')).toContainText('出す値 3')
 
   // 保存先を確かめる (骨組みの config の model.spec の場所)
-  let save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
-  await save.getByLabel('プロジェクトか問題の設定').fill(project)
+  let save = dialog.getByRole('region', { name: '学習のプロジェクトに保存' })
+  await save.getByLabel('学習のプロジェクトか問題').fill(project)
   await save.getByRole('button', { name: '保存先を確かめる' }).click()
   let target = save.getByRole('group', { name: '保存先' })
   await expect(target).toContainText('models/model.yaml')
@@ -267,8 +267,8 @@ test('プロジェクトに保存すると, 学習のスクリプトが読む場
   // 開き直すと前に確かめたプロジェクトの場所を覚えていて, 既にあると出す.
   // 上書きの確認に答えてから書く
   dialog = await openDialog(page)
-  save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
-  await expect(save.getByLabel('プロジェクトか問題の設定')).toHaveValue(project)
+  save = dialog.getByRole('region', { name: '学習のプロジェクトに保存' })
+  await expect(save.getByLabel('学習のプロジェクトか問題')).toHaveValue(project)
   await expect(
     dialog
       .getByRole('region', { name: 'データセットから入力と出力を作る' })
@@ -287,7 +287,7 @@ test('プロジェクトに保存すると, 学習のスクリプトが読む場
   expect(asked).toContain('上書きしますか')
 })
 
-test('名前を変えてプロジェクトに保存すると, models/ の下に候補を並べ, config と既定の定義は変えない', async ({
+test('名前を変えて学習のプロジェクトに保存すると, models/ の下に候補を並べ, config と既定の定義は変えない', async ({
   page,
 }) => {
   const config = `${project}/configs/default/train.yaml`
@@ -295,8 +295,8 @@ test('名前を変えてプロジェクトに保存すると, models/ の下に�
   const modelBefore = readFileSync(modelFile, 'utf-8')
   await page.goto('/')
   const dialog = await openDialog(page)
-  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
-  await save.getByLabel('プロジェクトか問題の設定').fill(project)
+  const save = dialog.getByRole('region', { name: '学習のプロジェクトに保存' })
+  await save.getByLabel('学習のプロジェクトか問題').fill(project)
   await save.getByLabel('models/ の下の名前').fill('e2e_candidate')
   await save.getByRole('button', { name: '保存先を確かめる' }).click()
   const target = save.getByRole('group', { name: '保存先' })
@@ -347,7 +347,7 @@ test('名前を変えてプロジェクトに保存すると, models/ の下に�
   await save.getByLabel('models/ の下の名前').fill('')
   await save.getByRole('button', { name: '保存先を確かめる' }).click()
   await expect(save.getByRole('group', { name: '保存先' })).toBeVisible()
-  await save.getByLabel('プロジェクトか問題の設定').fill(dataset)
+  await save.getByLabel('学習のプロジェクトか問題').fill(dataset)
   await save.getByRole('button', { name: '保存先を確かめる' }).click()
   await expect(save.getByRole('alert')).toContainText('学習のプロジェクト')
   await expect(save).not.toContainText('保存先を確かめ直してください')
@@ -359,8 +359,8 @@ test('記録の無いプロジェクトでも, 保存先を確かめると confi
 }) => {
   await page.goto('/')
   const dialog = await openDialog(page)
-  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
-  await save.getByLabel('プロジェクトか問題の設定').fill(project)
+  const save = dialog.getByRole('region', { name: '学習のプロジェクトに保存' })
+  await save.getByLabel('学習のプロジェクトか問題').fill(project)
   await save.getByRole('button', { name: '保存先を確かめる' }).click()
   await expect(save.getByRole('group', { name: '保存先' })).toContainText('models/model.yaml')
 
@@ -376,12 +376,12 @@ test('問題の設定を一覧から選ぶと, 記録のデータセットと保
 }) => {
   await page.goto('/')
   const dialog = await openDialog(page)
-  const list = dialog.getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+  const list = dialog.getByRole('list', { name: '問題の設定の段階で保存した問題' })
 
   // プロジェクトを書き出していない問題の設定は, 理由を付けて選べない
   const draft = list.getByRole('button', { name: /e2e の下書き/ })
   await expect(draft).toBeDisabled()
-  await expect(draft).toContainText('プロジェクトを書き出していません')
+  await expect(draft).toContainText('学習のプロジェクトを書き出していません')
 
   // 書き出してあり, 定義の置き場の記録だけが無いものは, その理由で選べない
   const noSpec = list.getByRole('button', { name: /e2e の定義の記録なし/ })
@@ -397,13 +397,13 @@ test('問題の設定を一覧から選ぶと, 記録のデータセットと保
   await expect(recorded).toHaveAttribute('aria-pressed', 'true')
 
   // 保存先は記録の場所 (場所を打たずに決まる)
-  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
-  await expect(save.getByLabel('プロジェクトか問題の設定')).toHaveValue(
+  const save = dialog.getByRole('region', { name: '学習のプロジェクトに保存' })
+  await expect(save.getByLabel('学習のプロジェクトか問題')).toHaveValue(
     /problems\/recorded\/problem\.yaml$/,
   )
   const target = save.getByRole('group', { name: '保存先' })
   await expect(target).toContainText(modelFile)
-  await expect(target).toContainText('問題の設定 e2e の売上 の記録の保存先')
+  await expect(target).toContainText('問題 e2e の売上 の記録の保存先')
   await expect(field).toHaveValue(dataset)
 
   // そのまま入力と出力を作り, 保存できる (既にあれば上書きを確かめる)
@@ -430,7 +430,7 @@ test('雛形のある問題の設定を新しく始めるときに選ぶと雛�
   await page.goto('/')
   let dialog = await openDialog(page)
   let rank = dialog
-    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('list', { name: '問題の設定の段階で保存した問題' })
     .getByRole('button', { name: /e2e の推薦/ })
   await expect(rank).toContainText('雛形: two_tower_retrieval')
 
@@ -438,10 +438,10 @@ test('雛形のある問題の設定を新しく始めるときに選ぶと雛�
   await rank.click()
   let note = dialog.getByRole('region', { name: '受け持ちに合う雛形' })
   await expect(note.getByRole('status')).toContainText(
-    '問題の設定 e2e の推薦 の受け持ちに合う雛形 two_tower_retrieval を開きました',
+    '問題 e2e の推薦 の受け持ちに合う雛形 two_tower_retrieval を開きました',
   )
   await expect(note.getByRole('button')).toHaveCount(0)
-  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
+  const save = dialog.getByRole('region', { name: '学習のプロジェクトに保存' })
   await expect(save.getByRole('group', { name: '保存先' })).toContainText(
     `${rankProject}/models/model.yaml`,
   )
@@ -458,7 +458,7 @@ test('雛形のある問題の設定を新しく始めるときに選ぶと雛�
   await expect(page.locator('[data-id="fc1"]')).toBeVisible({ timeout: 20_000 })
   dialog = await openDialog(page)
   rank = dialog
-    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('list', { name: '問題の設定の段階で保存した問題' })
     .getByRole('button', { name: /e2e の推薦/ })
   await rank.click()
   note = dialog.getByRole('region', { name: '受け持ちに合う雛形' })
@@ -493,7 +493,7 @@ test('異常の検知の問題の設定を新しく始めるときに選ぶと�
 }) => {
   await page.goto('/')
   const dialog = await openDialog(page)
-  const problems = dialog.getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+  const problems = dialog.getByRole('list', { name: '問題の設定の段階で保存した問題' })
   const anomaly = problems.getByRole('button', { name: /e2e の異常の検知/ })
   await expect(anomaly).toContainText('雛形: tabular_autoencoder')
 
@@ -506,12 +506,12 @@ test('異常の検知の問題の設定を新しく始めるときに選ぶと�
   await anomaly.click()
   const note = dialog.getByRole('region', { name: '受け持ちに合う雛形' })
   await expect(note.getByRole('status')).toContainText(
-    '問題の設定 e2e の異常の検知 の受け持ちに合う雛形 tabular_autoencoder を開きました',
+    '問題 e2e の異常の検知 の受け持ちに合う雛形 tabular_autoencoder を開きました',
   )
   await expect(note.getByRole('button')).toHaveCount(0)
   await expect(
     dialog
-      .getByRole('region', { name: 'プロジェクトに保存' })
+      .getByRole('region', { name: '学習のプロジェクトに保存' })
       .getByRole('group', { name: '保存先' }),
   ).toContainText(`${anomalyProject}/models/model.yaml`)
 
@@ -524,7 +524,7 @@ test('異常の検知の問題の設定を新しく始めるときに選ぶと�
   ])
   await findings.getByRole('button', { name: '直さずに保存' }).click()
   await expect(
-    dialog.getByRole('region', { name: 'プロジェクトに保存' }).getByRole('status'),
+    dialog.getByRole('region', { name: '学習のプロジェクトに保存' }).getByRole('status'),
   ).toContainText(`${anomalyFile} に保存しました`)
   expect(readFileSync(anomalyFile, 'utf-8')).toContain('in_features: 16')
 
@@ -539,11 +539,11 @@ test('異常の検知の問題の設定を新しく始めるときに選ぶと�
     'データセットから入れました: 入力 x [4, 3], タスク anomaly, 目的の列 is_anomaly, 出す値 3',
   )
   await expect(result).toContainText(
-    '問題の設定 e2e の異常の検知 が異常の検知 (自己符号化器)なので, 入力と出力の幅を, 学習に使う列の数 3 にしました ' +
+    '問題 e2e の異常の検知 が異常の検知 (自己符号化器)なので, 入力と出力の幅を, 学習に使う列の数 3 にしました ' +
       '(自己符号化器は入力を作り直すので, 出力を入力と同じ幅にします. 正解の列 is_anomaly は数えません)',
   )
   await expect(result).toContainText(
-    '定義は雛形 tabular_autoencoder のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+    '定義は雛形 tabular_autoencoder のままなので, データに合わせる引数を雛形の書き換え',
   )
   await expect(result).toContainText(
     '雛形の引数 features (特徴の数) を 16 から 3 にしました (入力 x の形の 2 番目, enc1 の in_features, dec2 の out_features)',
@@ -568,7 +568,7 @@ test('効果の見積もりの問題の設定を新しく始めるときに選�
   await page.goto('/')
   const dialog = await openDialog(page)
   const uplift = dialog
-    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('list', { name: '問題の設定の段階で保存した問題' })
     .getByRole('button', { name: /e2e のクーポンの効果/ })
   await expect(uplift).toContainText('雛形: tabular_uplift')
 
@@ -576,12 +576,12 @@ test('効果の見積もりの問題の設定を新しく始めるときに選�
   await uplift.click()
   const note = dialog.getByRole('region', { name: '受け持ちに合う雛形' })
   await expect(note.getByRole('status')).toContainText(
-    '問題の設定 e2e のクーポンの効果 の受け持ちに合う雛形 tabular_uplift を開きました',
+    '問題 e2e のクーポンの効果 の受け持ちに合う雛形 tabular_uplift を開きました',
   )
   await expect(note.getByRole('button')).toHaveCount(0)
   await expect(
     dialog
-      .getByRole('region', { name: 'プロジェクトに保存' })
+      .getByRole('region', { name: '学習のプロジェクトに保存' })
       .getByRole('group', { name: '保存先' }),
   ).toContainText(`${upliftProject}/models/model.yaml`)
 
@@ -603,7 +603,7 @@ test('効果の見積もりの問題の設定を新しく始めるときに選�
     'データセットから入れました: 入力 x [4, 2], タスク uplift, 目的の列 purchased, 出す値 1',
   )
   await expect(result).toContainText(
-    '問題の設定 e2e のクーポンの効果 が効果の見積もりなので, 入力の幅を, 学習に使う列の数 2 にしました. ' +
+    '問題 e2e のクーポンの効果 が効果の見積もりなので, 入力の幅を, 学習に使う列の数 2 にしました. ' +
       '入力に入れない列: 処置 (行動したかどうか. クーポンを配ったかなど) の列 coupon, ' +
       '結果 (行動の後にどうなったか. 買ったかなど) の列 purchased, 行を見分ける id の列 customer_id ' +
       '(効果は処置したときとしないときの結果の差として学ぶので, 処置と結果は入力に入れません). ' +
@@ -611,7 +611,7 @@ test('効果の見積もりの問題の設定を新しく始めるときに選�
       'どちらも 1 行に 1 つの値を出します',
   )
   await expect(result).toContainText(
-    '定義は雛形 tabular_uplift のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+    '定義は雛形 tabular_uplift のままなので, データに合わせる引数を雛形の書き換え',
   )
   await expect(result).toContainText(
     '雛形の引数 features (特徴の数) を 16 から 2 にしました (入力 x の形の 2 番目, treated1 の in_features, control1 の in_features)',
@@ -639,7 +639,7 @@ test('値段を変える判断の問題の設定を新しく始めるときに�
   await page.goto('/')
   const dialog = await openDialog(page)
   const price = dialog
-    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('list', { name: '問題の設定の段階で保存した問題' })
     .getByRole('button', { name: /e2e の値段の見直し/ })
   await expect(price).toContainText('雛形: tabular_price')
 
@@ -647,12 +647,12 @@ test('値段を変える判断の問題の設定を新しく始めるときに�
   await price.click()
   const note = dialog.getByRole('region', { name: '受け持ちに合う雛形' })
   await expect(note.getByRole('status')).toContainText(
-    '問題の設定 e2e の値段の見直し の受け持ちに合う雛形 tabular_price を開きました',
+    '問題 e2e の値段の見直し の受け持ちに合う雛形 tabular_price を開きました',
   )
   await expect(note.getByRole('button')).toHaveCount(0)
   await expect(
     dialog
-      .getByRole('region', { name: 'プロジェクトに保存' })
+      .getByRole('region', { name: '学習のプロジェクトに保存' })
       .getByRole('group', { name: '保存先' }),
   ).toContainText(`${priceProject}/models/model.yaml`)
 
@@ -674,7 +674,7 @@ test('値段を変える判断の問題の設定を新しく始めるときに�
     'データセットから入れました: 入力 x [4, 3], タスク price, 目的の列 units, 出す値 1',
   )
   await expect(result).toContainText(
-    '問題の設定 e2e の値段の見直し が値段を変える判断なので, ' +
+    '問題 e2e の値段の見直し が値段を変える判断なので, ' +
       '入力の幅を, 商品の特徴の列と値段の列を合わせた 3 列にしました. ' +
       '値段 (商品の売り値) の列 price は, 入力の最後の列です. ' +
       '次の列は入力に入れません: 売れた数 (予測する値) の列 units, ' +
@@ -682,7 +682,7 @@ test('値段を変える判断の問題の設定を新しく始めるときに�
       '商品の id (値段を選ぶ単位) の列 product_id, 行を見分ける id の列 record_id',
   )
   await expect(result).toContainText(
-    '定義は雛形 tabular_price のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+    '定義は雛形 tabular_price のままなので, データに合わせる引数を雛形の書き換え',
   )
   await expect(result).toContainText(
     '雛形の引数 features (特徴の数) を 17 から 3 にしました (入力 x の形の 2 番目, units1 の in_features)',
@@ -711,7 +711,7 @@ test('時間をまたぐ量の判断の問題の設定を新しく始めると�
   await page.goto('/')
   const dialog = await openDialog(page)
   const demand = dialog
-    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('list', { name: '問題の設定の段階で保存した問題' })
     .getByRole('button', { name: /e2e の発注の見直し/ })
   await expect(demand).toContainText('雛形: tabular_demand')
 
@@ -719,12 +719,12 @@ test('時間をまたぐ量の判断の問題の設定を新しく始めると�
   await demand.click()
   const note = dialog.getByRole('region', { name: '受け持ちに合う雛形' })
   await expect(note.getByRole('status')).toContainText(
-    '問題の設定 e2e の発注の見直し の受け持ちに合う雛形 tabular_demand を開きました',
+    '問題 e2e の発注の見直し の受け持ちに合う雛形 tabular_demand を開きました',
   )
   await expect(note.getByRole('button')).toHaveCount(0)
   await expect(
     dialog
-      .getByRole('region', { name: 'プロジェクトに保存' })
+      .getByRole('region', { name: '学習のプロジェクトに保存' })
       .getByRole('group', { name: '保存先' }),
   ).toContainText(`${demandProject}/models/model.yaml`)
 
@@ -747,7 +747,7 @@ test('時間をまたぐ量の判断の問題の設定を新しく始めると�
     'データセットから入れました: 入力 x [4, 5], タスク demand, 目的の列 demand, 出す値 4',
   )
   await expect(result).toContainText(
-    '問題の設定 e2e の発注の見直し が時間をまたぐ量の判断なので, ' +
+    '問題 e2e の発注の見直し が時間をまたぐ量の判断なので, ' +
       '入力の幅を, 学習に使う 5 列にしました ' +
       '(商品の特徴, 過去の売れた数のずらしと移動平均, 曜日などの列). ' +
       '次の列は入力に入れません: ' +
@@ -756,14 +756,14 @@ test('時間をまたぐ量の判断の問題の設定を新しく始めると�
       '在庫の数 (発注の数から引く) の列 stock, 行を見分ける id の列 record_id',
   )
   await expect(result).toContainText(
-    '定義は雛形 tabular_demand のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+    '定義は雛形 tabular_demand のままなので, データに合わせる引数を雛形の書き換え',
   )
   await expect(result).toContainText(
     '雛形の引数 features (特徴の数) を 16 から 5 にしました (入力 x の形の 2 番目, demand1 の in_features)',
   )
   await expect(result).toContainText(
     '出力 quantiles の値の数を, 学ぶ分位点の水準 0.1, 0.5, 0.75, 0.9 の数 4 ' +
-      '(プロジェクトの学習の設定の水準. 水準ごとに 1 つの値) にしました ' +
+      '(学習のプロジェクトの学習の設定の水準. 水準ごとに 1 つの値) にしました ' +
       '(雛形の引数 levels を 9 から 4 に: demand2 の out_features)',
   )
 
@@ -787,7 +787,7 @@ test('並べるの問題の設定を選んで入力と出力を作ると, 入力
   await page.goto('/')
   const dialog = await openDialog(page)
   await dialog
-    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('list', { name: '問題の設定の段階で保存した問題' })
     .getByRole('button', { name: /e2e の推薦/ })
     .click()
   await expect(
@@ -813,14 +813,14 @@ test('並べるの問題の設定を選んで入力と出力を作ると, 入力
   const result = data.getByRole('status')
   await expect(result).toContainText('反応の表から入れました: 入力 user [4, 6], item [4, 4]')
   await expect(result).toContainText(
-    '問題の設定 e2e の推薦 が並べるなので, 入力 user の大きさを学習用の利用者の数 6, ' +
+    '問題 e2e の推薦 が並べるなので, 入力 user の大きさを学習用の利用者の数 6, ' +
       'item の大きさを学習用の品物の数 4 にしました',
   )
   await expect(result).toContainText(
-    '(学習用の反応の行の数 32 (時刻の順に分けたもの). 分ける割合はプロジェクトの学習の設定の検証用 0.1 とテスト用 0.1',
+    '(学習用の反応の行の数 32 (時刻の順に分けたもの). 分ける割合は学習のプロジェクトの学習の設定の検証用 0.1 とテスト用 0.1',
   )
   await expect(result).toContainText(
-    '定義は雛形 two_tower_retrieval のままなので, データに合わせる引数を ML-ModelControl の書き換え',
+    '定義は雛形 two_tower_retrieval のままなので, データに合わせる引数を雛形の書き換え',
   )
   await expect(result).toContainText(
     '雛形の引数 users (利用者の数) を 12 から 6 にしました (入力 user の形の 2 番目, user_fc1 の in_features)',
@@ -841,10 +841,10 @@ test('名前を書いてから問題の設定を一覧から選ぶと, 記録の
 }) => {
   await page.goto('/')
   const dialog = await openDialog(page)
-  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
+  const save = dialog.getByRole('region', { name: '学習のプロジェクトに保存' })
   await save.getByLabel('models/ の下の名前').fill('e2e_picked')
   await dialog
-    .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+    .getByRole('list', { name: '問題の設定の段階で保存した問題' })
     .getByRole('button', { name: /e2e の売上/ })
     .click()
   const target = save.getByRole('group', { name: '保存先' })
@@ -857,10 +857,10 @@ test('確かめが重なった場合は最後の確かめの結果だけを出�
 }) => {
   await page.goto('/')
   const dialog = await openDialog(page)
-  const list = dialog.getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+  const list = dialog.getByRole('list', { name: '問題の設定の段階で保存した問題' })
   const recorded = list.getByRole('button', { name: /e2e の売上/ })
-  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
-  const field = save.getByLabel('プロジェクトか問題の設定')
+  const save = dialog.getByRole('region', { name: '学習のプロジェクトに保存' })
+  const field = save.getByLabel('学習のプロジェクトか問題')
   const button = save.getByRole('button', { name: /保存先を確かめる|確かめています/ })
   const target = save.getByRole('group', { name: '保存先' })
 
@@ -895,7 +895,7 @@ test('確かめが重なった場合は最後の確かめの結果だけを出�
   await delayed.finished
   await page.waitForTimeout(300)
   await expect(field).toHaveValue(/problems\/recorded\/problem\.yaml$/)
-  await expect(target).toContainText('問題の設定 e2e の売上 の記録の保存先')
+  await expect(target).toContainText('問題 e2e の売上 の記録の保存先')
   await expect(save).not.toContainText('保存先を確かめ直してください')
   await expect(recorded).toHaveAttribute('aria-pressed', 'true')
 
@@ -908,7 +908,7 @@ test('確かめが重なった場合は最後の確かめの結果だけを出�
   await delayed.finished
   await page.waitForTimeout(300)
   await expect(save.getByRole('alert')).toHaveCount(0)
-  await expect(target).toContainText('問題の設定 e2e の売上 の記録の保存先')
+  await expect(target).toContainText('問題 e2e の売上 の記録の保存先')
   await expect(recorded).toHaveAttribute('aria-pressed', 'true')
 
   // 確かめに失敗すると, 一覧の選択も外す (先頭の - は使えない)
@@ -924,7 +924,7 @@ test('実験の定義の写しを開き, 名前を付けてプロジェクトの
   await page.getByRole('button', { name: '開く', exact: true }).click()
   const open = page.getByRole('dialog', { name: '定義を開く' })
   const copies = open.getByRole('region', { name: '学習の実験の定義の写し' })
-  await copies.getByLabel('プロジェクトか問題の設定').fill(project)
+  await copies.getByLabel('学習のプロジェクトか問題').fill(project)
   await copies.getByRole('button', { name: '実験を探す' }).click()
   const run = copies.getByRole('button', { name: /e2e_run\/2026-11-20\/10-00-00/ })
   await expect(run).toContainText('models/e2e_run.yaml')
@@ -938,8 +938,8 @@ test('実験の定義の写しを開き, 名前を付けてプロジェクトの
 
   // 今の保存の流れで, 名前を付けて models/ に書く (探したプロジェクトの場所が入る)
   const dialog = await openDialog(page)
-  const save = dialog.getByRole('region', { name: 'プロジェクトに保存' })
-  await expect(save.getByLabel('プロジェクトか問題の設定')).toHaveValue(project)
+  const save = dialog.getByRole('region', { name: '学習のプロジェクトに保存' })
+  await expect(save.getByLabel('学習のプロジェクトか問題')).toHaveValue(project)
   await save.getByLabel('models/ の下の名前').fill('e2e_from_run')
   await save.getByRole('button', { name: '保存先を確かめる' }).click()
   const target = save.getByRole('group', { name: '保存先' })

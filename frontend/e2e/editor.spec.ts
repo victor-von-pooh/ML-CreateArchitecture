@@ -288,7 +288,14 @@ test('狭い画面では上の操作をアイコンにし, ミニマップを出
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/')
   // 文字は読み上げの名前として残り, 上の操作は 1 行 (高さが 1 行分)
-  for (const name of ['整列', '入力', '出力', 'YAML', 'Python', 'データセットとプロジェクト']) {
+  for (const name of [
+    '整列',
+    '入力',
+    '出力',
+    'YAML',
+    'Python',
+    'データセットと学習のプロジェクト',
+  ]) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
   }
   expect((await page.locator('header').boundingBox())!.height).toBeLessThan(60)
@@ -352,8 +359,8 @@ test('複数つなぐ口のつなぎ先を並べ替えられる', async ({ page 
 
   // concat1 に x と relu1 の順でつなぎ, relu1 を上へ
   await page.locator('[data-id="concat1"]').click()
-  await page.getByLabel('xs につなぎ先を加える').selectOption('x')
-  await page.getByLabel('xs につなぎ先を加える').selectOption('relu1')
+  await page.getByLabel('xs につなぎ先を足す').selectOption('x')
+  await page.getByLabel('xs につなぎ先を足す').selectOption('relu1')
   await page.getByRole('button', { name: 'xs の 2 番目のつなぎ先 relu1 を上へ' }).click()
   // 動かした先の行のボタンにフォーカスが移る (先頭なので下へ)
   await expect(
