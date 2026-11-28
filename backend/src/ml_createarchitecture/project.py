@@ -2880,16 +2880,20 @@ def progress_of(problem: Any) -> dict[str, Any]:
         return progress
     data_needed = needs["data"]["needed"] is not False
 
-    # 書きかけの問題 (機械学習を使うか答えていないなど) は仕上げてもらう
-    try:
-        stages = quest.handoff(problem)
-    except READ_ERRORS as error:
-        LOGGER.info("受け渡しの値を決められません", exc_info=error)
+    # 書きかけの問題 (機械学習を使うか答えていないか, 確かめに error が残る)
+    # は仕上げてもらう. 他の ValueError (形の誤り) は握らない (500)
+    quest = load_library("ml_quest", "upgrade_problem")
+    upgraded = quest.upgrade_problem(problem)
+    unfinished = quest.get_value(upgraded, "ml.use") is not True or any(
+        item["level"] == "error" for item in quest.check(upgraded)
+    )
+    if unfinished:
         progress = progress_state(
             "blocked", "問題の設定が仕上がっていません (問題の設定の段階で"
             "仕上げてください)", "problem"
         )
         return progress
+    stages = quest.handoff(problem)
 
     # 形の誤りは握らない (500)
     model = stages["model"]

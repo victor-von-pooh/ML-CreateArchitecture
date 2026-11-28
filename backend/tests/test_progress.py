@@ -17,6 +17,59 @@ class StubQuest:
     def __init__(self, record: dict[str, Any]):
         # handoff が返す値を保存
         self.record = record
+        # 書きかけの判定 (ml.use の答えと, 確かめの結果)
+        self.use: Any = True
+        self.items: list[dict[str, Any]] = []
+
+    def upgrade_problem(self, problem: dict[str, Any]) -> dict[str, Any]:
+        """
+        問題の設定をそのまま返す関数
+
+        Parameters
+        ----------
+        problem: dict[str, Any]
+            問題の設定
+
+        Returns
+        ----------
+        problem: dict[str, Any]
+            同じ値
+        """
+        return problem
+
+    def get_value(self, problem: dict[str, Any], key: str) -> Any:
+        """
+        ml.use の答えを返す関数
+
+        Parameters
+        ----------
+        problem: dict[str, Any]
+            問題の設定 (使わない)
+        key: str
+            鍵 (使わない)
+
+        Returns
+        ----------
+        value: Any
+            保存した答え
+        """
+        return self.use
+
+    def check(self, problem: dict[str, Any]) -> list[dict[str, Any]]:
+        """
+        保存した確かめの結果を返す関数
+
+        Parameters
+        ----------
+        problem: dict[str, Any]
+            問題の設定 (使わない)
+
+        Returns
+        ----------
+        items: list[dict[str, Any]]
+            確かめの結果
+        """
+        return self.items
 
     def load_problem(self, path: Any) -> dict[str, Any]:
         """
@@ -441,8 +494,9 @@ def test_unfinished_problem(
     setup: Setup, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """
-    受け渡しの値を決められない書きかけの問題は blocked になり,
-    版を読めない問題は固定の文の 422 になることを確かめる関数
+    書きかけの問題 (ml.use が真でない, error が残る) は blocked になり,
+    他の handoff の ValueError は 500, 版を読めない問題は固定の文の 422
+    になることを確かめる関数
 
     Parameters
     ----------
@@ -460,10 +514,26 @@ def test_unfinished_problem(
     def unfinished(problem: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("答えていません")
 
-    monkeypatch.setattr(stub, "handoff", unfinished)
     monkeypatch.setitem(sys.modules, "ml_quest", stub)
+
+    # 機械学習を使うか答えていない
+    stub.use = None
     progress = setup.progress()
     assert progress["state"] == "blocked" and progress["back"] == "problem"
+
+    # 確かめに error が残る
+    stub.use = True
+    stub.items = [{"level": "error"}]
+    progress = setup.progress()
+    assert progress["state"] == "blocked" and progress["back"] == "problem"
+
+    # 他の ValueError (形の誤り) は握らない
+    stub.items = [{"level": "warning"}]
+    monkeypatch.setattr(stub, "handoff", unfinished)
+    quiet = TestClient(setup.client.app, raise_server_exceptions=False)
+    quiet.get("/api/auth?token=secret", follow_redirects=False)
+    response = quiet.get("/api/progress", params={"problem": IDENT})
+    assert response.status_code == 500
 
     # 版を読めない問題は例外の文を出さない
     monkeypatch.setattr(stub, "stage_needs", unfinished)
