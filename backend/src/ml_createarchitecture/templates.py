@@ -363,7 +363,7 @@ def adapt_template(body: AdaptBody) -> TemplateAdapted:
         places = template_places(body.name)
     except KeyError as error:
         raise HTTPException(
-            404, f"{body.name} は書き換えられる雛形ではありません"
+            404, f"書き換えられる雛形 {body.name} が見つかりません"
         ) from error
     current = current_args(body.spec, body.name)
     if current is None:

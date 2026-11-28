@@ -1,5 +1,8 @@
 import { createContext, useContext } from 'react'
 
+/** 段階の名前 (殻の段階の並びと同じ. 画面の見出し h1 にする) */
+export const STAGE_NAME = 'モデルの作成・選定'
+
 /** 根の部品が受け取った, 殻とのやり取り (単独では選びを持たず, 知らせはどこにも届かない) */
 export interface StageValue {
   /** 殻で選んだ問題の設定の識別子 (null は選んでいない) */

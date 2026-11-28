@@ -203,7 +203,7 @@ class ModelStore:
         # ファイルの存在と, 定義として読めることの確認
         path = self.path_for(name)
         if not path.is_file():
-            raise ModelError(f"定義 {name} はありません")
+            raise ModelError(f"定義 {name} が見つかりません")
         try:
             spec: dict[str, Any] = load_spec(path)
         except (ValueError, OSError, yaml.YAMLError) as error:
@@ -272,6 +272,6 @@ class ModelStore:
         try:
             path.unlink()
         except FileNotFoundError as error:
-            raise ModelNotFoundError(f"定義 {name} はありません") from error
+            raise ModelNotFoundError(f"定義 {name} が見つかりません") from error
         except OSError as error:
             raise ModelError(f"定義 {name} を消せません: {error}") from error

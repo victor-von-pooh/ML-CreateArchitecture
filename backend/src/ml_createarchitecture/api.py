@@ -371,7 +371,7 @@ def read_pretrained(body: PretrainedBody) -> Optional[PretrainedInfo]:
         get_unit(body.unit)
     except KeyError as error:
         raise HTTPException(
-            404, f"部品 {body.unit} は登録されていません"
+            404, f"部品 {body.unit} が見つかりません"
         ) from error
     found = pretrained_info(body.unit, body.params)
     info = None if found is None else PretrainedInfo(**found)
@@ -635,7 +635,7 @@ def get_example(name: str) -> ModelFile:
     try:
         spec = load_example(name)
     except KeyError as error:
-        raise HTTPException(404, f"例 {name} はありません") from error
+        raise HTTPException(404, f"例 {name} が見つかりません") from error
     model = ModelFile(name=name, spec=spec)
 
     return model

@@ -200,6 +200,7 @@ def test_open_only_listed(
         json={"path": str(project), "run": run},
     )
     assert response.status_code == 404
+    assert response.json()["detail"] == f"実験 {run} が見つかりません"
 
 
 @pytest.mark.parametrize("output_dir", ["../elsewhere", "/tmp", "."])
@@ -262,6 +263,9 @@ def test_not_project(client: TestClient, tmp_path: Path) -> None:
         "/api/project/experiments", json={"path": str(tmp_path / "nope")}
     )
     assert response.status_code == 404
+    assert response.json()["detail"] == (
+        f"ファイルかディレクトリ {tmp_path / 'nope'} が見つかりません"
+    )
 
 
 def test_open_keeps_saved(client: TestClient, tmp_path: Path) -> None:

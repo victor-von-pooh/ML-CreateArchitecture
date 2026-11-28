@@ -3,7 +3,8 @@ import { memo, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import type { Issue } from '../../api/client'
 import { friendlyLocation, friendlyMessage } from '../../lib/issues'
-import { Button } from '../../components/ui'
+import { Button, FieldError } from '../../components/ui'
+import { describedBy } from '../../components/common-utils'
 import {
   checkValue,
   formatValue,
@@ -196,9 +197,7 @@ export function ParamField({
           onBlur={(event) => commit(event.target.value)}
           onKeyDown={(event) => event.key === 'Enter' && commit(event.currentTarget.value)}
           aria-invalid={error !== null}
-          aria-describedby={
-            [error ? errorId : '', hint ? hintId : ''].join(' ').trim() || undefined
-          }
+          aria-describedby={describedBy(error !== null && errorId, hint && hintId)}
           className="h-7 w-full rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
         />
         {param.suggestions && listId && <Suggestions id={listId} suggestions={param.suggestions} />}
@@ -210,9 +209,9 @@ export function ParamField({
       {label}
       {field}
       {error && (
-        <p id={errorId} role="alert" className="col-start-2 text-[11px] text-critical-text">
-          {error}
-        </p>
+        <div className="col-start-2">
+          <FieldError id={errorId}>{error}</FieldError>
+        </div>
       )}
       {hint && (
         <p id={hintId} className="col-start-2 text-[10px] text-ink-3">
@@ -470,18 +469,14 @@ export function ExtraParams({
           // 日本語の変換を確定する Enter では加えない
           onKeyDown={(event) => event.key === 'Enter' && !event.nativeEvent.isComposing && add()}
           aria-invalid={error !== null}
-          aria-describedby={error ? `${id}-error` : undefined}
+          aria-describedby={describedBy(error !== null && `${id}-error`)}
           className="h-7 min-w-0 flex-1 rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
         />
         <Button variant="secondary" icon={Plus} onClick={add}>
           足す
         </Button>
       </div>
-      {error && (
-        <p id={`${id}-error`} role="alert" className="text-[11px] text-critical-text">
-          {error}
-        </p>
-      )}
+      {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </fieldset>
   )
 }
@@ -526,9 +521,10 @@ export function NameField({
         onBlur={(event) => commit(event.target.value)}
         onKeyDown={(event) => event.key === 'Enter' && commit(event.currentTarget.value)}
         aria-invalid={error !== null}
+        aria-describedby={describedBy(error !== null && `${id}-error`)}
         className="h-8 w-full rounded-md border border-line bg-bg px-2 font-mono text-sm font-semibold aria-[invalid=true]:border-critical"
       />
-      {error && <p className="text-[11px] text-critical-text">{error}</p>}
+      {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </div>
   )
 }
@@ -586,7 +582,7 @@ export function PortRefs({
       {description}
     </p>
   ) : null
-  const describedBy = description ? hintId : undefined
+  const hintRef = description ? hintId : undefined
   // 1 つだけつなぐ口は選択, 複数つなぐ口は並びと追加の選択
   if (!variadic) {
     return (
@@ -594,7 +590,7 @@ export function PortRefs({
         {label}
         <select
           id={id}
-          aria-describedby={describedBy}
+          aria-describedby={hintRef}
           value={refs[0] ?? ''}
           onChange={(event) => onChange(event.target.value ? [event.target.value] : [])}
           className="h-7 w-full rounded-md border border-line bg-bg px-1 font-mono text-xs"
@@ -662,7 +658,7 @@ export function PortRefs({
           id={id}
           value=""
           aria-label={`${port} につなぎ先を足す`}
-          aria-describedby={describedBy}
+          aria-describedby={hintRef}
           onChange={(event) => event.target.value && onChange([...refs, event.target.value])}
           className="h-7 w-full rounded-md border border-line bg-bg px-1 font-mono text-xs"
         >

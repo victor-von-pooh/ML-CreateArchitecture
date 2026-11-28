@@ -61,12 +61,29 @@ describe('readError と contractDetail', () => {
     })
   })
 
-  it('message の無い辞書の detail は JSON の文で, 409 でなければ約束の detail としない', async () => {
-    mockFetch(422, { detail: [{ loc: ['body'], msg: 'bad' }] })
+  it('入力の検証の誤りは欄ごとに 1 行で, 409 でなければ約束の detail としない', async () => {
+    mockFetch(422, {
+      detail: [
+        { loc: ['body', 'spec', 'nodes'], msg: 'Field required' },
+        { loc: ['query', 'path'], msg: 'bad' },
+      ],
+    })
     const error = await caught()
-    expect((error as ApiError).message).toBe('[{"loc":["body"],"msg":"bad"}]')
+    expect((error as ApiError).message).toBe('spec.nodes: Field required\npath: bad')
     expect(contractDetail(error)).toBeNull()
     mockFetch(422, { detail: { message: '断りました', findings: [] } })
     expect(contractDetail(await caught())).toBeNull()
+  })
+
+  it('既定の 404 は経路の誤りで, JSON でない本文は状態の番号と文', async () => {
+    mockFetch(404, { detail: 'Not Found' })
+    expect(((await caught()) as ApiError).message).toBe('API の経路が見つかりません (404)')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(new Response('oops', { status: 502, statusText: 'Bad Gateway' })),
+      ),
+    )
+    expect(((await caught()) as ApiError).message).toBe('502 Bad Gateway')
   })
 })

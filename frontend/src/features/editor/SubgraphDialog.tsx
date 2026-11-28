@@ -2,8 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { useApi } from '../../api/client'
-import { Dialog } from '../../components/Dialog'
-import { ErrorBox, ExampleButton, Spinner } from '../../components/ui'
+import { Dialog, ErrorBox, ExampleButton, Spinner } from '../../components/ui'
 import type { Spec, SubgraphOrigin } from '../../lib/graph'
 
 /**

@@ -166,7 +166,7 @@ def project_dir(text: str) -> Path:
         return project
     problem = path if path.is_file() else path / PROBLEM_FILE
     if not path.exists():
-        raise HTTPException(404, f"{path} がありません")
+        raise HTTPException(404, f"ファイルかディレクトリ {path} が見つかりません")
     if not problem.is_file():
         raise HTTPException(
             422,
@@ -752,7 +752,7 @@ def find_run(
             if folder is not None and is_run_dir(folder):
                 matches.append((root, folder))
     if not matches:
-        raise HTTPException(404, f"実験 {run} がありません")
+        raise HTTPException(404, f"実験 {run} が見つかりません")
     if len(matches) > 1:
         raise HTTPException(
             409, f"実験 {run} が複数の置き場にあります. 置き場を選んでください"
