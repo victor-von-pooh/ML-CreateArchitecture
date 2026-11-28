@@ -135,6 +135,11 @@ export interface DatasetInfo {
   price?: PriceWidth | null
   /** 需要の記録のデータセットで, 入力 x の幅にした学習に使う列の数, 数えない列と学ぶ水準 (他は無い) */
   demand?: DemandWidth | null
+  /**
+   * 入力の名前から, 骨組みがデータセットの入力の最後の次元に足す数 (ML-Quest の約束の入力の offset.
+   * 効果の見積もりの S-learner の処置の列の 1. 足さない入力は無い)
+   */
+  offsets?: Record<string, number>
 }
 
 /** 入れた結果 (定義と, 知らせる文) */
@@ -220,6 +225,38 @@ function argText(name: string): string {
   return ARG_LABELS[name] ? `${name} (${ARG_LABELS[name]})` : name
 }
 
+/** 入力の最後の次元に足す数 (骨組みの約束の入力の offset. 無ければ 0) */
+export function inputOffset(info: DatasetInfo, name: string): number {
+  const offset = info.offsets?.[name]
+  return typeof offset === 'number' && Number.isInteger(offset) && offset > 0 ? offset : 0
+}
+
+/**
+ * 骨組みが読む入力の形にしたデータセットの入力 (約束の入力の offset を最後の次元に足す.
+ * 効果の見積もりの S-learner は, 骨組みが処置の列を入力の終わりに足すので学習に使う列の数 + 1)
+ */
+export function contractInputs(info: DatasetInfo): DatasetInfo {
+  if (!info.inputs.some((item) => inputOffset(info, item.name) > 0)) return info
+  const widened = (shape: number[], offset: number) =>
+    shape.length > 1 ? [...shape.slice(0, -1), shape.at(-1)! + offset] : shape
+  return {
+    ...info,
+    inputs: info.inputs.map((item) => {
+      const offset = inputOffset(info, item.name)
+      if (offset === 0) return item
+      const last = item.dataset_shape?.at(-1)
+      return {
+        ...item,
+        shape: widened(item.shape, offset),
+        dataset_shape:
+          item.dataset_shape && typeof last === 'number' && item.dataset_shape.length > 1
+            ? [...item.dataset_shape.slice(0, -1), last + offset]
+            : item.dataset_shape,
+      }
+    }),
+  }
+}
+
 /**
  * 雛形の書き換える引数の値をデータセットから決める
  *
@@ -228,13 +265,16 @@ function argText(name: string): string {
  * 雛形の入力と違う入力からは決めない). GAN の生成器の雑音の幅 (noise) はデータの幅でないので
  * 決めず, 出す 1 行の幅 (features) をデータセットの 2 次元の入力 1 つの幅にする.
  * unet_segmentation の classes と point_cloud_predictor の points_out は出す値の数,
- * tabular_demand の levels は学ぶ分位点の水準の数. 決めない引数は入れない (今の値のまま)
+ * tabular_demand の levels は学ぶ分位点の水準の数. 決めない引数は入れない (今の値のまま).
+ * 入力の幅は, 骨組みの約束の入力の offset を足した幅 (contractInputs. tabular_uplift_s の
+ * features は学習に使う列の数 + 処置の列の 1)
  */
 export function templateValues(
   match: TemplateMatch,
   spec: Spec,
-  info: DatasetInfo,
+  given: DatasetInfo,
 ): TemplateValues {
+  const info = contractInputs(given)
   const values: Record<string, number> = {}
   const notes: string[] = []
   const only =
@@ -348,9 +388,12 @@ function templateNotes(template: TemplateApplied, info: DatasetInfo): string[] {
   } else if (info.rank) {
     notes.push('出力 score は利用者と品物の全ての組の点数の表なので, 出力の大きさは変えていません')
   } else if (info.uplift) {
+    const outputs = Object.keys(template.spec.outputs)
     notes.push(
-      `出力 ${Object.keys(template.spec.outputs).join(' と ')} の値の数は, 雛形の 1 のままです ` +
-        '(効果の見積もりの 2 つの出力は, どちらも 1 行に 1 つの値を出します)',
+      `出力 ${outputs.join(' と ')} の値の数は, 雛形の 1 のままです ` +
+        (outputs.length > 1
+          ? '(効果の見積もりの 2 つの出力は, どちらも 1 行に 1 つの値を出します)'
+          : '(結果の予測は 1 行に 1 つの値を出します)'),
     )
   } else if (
     OUTPUT_RULES[template.name] &&
@@ -516,9 +559,10 @@ export function anomalyWidthNote(anomaly: AnomalyWidth): string {
 
 /**
  * 効果を見積もるで, 入力の幅と出力の大きさをどう決めたかの文 (入力に入れない列は, 初めての人にも
- * 分かるよう役を言葉で添える. 名前が分からない列は役だけ)
+ * 分かるよう役を言葉で添える. 名前が分からない列は役だけ). offset は骨組みが入力の終わりに足す
+ * 処置の列の数 (S-learner は 1, T-learner は 0)
  */
-export function upliftWidthNote(uplift: UpliftWidth): string {
+export function upliftWidthNote(uplift: UpliftWidth, offset = 0): string {
   const from = uplift.problem
     ? `問題 ${uplift.problem} が効果の見積もり`
     : '効果を見積もるのデータセット'
@@ -528,6 +572,21 @@ export function upliftWidthNote(uplift: UpliftWidth): string {
     named('結果 (行動の後にどうなったか. 買ったかなど) の列', uplift.outcome),
     named('行を見分ける id の列', uplift.id),
   ].join(', ')
+  if (offset > 0) {
+    const width = uplift.columns === null ? '?' : String(uplift.columns + offset)
+    const treatment = named('処置の列', uplift.treatment)
+    const rest = [
+      named('結果 (行動の後にどうなったか. 買ったかなど) の列', uplift.outcome),
+      named('行を見分ける id の列', uplift.id),
+    ].join(', ')
+    return (
+      `${from}で, 処置を入力に入れて 1 つの予測で学ぶ形 (S-learner) なので, 入力の幅を, ` +
+      `学習に使う列の数 ${uplift.columns ?? '?'} に${treatment} の ${offset} を足した ${width} にしました ` +
+      '(学習のスクリプトが, 処置の値の 1 か 0 を入力の最後の列に足します). ' +
+      `入力に入れない列: ${rest}. ` +
+      '出力 (結果の予測) は 1 行に 1 つの値を出し, 効果は処置を 1 にした予測から 0 にした予測を引いて数えます'
+    )
+  }
   return (
     `${from}なので, 入力の幅を, 学習に使う列の数 ${uplift.columns ?? '?'} にしました. ` +
     `入力に入れない列: ${skipped} ` +
@@ -690,7 +749,8 @@ export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
  * では, 入力と出力の幅が学習に使う列の数なので, その決め方を初めに知らせる.
  * 問題の設定の度合いの決め方が距離に基づく度合いなら, モデルの定義が要らない
  * ことを知らせて何も変えない. 効果を見積もるのデータセット (info.uplift) では,
- * 入力の幅が処置の列を除いた学習に使う列の数なので, その決め方を初めに知らせ,
+ * 入力の幅が処置の列を除いた学習に使う列の数 (S-learner は骨組みが処置の列を足すので + 1) なので,
+ * その決め方を初めに知らせ,
  * 出力が 2 つ以上 (T-learner の treated と control) なら, それぞれのつなぎ元の
  * out_features を出す値の数にする. 値段を変える判断のデータセット (info.price) では,
  * 入力の幅が特徴の列と値段の列の数なので, その決め方を初めに知らせ, 出力の値の数は
@@ -699,16 +759,19 @@ export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
  * 水準の決め方の知らせを初めに知らせ, 出力の値の数を学ぶ分位点の水準の数にする (出力の
  * つなぎ元から, 形を変えない softplus と累積和をさかのぼった out_features. 水準が分からなければ
  * 変えない).
+ * 入力の形は, 骨組みの約束の入力の offset を最後の次元に足した形にする (contractInputs).
  * 雛形のままの定義 (template. バックエンドが ML-ModelControl の adapt_example で書き換えた結果)
  * では, 書き換えた定義に入力を同じ決まりで入れ, 入力に直につながる引数と出す値の数をノードを
  * たどって決めずに, 書き換えた引数の前と後の値と場所を知らせる
  */
 export function applyDatasetInputs(
   spec: Spec,
-  given: DatasetInfo,
+  raw: DatasetInfo,
   units: Map<string, UnitSpec>,
   template: TemplateApplied | null = null,
 ): DatasetApplied {
+  // 入力の形は骨組みが読む形 (約束の入力の offset を最後の次元に足す)
+  const given = contractInputs(raw)
   if (given.anomaly?.score === 'distance') {
     return { spec, notes: [anomalyDistanceNote(given.anomaly)] }
   }
@@ -728,7 +791,7 @@ export function applyDatasetInputs(
       : info.anomaly
         ? [anomalyWidthNote(info.anomaly)]
         : info.uplift
-          ? [upliftWidthNote(info.uplift)]
+          ? [upliftWidthNote(info.uplift, inputOffset(info, info.inputs[0]?.name ?? ''))]
           : info.price
             ? [priceWidthNote(info.price)]
             : info.demand
