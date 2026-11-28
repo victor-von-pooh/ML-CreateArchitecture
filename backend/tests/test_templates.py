@@ -223,6 +223,7 @@ def test_adapt_errors(client: TestClient) -> None:
         json={"spec": spec, "name": "mlp", "values": {}}
     )
     assert response.status_code == 404
+    assert response.json()["detail"] == "書き換えられる雛形 mlp が見つかりません"
     changed = copy.deepcopy(spec)
     changed["nodes"]["units1"]["params"]["out_features"] = 3
     response = client.post(

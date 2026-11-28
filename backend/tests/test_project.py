@@ -172,6 +172,7 @@ def test_dataset_inputs_stub(
     empty.mkdir()
     response = client.post("/api/dataset/inputs", json={"path": str(empty)})
     assert response.status_code == 404
+    assert response.json()["detail"].startswith(f"データセット {empty} が見つかりません")
     assert "dataset.yaml" in response.json()["detail"]
 
     # 無いディレクトリは 404, 相対のパスは 422
@@ -179,6 +180,9 @@ def test_dataset_inputs_stub(
         "/api/dataset/inputs", json={"path": str(tmp_path / "none")}
     )
     assert response.status_code == 404
+    assert response.json()["detail"] == (
+        f"ディレクトリ {tmp_path / 'none'} が見つかりません"
+    )
     response = client.post("/api/dataset/inputs", json={"path": "ds"})
     assert response.status_code == 422
 
@@ -435,6 +439,9 @@ def test_project_target_errors(client: TestClient, tmp_path: Path) -> None:
         "/api/project/target", json={"path": str(tmp_path / "none")}
     )
     assert response.status_code == 404
+    assert response.json()["detail"] == (
+        f"ファイルかディレクトリ {tmp_path / 'none'} が見つかりません"
+    )
 
     # 保存先にディレクトリがある場合は 422
     project = make_project_dir(tmp_path / "proj")
@@ -1837,6 +1844,9 @@ def test_dataset_inputs_table_generation(
         json={"path": str(dataset), "problem": str(tmp_path / "none.yaml")}
     )
     assert response.status_code == 404
+    assert response.json()["detail"] == (
+        f"問題 {tmp_path / 'none.yaml'} が見つかりません"
+    )
     labeled = tmp_path / "labeled"
     ml_eda.export_dataset(
         ml_eda.load_data(source),
@@ -1944,6 +1954,8 @@ def test_dataset_inputs_rank(client: TestClient, tmp_path: Path) -> None:
         json={"path": str(tmp_path / "none.csv"), "problem": str(place)}
     )
     assert response.status_code == 404
+    assert response.json()["detail"].startswith("反応の表")
+    assert "が見つかりません" in response.json()["detail"]
     config["data"].update(valid=0.0)
     config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
     response = client.post(

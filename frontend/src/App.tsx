@@ -4,7 +4,7 @@ import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from '
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
 import { useApi } from './api/client'
-import { ErrorBox, Spinner } from './components/ui'
+import { ErrorBox, PageHeader, Spinner } from './components/ui'
 import { Canvas } from './features/editor/Canvas'
 import { Inspector } from './features/editor/Inspector'
 import { Palette } from './features/editor/Palette'
@@ -40,7 +40,7 @@ import { applyDatasetInputs, datasetSummary, sameDefinition } from './lib/datase
 import { useDebounced } from './lib/debounce'
 import { clearDraft, readDraft, tabId, useDraftWriter, type Draft } from './lib/draft'
 import { useHistory } from './lib/history'
-import { outsideStage, useStage } from './lib/stage'
+import { outsideStage, STAGE_NAME, useStage } from './lib/stage'
 import { withStateVersion } from './lib/state'
 import { arrangeSpec, freeSpot, placeMissing, unitSize } from './lib/layout'
 
@@ -635,11 +635,17 @@ function Editor() {
     return () => window.removeEventListener('keydown', onKey)
   }, [undoSpec, redoSpec])
 
-  if (units.isPending) return <Spinner label="部品の一覧を読み込み中" />
-  if (units.error) {
+  // 読み込み中と読めないときも段階の名前の見出しを置く (画面に h1 が無い間を作らない).
+  // 読めない誤りは画面を開いたときの読み込みの誤りなので読み上げない
+  if (units.isPending || units.error) {
     return (
       <div className="p-6">
-        <ErrorBox error={units.error} />
+        <PageHeader title={STAGE_NAME} />
+        {units.error ? (
+          <ErrorBox error={units.error} live={false} />
+        ) : (
+          <Spinner label="部品の一覧を読み込み中" />
+        )}
       </div>
     )
   }

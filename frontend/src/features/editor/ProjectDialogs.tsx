@@ -15,8 +15,7 @@ import {
   type ProblemList,
   type ProjectTarget,
 } from '../../api/client'
-import { Dialog } from '../../components/Dialog'
-import { Button, ErrorBox, Spinner } from '../../components/ui'
+import { Button, Dialog, ErrorBox, Spinner } from '../../components/ui'
 import { templateValues, type TemplateApplied } from '../../lib/dataset'
 import type { Spec } from '../../lib/graph'
 import { problemIdOf, useStage } from '../../lib/stage'
@@ -224,7 +223,7 @@ function StoredProblems({
       </p>
       {problems.isPending && <Spinner />}
       {problems.error && <ErrorBox error={problems.error} />}
-      {list?.error && <p className="text-xs text-critical-text">{list.error}</p>}
+      {list?.error && <ErrorBox error={list.error} live={false} />}
       {list && list.problems.length === 0 && !list.error && (
         <p className="text-xs text-ink-3">
           置き場 (<span className="font-mono break-all">{list.root}</span>) に問題がありません.
@@ -676,6 +675,7 @@ function ProjectSaveSection({
   onSaved,
   onTarget,
   onFailed,
+  onSavingChange,
 }: {
   /** 保存する定義全体 */
   spec: Spec
@@ -687,6 +687,8 @@ function ProjectSaveSection({
   onTarget: (target: ProjectTarget, text: string, chosen: boolean) => void
   /** 保存先の確かめに失敗した (確かめた場所とデータセットの欄の候補を消すため) */
   onFailed: () => void
+  /** 保存の途中かが変わった (途中はダイアログを閉じないため) */
+  onSavingChange: (saving: boolean) => void
 }) {
   const api = useApi()
   const [path, setPath] = useState(() => remembered(PROJECT_KEY))
@@ -808,6 +810,9 @@ function ProjectSaveSection({
       resolveTarget({ text, named, chosen: false, reason: error.message })
     },
   })
+  useEffect(() => {
+    onSavingChange(save.isPending)
+  }, [save.isPending, onSavingChange])
   // 断られた保存は, 同じ定義と同じ保存先の間だけ出す (定義を直したら消す)
   const specText = useMemo(() => JSON.stringify(spec), [spec])
   const shownContract =
@@ -1012,12 +1017,15 @@ export function ProjectDialog({
       setTemplate({ example, problem, opened: true, reason: null })
     },
   })
+  // 学習のプロジェクトに保存している途中か
+  const [saving, setSaving] = useState(false)
   const openTemplate = (example: string, problem: string | null) => {
     latestTemplate.current += 1
     load.mutate({ example, problem, id: latestTemplate.current })
   }
   return (
-    <Dialog title="データセットと学習のプロジェクト" onClose={onClose}>
+    // 保存の途中は閉じない (書いた結果を見せるため)
+    <Dialog title="データセットと学習のプロジェクト" onClose={onClose} busy={saving}>
       <div className="space-y-6">
         {stage && <StageProblemNote stage={stage} />}
         <StoredProblems picked={checked} onPick={(path) => setChoice({ path })} />
@@ -1084,6 +1092,7 @@ export function ProjectDialog({
             latestTemplate.current += 1
             setTemplate(null)
           }}
+          onSavingChange={setSaving}
         />
       </div>
     </Dialog>

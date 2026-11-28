@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import clsx from 'clsx'
 import {
   AlertTriangle,
   Code2,
@@ -18,12 +19,12 @@ import {
 import { useEffect, useId, useState } from 'react'
 
 import { useApi, type CheckResult, type DatasetInputs } from '../../api/client'
-import { Dialog } from '../../components/Dialog'
-import { Button, ErrorBox, ExampleButton, Spinner } from '../../components/ui'
+import { Button, Dialog, ErrorBox, ExampleButton, FieldError, Spinner } from '../../components/ui'
+import { describedBy } from '../../components/common-utils'
 import { failedNodes, formatCount } from '../../lib/format'
 import { danglingNodes, emptySpec, freshName, type Spec, type UnitSpec } from '../../lib/graph'
 import { subgraphCheckTarget } from '../../lib/subgraph'
-import { useStage } from '../../lib/stage'
+import { STAGE_NAME, useStage } from '../../lib/stage'
 import { useTheme } from '../../lib/themeContext'
 import { startsFresh } from '../../lib/template'
 import { ExperimentCopies, ProjectDialog, type DatasetTemplate } from './ProjectDialogs'
@@ -109,7 +110,8 @@ function OpenDialog({
     staleTime: Infinity,
   })
   return (
-    <Dialog title="定義を開く" onClose={onClose}>
+    // 消す間は閉じない (結果を見せるため). 開く (読むだけ) 間は閉じてよい
+    <Dialog title="定義を開く" onClose={onClose} busy={remove.isPending}>
       <h3 className="mb-1 text-xs font-semibold text-ink-2">保存した定義</h3>
       {models.isPending ? (
         <Spinner />
@@ -383,10 +385,23 @@ export function Toolbar({
 
   return (
     <header className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-3 py-2">
-      {/* 狭い画面では名前を隠し, 上の操作を 1 行に収める (読み上げには残す) */}
+      {/* 画面の見出しは段階の名前 (殻の下でも 1 つの画面に h1 が 1 つ). 単独では
+          アプリの名前も帯に出す. 狭い画面では隠し, 上の操作を 1 行に収める
+          (見出しは読み上げに残す. 殻の下は段階の並びに名前が出て, 帯が狭いので
+          広い画面だけ見せる) */}
       {!embedded && (
-        <h1 className="mr-2 text-sm font-semibold max-xl:sr-only">ML-CreateArchitecture</h1>
+        <span className="text-sm font-semibold text-ink-3 max-2xl:hidden">
+          ML-CreateArchitecture
+        </span>
       )}
+      <h1
+        className={clsx(
+          'mr-2 text-sm font-semibold',
+          embedded ? 'max-2xl:sr-only' : 'max-xl:sr-only',
+        )}
+      >
+        {STAGE_NAME}
+      </h1>
       {/* 保存の結果が別の定義に反映されないよう, 保存の間は新規と開くを止める */}
       <Button
         variant="secondary"
@@ -424,13 +439,11 @@ export function Toolbar({
           onNameChange?.(event.target.value)
         }}
         aria-invalid={!validName}
-        aria-describedby={validName ? undefined : `${nameId}-error`}
+        aria-describedby={describedBy(!validName && `${nameId}-error`)}
         className="h-8 w-40 rounded-md border border-line bg-bg px-2 font-mono text-xs max-xl:w-28 aria-[invalid=true]:border-critical"
       />
       {!validName && (
-        <span id={`${nameId}-error`} role="alert" className="text-[11px] text-critical-text">
-          名前は英数字, _, - (64 文字まで)
-        </span>
+        <FieldError id={`${nameId}-error`}>名前は英数字, _, - (64 文字まで)</FieldError>
       )}
       <Button
         icon={Save}

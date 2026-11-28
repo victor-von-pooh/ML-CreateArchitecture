@@ -4,7 +4,8 @@ import { Download, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 
 import type { WeightsReport, WeightsResult } from '../../api/client'
-import { Button } from '../../components/ui'
+import { Button, ErrorBox, FieldError } from '../../components/ui'
+import { describedBy } from '../../components/common-utils'
 import type { NodeDef, RemapRule, Spec, WeightsDef } from '../../lib/graph'
 import {
   formatShareLines,
@@ -79,14 +80,10 @@ function TextField({
         onBlur={(event) => commit(event.target.value)}
         onKeyDown={(event) => event.key === 'Enter' && commit(event.currentTarget.value)}
         aria-invalid={error !== null}
-        aria-describedby={error ? errorId : undefined}
+        aria-describedby={describedBy(error !== null && errorId)}
         className={INPUT}
       />
-      {error && (
-        <p id={errorId} className="text-[11px] text-critical-text">
-          {error}
-        </p>
-      )}
+      {error && <FieldError id={errorId}>{error}</FieldError>}
     </div>
   )
 }
@@ -409,9 +406,10 @@ function ShareLines({
         rows={2}
         onBlur={(event) => commit(event.target.value)}
         aria-invalid={error !== null}
+        aria-describedby={describedBy(error !== null && `${id}-error`)}
         className={clsx(INPUT, 'h-auto py-1')}
       />
-      {error && <p className="text-[11px] text-critical-text">{error}</p>}
+      {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </div>
   )
 }
@@ -641,11 +639,7 @@ function ReadWeights({ onRead, stamp }: { onRead: () => Promise<WeightsResult>; 
       >
         {read.isPending ? '重みを読んでいます' : '重みを読んで確かめる'}
       </Button>
-      {current && read.isError && (
-        <p role="alert" className="text-xs text-critical-text">
-          読めませんでした: {read.error.message}
-        </p>
-      )}
+      {current && read.isError && <ErrorBox error={`読めませんでした: ${read.error.message}`} />}
       {current && read.data && !read.data.ok && <WeightsError result={read.data} />}
       {current && read.data?.ok && (
         <section role="status" aria-label="重みの読み込みの報告" className="space-y-2">
@@ -674,8 +668,7 @@ export function WeightsError({ result }: { result: WeightsResult }) {
   // 配布元のページは https の URL だけをリンクにする (バックエンドの設定の値をそのまま開かないため)
   const url = gated?.url && gated.url.startsWith('https://') ? gated.url : null
   return (
-    <div role="alert" className="space-y-1 text-xs text-critical-text">
-      <p className="[overflow-wrap:anywhere]">{result.error}</p>
+    <ErrorBox error={result.error ?? ''}>
       {gated && url && (
         <a
           href={url}
@@ -688,7 +681,7 @@ export function WeightsError({ result }: { result: WeightsResult }) {
           <span className="sr-only">(新しいタブで開く)</span>
         </a>
       )}
-    </div>
+    </ErrorBox>
   )
 }
 

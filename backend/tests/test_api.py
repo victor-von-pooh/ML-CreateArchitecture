@@ -155,6 +155,10 @@ def test_standalone_checks(
     assert client.get("/assets/a.js").text == "1"
     for path in ["/api", "/api/nothing", "/api/openapi.json", "/api/docs"]:
         assert client.get(path).status_code == 404, path
+    # 頭だけの /api は経路の文, /api の下の知らない経路は FastAPI の既定の文
+    # (画面の errorText が経路の誤りと言い換える)
+    assert client.get("/api").json()["detail"] == "API の経路 /api が見つかりません"
+    assert client.get("/api/nothing").json()["detail"] == "Not Found"
     for path in ["/docs", "/openapi.json"]:
         assert client.get(path).text == "画面", path
 
@@ -390,12 +394,16 @@ def test_models_save_and_load(client: TestClient, tmp_path: Path) -> None:
     assert client.put(
         "/api/models/a.b", json={"spec": SPEC}
     ).status_code == 400
-    assert client.get("/api/models/missing").status_code == 404
+    missing = client.get("/api/models/missing")
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "定義 missing が見つかりません"
 
     # 消すと一覧から外れ, 無い定義と規則に合わない名前は消せない
     assert client.delete("/api/models/mlp").status_code == 204
     assert client.get("/api/models").json() == []
-    assert client.delete("/api/models/mlp").status_code == 404
+    removed = client.delete("/api/models/mlp")
+    assert removed.status_code == 404
+    assert removed.json()["detail"] == "定義 mlp が見つかりません"
     assert client.delete("/api/models/a.b").status_code == 400
 
     # 消せない場合 (同じ名前のディレクトリなど) は, 無い場合と分けて 500
@@ -475,7 +483,9 @@ def test_examples(client: TestClient) -> None:
     assert model["spec"]["outputs"] == {"recon": "dec2"}
     assert model["spec"]["nodes"]["dec2"]["params"]["out_features"] == 16
     assert model["spec"]["inputs"]["x"]["shape"] == [8, 16]
-    assert client.get("/api/examples/nope").status_code == 404
+    nope = client.get("/api/examples/nope")
+    assert nope.status_code == 404
+    assert nope.json()["detail"] == "例 nope が見つかりません"
 
 
 @pytest.fixture
@@ -539,6 +549,7 @@ def test_pretrained(
         "/api/pretrained", json={"unit": "nn.NoSuch", "params": {}}
     )
     assert response.status_code == 404
+    assert response.json()["detail"] == "部品 nn.NoSuch が見つかりません"
 
 
 def fake_hub(hub_id: str, revision: str) -> dict[str, Any]:

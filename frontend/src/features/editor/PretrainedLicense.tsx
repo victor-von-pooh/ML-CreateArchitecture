@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2 } from 'lucide-react'
 
 import { useApi, type PretrainedInfo } from '../../api/client'
+import { ErrorBox } from '../../components/ui'
 import { useDebounced } from '../../lib/debounce'
 import { formatBytes, licenseParams } from '../../lib/license'
 
@@ -53,9 +54,7 @@ export function PretrainedLicense({
           配布元からライセンスを読んでいます
         </p>
       ) : query.isError ? (
-        <p role="alert" className="text-critical-text">
-          ライセンスを読めませんでした: {query.error.message}
-        </p>
+        <ErrorBox error={`ライセンスを読めませんでした: ${query.error.message}`} />
       ) : query.data ? (
         <LicenseCard info={query.data} />
       ) : (
