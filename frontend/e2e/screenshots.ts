@@ -107,7 +107,7 @@ await shoot(page, 'open')
 
 // 学習の実験の定義の写しを探す
 const copies = open.getByRole('region', { name: '学習の実験の定義の写し' })
-await copies.getByLabel('プロジェクトか問題の設定').fill(`${work}/project`)
+await copies.getByLabel('学習のプロジェクトか問題').fill(`${work}/project`)
 await copies.getByRole('button', { name: '実験を探す' }).click()
 const run = copies.getByRole('button', { name: /e2e_run/ })
 await run.waitFor()
@@ -125,12 +125,12 @@ await page.locator('header').getByText('誤り 1 件').waitFor({ timeout: 20_000
 await page.locator('[data-id="linear1"]').click()
 await shoot(page, 'error')
 
-// データセットとプロジェクト: 問題の設定を選び, 入力と出力を作る
+// データセットと学習のプロジェクト: 問題の設定を選び, 入力と出力を作る
 page = await fresh()
-await page.getByRole('button', { name: 'データセットとプロジェクト' }).click()
-const dialog = page.getByRole('dialog', { name: 'データセットとプロジェクト' })
+await page.getByRole('button', { name: 'データセットと学習のプロジェクト' }).click()
+const dialog = page.getByRole('dialog', { name: 'データセットと学習のプロジェクト' })
 await dialog
-  .getByRole('list', { name: 'ML-Pathfinder に保存した問題の設定' })
+  .getByRole('list', { name: '問題の設定の段階で保存した問題' })
   .getByRole('button', { name: /e2e の売上/ })
   .click()
 const data = dialog.getByRole('region', { name: 'データセットから入力と出力を作る' })

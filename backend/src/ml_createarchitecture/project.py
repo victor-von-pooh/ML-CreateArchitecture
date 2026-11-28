@@ -593,13 +593,13 @@ def read_problem(problem_path: Path) -> Any:
     """
     # 読み方と版の確かめは ML-Quest に任せる
     if not problem_path.is_file():
-        raise HTTPException(404, f"問題の設定 {problem_path} がありません")
+        raise HTTPException(404, f"問題 {problem_path} がありません")
     quest = load_library("ml_quest", "load_problem")
     try:
         problem = quest.load_problem(problem_path)
     except READ_ERRORS as error:
         raise HTTPException(
-            422, f"問題の設定を読めません: {error}"
+            422, f"問題を読めません: {error}"
         ) from error
 
     return problem
@@ -1192,23 +1192,23 @@ def demand_levels(
         if asked is not None and len(asked) != len(written):
             notes.append(
                 f"学習の設定 ({PROJECT_CONFIG}) の学ぶ水準の数 "
-                f"{len(written)} は, 問題の設定の水準の数 {len(asked)} と"
+                f"{len(written)} は, 問題の水準の数 {len(asked)} と"
                 "違います. 学習のスクリプトが読む学習の設定の水準の数にし"
-                "ました (問題の設定に合わせるなら, 学習の設定の "
+                "ました (問題に合わせるなら, 学習の設定の "
                 "demand.levels を直してください)"
             )
         return written, "config", notes
     if found:
         notes.append(
             f"学習の設定 ({PROJECT_CONFIG}) の学ぶ水準 (demand.levels) を"
-            "読めないので, 問題の設定の水準にしました (学習のスクリプトは, "
+            "読めないので, 問題の水準にしました (学習のスクリプトは, "
             "0 より大きく 1 より小さい数を小さい順に重ねずに並べ, 0.5 を含む"
             "水準でなければ止まるので, 学習の設定を直してください)"
         )
     if asked is None:
         reason = answers.get("error")
         notes.append(
-            "問題の設定の学ぶ水準を読めません"
+            "問題の学ぶ水準を読めません"
             + (f" ({reason})" if reason else "")
         )
         return None, None, notes
@@ -1424,8 +1424,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     if score is not None and task != "anomaly":
         raise HTTPException(
             422,
-            "異常の検知の問題の設定ですが, データセットが ML-Fathom (ML-EDA) "
-            "で異常の検知として書き出した表ではありません"
+            "異常の検知の問題ですが, データセットがデータの分析の段階で"
+            "異常の検知として書き出した表ではありません"
         )
     if task == "anomaly":
         anomaly = AnomalyWidth(
@@ -1443,8 +1443,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     if roles is not None and task != "uplift":
         raise HTTPException(
             422,
-            "効果を見積もるの問題の設定ですが, データセットが ML-Fathom "
-            "(ML-EDA) で介入の記録の表として書き出したものではありません"
+            "効果を見積もるの問題ですが, データセットがデータの分析の"
+            "段階で介入の記録の表として書き出したものではありません"
         )
     if task == "uplift":
         last = inputs[0].dataset_shape[-1:] if len(inputs) == 1 else []
@@ -1467,8 +1467,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     if answers is not None and task != "price":
         raise HTTPException(
             422,
-            "値段を変える判断の問題の設定ですが, データセットが ML-Fathom "
-            "(ML-EDA) で値段を変えた記録の表として書き出したものではありま"
+            "値段を変える判断の問題ですが, データセットがデータの分析の"
+            "段階で値段を変えた記録の表として書き出したものではありま"
             "せん"
         )
     if task == "price":
@@ -1491,8 +1491,8 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     if needs is not None and task != "demand":
         raise HTTPException(
             422,
-            "時間をまたぐ量の判断の問題の設定ですが, データセットが "
-            "ML-Fathom (ML-EDA) で需要の記録の表として書き出したものでは"
+            "時間をまたぐ量の判断の問題ですが, データセットが "
+            "データの分析の段階で需要の記録の表として書き出したものでは"
             "ありません"
         )
     if task == "demand":
@@ -1520,7 +1520,7 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         if len(inputs) != 1 or len(inputs[0].shape) != 2:
             raise HTTPException(
                 422,
-                "表の生成の問題の設定ですが, データセットの入力が表の行 "
+                "表の生成の問題ですが, データセットの入力が表の行 "
                 "(バッチと列の 2 次元の 1 つ) ではありません"
             )
         inputs = [inputs[0].model_copy(update={
@@ -1668,15 +1668,15 @@ def missing_record(problem_path: Path) -> str:
         return reason
     if project_path:
         reason = (
-            f"プロジェクト {project_path} は書き出してありますが, モデルの"
-            "定義の置き場の記録 (model.project_model_spec) がありません. "
-            "プロジェクトのディレクトリを選ぶと, config の model.spec (無けれ"
-            f"ば骨組みの既定の {DEFAULT_SPEC}) に保存します"
+            f"学習のプロジェクト {project_path} は書き出してありますが, "
+            "モデルの定義の置き場の記録 (model.project_model_spec) が"
+            "ありません. 学習のプロジェクトのディレクトリを選ぶと, config の"
+            f" model.spec (無ければ骨組みの既定の {DEFAULT_SPEC}) に保存します"
         )
         return reason
     reason = (
-        "プロジェクトを書き出していません (ML-Pathfinder で書き出して"
-        "ください. 書き出した後なら, ML-Quest が古いので "
+        "学習のプロジェクトを書き出していません (問題の設定の段階で"
+        "書き出してください. 書き出した後なら, ML-Quest が古いので "
         f"{SETUP_HINT} で入れ直す)"
     )
 
@@ -1711,7 +1711,7 @@ def from_problem(problem_path: Path) -> Optional[ProjectTarget]:
         stages = quest.handoff(problem)
     except READ_ERRORS as error:
         raise HTTPException(
-            422, f"問題の設定を読めません: {error}"
+            422, f"問題を読めません: {error}"
         ) from error
 
     # 記録 (骨組みを書き出したときの保存先, プロジェクト, データセット)
@@ -1727,20 +1727,23 @@ def from_problem(problem_path: Path) -> Optional[ProjectTarget]:
     if not project_path:
         raise HTTPException(
             422,
-            "問題の設定にプロジェクトの場所 (project.path) の記録がありません"
+            "問題に学習のプロジェクトの場所 (project.path) の記録が"
+            "ありません"
         )
     root = absolute_path(str(project_path))
     if not (root / PROJECT_CONFIG).is_file():
         raise HTTPException(
             422,
-            f"問題の設定が記録したプロジェクト {root} に {PROJECT_CONFIG} が"
-            "ありません. プロジェクトを移したか消した場合は, ML-Pathfinder で"
+            f"問題が記録した学習のプロジェクト {root} に {PROJECT_CONFIG} "
+            "がありません. 学習のプロジェクトを移したか消した場合は, "
+            "問題の設定の段階で"
             "書き出し直してください"
         )
     if not path.is_relative_to(root):
         raise HTTPException(
             422,
-            f"問題の設定の保存先 {path} がプロジェクト {root} の外にあります"
+            f"問題の保存先 {path} が学習のプロジェクト {root} の外に"
+            "あります"
         )
     dataset = data.get("project_dataset")
     name = problem.get("name") if isinstance(problem, dict) else None
@@ -1790,7 +1793,7 @@ def named_target(target: ProjectTarget, name: str) -> ProjectTarget:
         )
     if target.project is None:
         raise HTTPException(
-            422, "保存先のプロジェクトの場所が分かりません"
+            422, "保存先の学習のプロジェクトの場所が分かりません"
         )
 
     # 同じ名前の .yaml か .yml が既にあれば, そのファイル (大文字と小文字
@@ -1975,15 +1978,16 @@ def resolve_target(text: str, name: Optional[str] = None) -> ProjectTarget:
             raise HTTPException(
                 422,
                 f"{path} は学習のプロジェクト ({PROJECT_CONFIG} を持つ"
-                "ディレクトリ) ではありません. プロジェクトのディレクトリか"
-                "問題の設定のファイルを選んでください"
+                "ディレクトリ) ではありません. 学習のプロジェクトのディレクトリ"
+                "か問題のファイルを選んでください"
             )
         # config の model.spec (無ければ骨組みの既定). リンクをたどった先も
         # プロジェクトの中に限る
         spec_path = (path / config_spec(path)).resolve()
         if not spec_path.is_relative_to(path):
             raise HTTPException(
-                422, f"保存先 {spec_path} がプロジェクト {path} の外にあります"
+                422, f"保存先 {spec_path} が学習のプロジェクト {path} の外に"
+                "あります"
             )
         found = ProjectTarget(
             path=str(spec_path), source="project", exists=spec_path.exists(),
@@ -2122,8 +2126,8 @@ def check_target(target: ProjectTarget) -> ProjectTarget:
     if path.suffix not in SPEC_SUFFIXES:
         raise HTTPException(
             422,
-            f"保存先 {path} の拡張子が小文字ではありません. ML-Dashboard の"
-            "モデルの定義の候補に出ないので, 小文字の .yaml か .yml にして"
+            f"保存先 {path} の拡張子が小文字ではありません. 学習・評価の"
+            "段階のモデルの定義の候補に出ないので, 小文字の .yaml か .yml にして"
             "ください (既にあるファイルは名前を直す)"
         )
 
@@ -2183,7 +2187,8 @@ def check_reserved(path: Path, parts: tuple[str, ...]) -> None:
     if len(parts) == 1 and head == PROBLEM_FILE:
         raise HTTPException(
             422,
-            f"保存先 {path} はプロジェクトの問題の設定 ({PROBLEM_FILE}) "
+            f"保存先 {path} は学習のプロジェクトの問題の写し "
+            f"({PROBLEM_FILE}) "
             "です. モデルの定義は models/ などに置いてください"
         )
     if len(parts) > 1 and head in RESERVED_DIRS:
@@ -2223,11 +2228,12 @@ def make_parents(path: Path, project: Optional[str]) -> None:
     root = Path(project) if project is not None else None
     if root is None or not root.is_dir():
         raise HTTPException(
-            422, f"保存先のプロジェクトのディレクトリ {root} がありません"
+            422, f"保存先の学習のプロジェクトのディレクトリ {root} が"
+            "ありません"
         )
     if not path.parent.is_relative_to(root):
         raise HTTPException(
-            422, f"保存先 {path} がプロジェクト {root} の外にあります"
+            422, f"保存先 {path} が学習のプロジェクト {root} の外にあります"
         )
 
     # プロジェクトの直下から順に, 無いものだけ作る
@@ -2242,7 +2248,7 @@ def make_parents(path: Path, project: Optional[str]) -> None:
     # 作った後のリンクの先もプロジェクトの中に限る
     if not path.parent.resolve().is_relative_to(root):
         raise HTTPException(
-            422, f"保存先 {path} がプロジェクト {root} の外にあります"
+            422, f"保存先 {path} が学習のプロジェクト {root} の外にあります"
         )
 
 
@@ -2295,12 +2301,12 @@ def problem_entry(path: Path) -> ProblemEntry:
     try:
         problem = quest.load_problem(path)
     except READ_ERRORS as error:
-        entry.reason = f"問題の設定を読めません: {error}"
+        entry.reason = f"問題を読めません: {error}"
         return entry
     name = problem.get("name") if isinstance(problem, dict) else None
     created = problem.get("created_at") if isinstance(problem, dict) else None
     if not isinstance(name, str) or not created:
-        entry.reason = f"{path.name} は問題の設定のファイルではありません"
+        entry.reason = f"{path.name} は問題のファイルではありません"
         return entry
     entry.name = name
     entry.created_at = str(created)
@@ -2471,7 +2477,7 @@ def dataset_widths(
     # 確かめの助けなので, 読めない理由を問わず保存を止めない)
     note: Optional[str]
     if target.dataset is None:
-        note = ("問題の設定にデータセットの場所の記録が無いので, データ"
+        note = ("問題にデータセットの場所の記録が無いので, データ"
                 "セットで決まる形の最後の大きさは確かめていません")
         return {}, note
     try:

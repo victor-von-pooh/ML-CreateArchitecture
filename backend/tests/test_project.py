@@ -1531,7 +1531,7 @@ def test_list_problems(client: TestClient, tmp_path: Path) -> None:
     assert response.status_code == 422
     assert "書き出していません" in response.json()["detail"]
     assert "読めません" in entries["c"]["reason"]
-    assert "問題の設定のファイルではありません" in entries["d"]["reason"]
+    assert "問題のファイルではありません" in entries["d"]["reason"]
     assert entries["d"]["name"] == "d"
 
     # 記録のプロジェクトを消すと, 使えなくなり理由が付く
@@ -1541,7 +1541,7 @@ def test_list_problems(client: TestClient, tmp_path: Path) -> None:
         entry for entry in response.json()["problems"]
         if entry["path"] == str(recorded)
     )
-    assert first["usable"] is False and "ML-Pathfinder" in first["reason"]
+    assert first["usable"] is False and "問題の設定の段階" in first["reason"]
 
 
 def rank_problem(quest: Any) -> dict[str, Any]:
@@ -3101,8 +3101,8 @@ def test_dataset_inputs_demand_levels(
     assert body["demand"]["levels_from"] == "config"
     assert body["demand"]["notes"] == [
         "学習の設定 (configs/default/train.yaml) の学ぶ水準の数 3 は, 問題"
-        "の設定の水準の数 4 と違います. 学習のスクリプトが読む学習の設定の"
-        "水準の数にしました (問題の設定に合わせるなら, 学習の設定の "
+        "の水準の数 4 と違います. 学習のスクリプトが読む学習の設定の"
+        "水準の数にしました (問題に合わせるなら, 学習の設定の "
         "demand.levels を直してください)"
     ]
 
@@ -3122,7 +3122,7 @@ def test_dataset_inputs_demand_levels(
         assert body["outputs"] == 4
         assert body["demand"]["levels_from"] == "problem"
         assert len(body["demand"]["notes"]) == 1
-        assert "demand.levels) を読めないので, 問題の設定の水準" in (
+        assert "demand.levels) を読めないので, 問題の水準" in (
             body["demand"]["notes"][0]
         )
 
@@ -3137,7 +3137,7 @@ def test_dataset_inputs_demand_levels(
     assert body["demand"]["levels"] is None
     assert body["demand"]["levels_from"] is None
     assert body["demand"]["notes"][0].startswith(
-        "問題の設定の学ぶ水準を読めません ("
+        "問題の学ぶ水準を読めません ("
     )
     assert body["demand"]["problem"] == "解約の引き止め"
 

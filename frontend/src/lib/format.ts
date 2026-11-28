@@ -58,7 +58,7 @@ export function formatShape(value: unknown): string {
     case 'none':
       return 'None'
     case 'error':
-      return 'エラー'
+      return '失敗'
     default:
       return info.type ?? ''
   }

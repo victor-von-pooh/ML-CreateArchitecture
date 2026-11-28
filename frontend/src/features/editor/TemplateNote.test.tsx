@@ -14,7 +14,7 @@ describe('TemplateNote', () => {
       />,
     )
     expect(screen.getByRole('status')).toHaveTextContent(
-      '問題の設定 推薦 の受け持ちに合う雛形 two_tower_retrieval を開きました',
+      '問題 推薦 の受け持ちに合う雛形 two_tower_retrieval を開きました',
     )
     expect(screen.queryByRole('button')).toBeNull()
   })
@@ -35,7 +35,7 @@ describe('TemplateNote', () => {
       />,
     )
     expect(screen.getByRole('status')).toHaveTextContent(
-      '問題の設定の受け持ちに合う雛形 unet_segmentation があります (今の定義があるので開いていません)',
+      '問題の受け持ちに合う雛形 unet_segmentation があります (今の定義があるので開いていません)',
     )
     fireEvent.click(screen.getByRole('button', { name: '雛形 unet_segmentation を開く' }))
     expect(onOpen).toHaveBeenCalledTimes(1)

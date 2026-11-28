@@ -401,7 +401,7 @@ describe('applyDatasetInputs (表の生成)', () => {
     expect(spec.nodes.head!.params).toMatchObject({ in_features: 32, out_features: 8 })
     expect(spec.nodes.t_fc!.params).toMatchObject({ in_features: 32 })
     expect(notes[0]).toBe(
-      '問題の設定 顧客の表 が表の生成なので, 入力と出力の幅を, 学習で使う 1 行の長さ 8 にしました ' +
+      '問題 顧客の表 が表の生成なので, 入力と出力の幅を, 学習で使う 1 行の長さ 8 にしました ' +
         '(数の項目 3 は 1 つずつ, 分類の項目 2 は選べる値の数の合計 5. 項目の数 5 ではありません)',
     )
     expect(notes).toContain(
@@ -418,9 +418,9 @@ describe('applyDatasetInputs (表の生成)', () => {
     const { spec, notes, values } = viaTemplate('diffusion_denoiser', denoiser, places, generated)
     expect(values).toEqual({ features: 8 })
     expect(spec).toEqual(applyDatasetInputs(denoiser, generated, units).spec)
-    expect(notes[0]).toContain('問題の設定 顧客の表 が表の生成なので')
+    expect(notes[0]).toContain('問題 顧客の表 が表の生成なので')
     expect(notes).toContain(
-      '定義は雛形 diffusion_denoiser のままなので, データに合わせる引数を ML-ModelControl の書き換え ' +
+      '定義は雛形 diffusion_denoiser のままなので, データに合わせる引数を雛形の書き換え ' +
         '(adapt_example) で, 関わるノードの引数と入力の形をそろえて書き換えました',
     )
     expect(notes.at(-1)).toBe(
@@ -539,7 +539,7 @@ describe('applyDatasetInputs (並べる)', () => {
     },
     outputs: { user_embedding: 'user_fc1', item_embedding: 'item_fc1' },
   }
-  /** 学習用の利用者 6 人と品物 4 つ (プロジェクトの学習の設定の割合で分けた) */
+  /** 学習用の利用者 6 人と品物 4 つ (学習のプロジェクトの学習の設定の割合で分けた) */
   const reactions: DatasetInfo = {
     path: '/proj/data/reactions.csv',
     inputs: [
@@ -565,9 +565,9 @@ describe('applyDatasetInputs (並べる)', () => {
     expect(spec.nodes.user_fc1!.params).toMatchObject({ in_features: 6, out_features: 32 })
     expect(spec.nodes.item_fc1!.params).toMatchObject({ in_features: 4, out_features: 32 })
     expect(notes[0]).toBe(
-      '問題の設定 会員の品 が並べるなので, 入力 user の大きさを学習用の利用者の数 6, ' +
+      '問題 会員の品 が並べるなので, 入力 user の大きさを学習用の利用者の数 6, ' +
         'item の大きさを学習用の品物の数 4 にしました (学習用の反応の行の数 31 (時刻の順に分けたもの). ' +
-        '分ける割合はプロジェクトの学習の設定の検証用 0.1 とテスト用 0.1. ' +
+        '分ける割合は学習のプロジェクトの学習の設定の検証用 0.1 とテスト用 0.1. ' +
         '検証用とテスト用にだけ出る利用者と品物は数えません)',
     )
     expect(notes[1]).toBe('反応の強さ (qty) が 0 以下か数でない 1 行を除きました')
@@ -597,7 +597,7 @@ describe('applyDatasetInputs (並べる)', () => {
   it('config に割合が無ければ既定の割合と知らせる', () => {
     const rank = { ...reactions.rank!, valid: null, test: null, problem: null }
     const { notes } = applyDatasetInputs(tower, { ...reactions, rank }, units)
-    expect(notes[0]).toContain('並べるの問題の設定なので')
+    expect(notes[0]).toContain('並べるの問題なので')
     expect(notes[0]).toContain('分ける割合は学習のスクリプトの既定.')
   })
 })
@@ -634,7 +634,7 @@ describe('applyDatasetInputs (異常の検知)', () => {
     expect(spec.nodes.enc2!.params).toEqual({ in_features: 8, out_features: 4 })
     expect(spec.nodes.dec1!.params).toEqual({ in_features: 4, out_features: 8 })
     expect(notes[0]).toBe(
-      '問題の設定 機械の異常 が異常の検知 (自己符号化器)なので, 入力と出力の幅を, 学習に使う列の数 3 にしました ' +
+      '問題 機械の異常 が異常の検知 (自己符号化器)なので, 入力と出力の幅を, 学習に使う列の数 3 にしました ' +
         '(自己符号化器は入力を作り直すので, 出力を入力と同じ幅にします. 正解の列 is_anomaly は数えません)',
     )
     expect(notes).toContain('dec2 の out_features を 3 にしました')
@@ -685,7 +685,7 @@ describe('applyDatasetInputs (異常の検知)', () => {
     const { spec, notes } = applyDatasetInputs(autoencoder, unanswered, units)
     expect(spec.nodes.dec2!.params).toMatchObject({ out_features: 3 })
     expect(notes[0]).toBe(
-      '問題の設定 機械の異常 が異常の検知なので, 入力と出力の幅を, 学習に使う列の数 3 にしました ' +
+      '問題 機械の異常 が異常の検知なので, 入力と出力の幅を, 学習に使う列の数 3 にしました ' +
         '(度合いの決め方にまだ答えていないので, 出す値の数はデータセットの決まり (異常の検知は学習に使う列の数) のままです. ' +
         '正解の列 is_anomaly は数えません)',
     )
@@ -699,7 +699,7 @@ describe('applyDatasetInputs (異常の検知)', () => {
     const { spec, notes } = applyDatasetInputs(autoencoder, distance, units)
     expect(spec).toBe(autoencoder)
     expect(notes).toEqual([
-      '問題の設定 機械の異常 の度合いの決め方は距離に基づく度合い (学習しない) なので, ' +
+      '問題 機械の異常 の度合いの決め方は距離に基づく度合い (学習しない) なので, ' +
         'モデルの定義は要りません. 何も変えていません',
     ])
     expect(datasetSummary(distance)).toMatch(/^データセットを読みました: /)
@@ -752,7 +752,7 @@ describe('applyDatasetInputs (効果を見積もる)', () => {
     expect(spec.nodes.treated2!.params).toEqual({ in_features: 32, out_features: 1 })
     expect(spec.nodes.control2!.params).toEqual({ in_features: 32, out_features: 1 })
     expect(notes[0]).toBe(
-      '問題の設定 クーポンの効果 が効果の見積もりなので, 入力の幅を, 学習に使う列の数 5 にしました. ' +
+      '問題 クーポンの効果 が効果の見積もりなので, 入力の幅を, 学習に使う列の数 5 にしました. ' +
         '入力に入れない列: 処置 (行動したかどうか. クーポンを配ったかなど) の列 coupon, ' +
         '結果 (行動の後にどうなったか. 買ったかなど) の列 purchased, 行を見分ける id の列 customer_id ' +
         '(効果は処置したときとしないときの結果の差として学ぶので, 処置と結果は入力に入れません). ' +
@@ -869,7 +869,7 @@ describe('applyDatasetInputs (値段を変える判断)', () => {
     expect(spec.nodes.units1!.params).toEqual({ in_features: 5, out_features: 32 })
     expect(spec.nodes.units2!.params).toEqual({ in_features: 32, out_features: 1 })
     expect(notes[0]).toBe(
-      '問題の設定 値段の見直し が値段を変える判断なので, ' +
+      '問題 値段の見直し が値段を変える判断なので, ' +
         '入力の幅を, 商品の特徴の列と値段の列を合わせた 5 列にしました. ' +
         '値段 (商品の売り値) の列 price は, 入力の最後の列です. ' +
         '次の列は入力に入れません: 売れた数 (予測する値) の列 units, ' +
@@ -972,7 +972,7 @@ describe('applyDatasetInputs (時間をまたぐ量の判断)', () => {
     expect(spec.nodes.demand2!.params).toEqual({ in_features: 32, out_features: 4 })
     expect(spec.nodes.demand_cumsum!.params).toEqual({ dim: 1 })
     expect(notes[0]).toBe(
-      '問題の設定 発注の見直し が時間をまたぐ量の判断なので, ' +
+      '問題 発注の見直し が時間をまたぐ量の判断なので, ' +
         '入力の幅を, 学習に使う 5 列にしました ' +
         '(商品の特徴, 過去の売れた数のずらしと移動平均, 曜日などの列). ' +
         '次の列は入力に入れません: ' +
@@ -983,7 +983,7 @@ describe('applyDatasetInputs (時間をまたぐ量の判断)', () => {
     expect(notes).toContain('demand1 の in_features を 5 にしました')
     expect(notes.at(-1)).toBe(
       '出力 quantiles の値の数を, 学ぶ分位点の水準 0.1, 0.5, 0.75, 0.9 の数 4 ' +
-        '(問題の設定 発注の見直し の水準. 水準ごとに 1 つの値) にしました ' +
+        '(問題 発注の見直し の水準. 水準ごとに 1 つの値) にしました ' +
         '(demand2 の out_features を 9 から 4 に)',
     )
     expect(datasetSummary(record)).toBe(
@@ -1001,7 +1001,7 @@ describe('applyDatasetInputs (時間をまたぐ量の判断)', () => {
     expect(spec).toEqual(applyDatasetInputs(quantiles, record, units).spec)
     expect(notes.at(-1)).toBe(
       '出力 quantiles の値の数を, 学ぶ分位点の水準 0.1, 0.5, 0.75, 0.9 の数 4 ' +
-        '(問題の設定 発注の見直し の水準. 水準ごとに 1 つの値) にしました ' +
+        '(問題 発注の見直し の水準. 水準ごとに 1 つの値) にしました ' +
         '(雛形の引数 levels を 9 から 4 に: demand2 の out_features)',
     )
     // 水準が分からなければ水準の数は渡さず, 今の値のまま
@@ -1009,7 +1009,7 @@ describe('applyDatasetInputs (時間をまたぐ量の判断)', () => {
     const without = viaTemplate('tabular_demand', quantiles, places, unknown)
     expect(without.values).toEqual({ features: 5 })
     expect(without.spec).toEqual(applyDatasetInputs(quantiles, unknown, units).spec)
-    expect(without.notes.at(-1)).toContain('学ぶ分位点の水準の数は問題の設定が決めるので')
+    expect(without.notes.at(-1)).toContain('学ぶ分位点の水準の数は問題が決めるので')
   })
 
   it('学習の設定の水準と食い違いの知らせを入れ, 同じ数なら値の数を変えずに知らせる', () => {
@@ -1020,7 +1020,7 @@ describe('applyDatasetInputs (時間をまたぐ量の判断)', () => {
         ...record.demand!,
         levels: [0.25, 0.5, 0.75],
         levels_from: 'config',
-        notes: ['学習の設定の水準の数 3 は, 問題の設定の水準の数 4 と違います'],
+        notes: ['学習の設定の水準の数 3 は, 問題の水準の数 4 と違います'],
       },
     }
     const three: Spec = {
@@ -1032,10 +1032,10 @@ describe('applyDatasetInputs (時間をまたぐ量の判断)', () => {
     }
     const { spec, notes } = applyDatasetInputs(three, configured, units)
     expect(spec.nodes.demand2!.params).toEqual({ in_features: 32, out_features: 3 })
-    expect(notes[1]).toBe('学習の設定の水準の数 3 は, 問題の設定の水準の数 4 と違います')
+    expect(notes[1]).toBe('学習の設定の水準の数 3 は, 問題の水準の数 4 と違います')
     expect(notes.at(-1)).toBe(
       '出力 quantiles の値の数は, 学ぶ分位点の水準 0.25, 0.5, 0.75 の数 3 ' +
-        '(プロジェクトの学習の設定の水準. 水準ごとに 1 つの値) のままです (demand2 の out_features)',
+        '(学習のプロジェクトの学習の設定の水準. 水準ごとに 1 つの値) のままです (demand2 の out_features)',
     )
   })
 
@@ -1055,8 +1055,8 @@ describe('applyDatasetInputs (時間をまたぐ量の判断)', () => {
         '商品の id (発注の数を決める単位) の列, 日付 (発注を決める日) の列, 行を見分ける id の列',
     )
     expect(notes.at(-1)).toBe(
-      '学ぶ分位点の水準の数は問題の設定が決めるので, 出力の値の数は変えていません. ' +
-        '時間をまたぐ量の判断の問題の設定から保存先を確かめてから入れ直すと, 水準の数にします',
+      '学ぶ分位点の水準の数は問題が決めるので, 出力の値の数は変えていません. ' +
+        '時間をまたぐ量の判断の問題から保存先を確かめてから入れ直すと, 水準の数にします',
     )
   })
 
@@ -1071,7 +1071,7 @@ describe('applyDatasetInputs (時間をまたぐ量の判断)', () => {
     const { spec, notes } = applyDatasetInputs(reshaped, record, units)
     expect(spec.nodes.demand2!.params).toEqual({ in_features: 32, out_features: 9 })
     expect(notes.at(-1)).toBe(
-      '出力の値の数 4 (学ぶ分位点の水準 0.1, 0.5, 0.75, 0.9 の数. 問題の設定 発注の見直し の水準) は, ' +
+      '出力の値の数 4 (学ぶ分位点の水準 0.1, 0.5, 0.75, 0.9 の数. 問題 発注の見直し の水準) は, ' +
         '最後の部品の引数に手で入れてください',
     )
   })
