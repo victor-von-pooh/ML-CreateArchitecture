@@ -68,7 +68,7 @@
 ```bash
 git clone --recursive https://github.com/victor-von-pooh/ML-CreateArchitecture.git
 cd ML-CreateArchitecture
-make setup   # submodule, Python と Node.js の依存 (データセットと学習のプロジェクトにつなぐ ML-EDA と ML-Quest も)
+make setup   # submodule, Python と Node.js の依存 (データセットと学習のプロジェクトにつなぐ ML-EDA と ML-Quest, parquet の表を読む pyarrow も)
 make serve   # 画面をビルドして http://127.0.0.1:8766 で起動 (使う間は端末を開いたままにする. Ctrl+C で止める)
 ```
 
@@ -81,7 +81,7 @@ make setup EXTRAS="project all"                       # 全て
 make setup EXTRAS="project torchvision timm"          # 一部だけ
 ```
 
-`EXTRAS` に書ける名前は `project` (ML-EDA と ML-Quest. 既定), `geometric` (PyTorch Geometric), `huggingface`, `torchvision`, `timm`, `torchaudio`, `einops`, `kornia`, `monai`, `smp` (segmentation_models_pytorch), `all` (外部のライブラリの全て).
+`EXTRAS` に書ける名前は `project` (ML-EDA と ML-Quest と pyarrow. 既定), `geometric` (PyTorch Geometric), `huggingface`, `torchvision`, `timm`, `torchaudio`, `einops`, `kornia`, `monai`, `smp` (segmentation_models_pytorch), `all` (外部のライブラリの全て).
 
 新規の画面には入力 `x` (形 `[4, 16]`) がある. `x` を選び, `/` を押して `nn.Linear` と打って Enter を押すと, `x` につながった `linear1` が置かれる. 右の詳細で `in_features` を `16`, `out_features` を `4` にし, 上の「出力」を押すと「パラメータ数 68」「誤り 0 件」になる. 名前を書いて「保存」(Ctrl+S) で保存する.
 

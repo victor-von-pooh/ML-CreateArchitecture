@@ -36,7 +36,7 @@ smp = ["ml-modelcontrol[smp]"]
 all = ["ml-modelcontrol[all]"]
 # データセットから入力と出力を作る, プロジェクトに保存する場合 (他の段階の
 # ファイルは, その約束を持つ ML-EDA と ML-Quest を通して読む)
-project = ["ml-eda", "ml-quest"]
+project = ["ml-eda[parquet]", "ml-quest"]
 
 [project.scripts]
 ml-createarchitecture = "ml_createarchitecture.cli:main"
