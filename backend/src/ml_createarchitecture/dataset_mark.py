@@ -179,8 +179,10 @@ def dataset_sha256(
         reason = climb_reason(raw)
         path = Path(os.path.normpath(raw))
         is_dir = path.is_dir()
-    except (OSError, ValueError, RuntimeError):
+    except ValueError:
         return None, "invalid"
+    except (OSError, RuntimeError):
+        return None, "unreadable"
     if reason == "link":
         return None, "invalid"
     if reason is not None:

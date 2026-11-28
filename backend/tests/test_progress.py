@@ -435,3 +435,293 @@ def test_shape_error_is_500(
     client.get("/api/auth?token=secret", follow_redirects=False)
     response = client.get("/api/progress", params={"problem": IDENT})
     assert response.status_code == 500
+
+
+def test_unfinished_problem(
+    setup: Setup, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    受け渡しの値を決められない書きかけの問題は blocked になり,
+    版を読めない問題は固定の文の 422 になることを確かめる関数
+
+    Parameters
+    ----------
+    setup: Setup
+        試験の場
+    monkeypatch: pytest.MonkeyPatch
+        モジュールの差し替え
+
+    Returns
+    ----------
+    None
+    """
+    stub = StubQuest(setup.record)
+
+    def unfinished(problem: dict[str, Any]) -> dict[str, Any]:
+        raise ValueError("答えていません")
+
+    monkeypatch.setattr(stub, "handoff", unfinished)
+    monkeypatch.setitem(sys.modules, "ml_quest", stub)
+    progress = setup.progress()
+    assert progress["state"] == "blocked" and progress["back"] == "problem"
+
+    # 版を読めない問題は例外の文を出さない
+    monkeypatch.setattr(stub, "stage_needs", unfinished)
+    response = setup.client.get("/api/progress", params={"problem": IDENT})
+    assert response.status_code == 422
+    assert "答えていません" not in response.text
+
+
+def test_broken_problem_message(setup: Setup) -> None:
+    """
+    壊れた問題の 422 は例外の文とパスを含まないことを確かめる関数
+
+    Parameters
+    ----------
+    setup: Setup
+        試験の場
+
+    Returns
+    ----------
+    None
+    """
+    setup.problem.write_text("a: [1\n")
+    response = setup.client.get("/api/progress", params={"problem": IDENT})
+    assert response.status_code == 422
+    assert "yaml" not in response.text.lower()
+    assert str(setup.problem) not in response.text
+
+
+def test_shape_error_section(setup: Setup) -> None:
+    """
+    辞書でない段階の値は握らず 500 になることを確かめる関数
+
+    Parameters
+    ----------
+    setup: Setup
+        試験の場
+
+    Returns
+    ----------
+    None
+    """
+    setup.record["model"] = []
+    client = TestClient(setup.client.app, raise_server_exceptions=False)
+    client.get("/api/auth?token=secret", follow_redirects=False)
+    response = client.get("/api/progress", params={"problem": IDENT})
+    assert response.status_code == 500
+
+
+def test_spec_outside_or_relative(setup: Setup, tmp_path: Path) -> None:
+    """
+    保存先が学習のプロジェクトの外 (.. とリンク) か相対なら
+    blocked になることを確かめる関数
+
+    Parameters
+    ----------
+    setup: Setup
+        試験の場
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 外の場所 (.. を含む書き方)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    setup.record["model"]["project_model_spec"] = str(
+        setup.project / ".." / "outside" / "m.yaml"
+    )
+    progress = setup.progress()
+    assert progress["state"] == "blocked" and progress["back"] == "problem"
+
+    # プロジェクトの中のリンクが外を指す
+    (setup.project / "models").mkdir()
+    (setup.project / "models" / "out").symlink_to(outside)
+    setup.record["model"]["project_model_spec"] = str(
+        setup.project / "models" / "out" / "m.yaml"
+    )
+    progress = setup.progress()
+    assert progress["state"] == "blocked" and progress["back"] == "problem"
+
+    # 相対の記録
+    setup.record["model"]["project_model_spec"] = "models/model.yaml"
+    progress = setup.progress()
+    assert progress["state"] == "blocked" and progress["back"] == "problem"
+    setup.record["project"]["path"] = "proj"
+    progress = setup.progress()
+    assert progress["state"] == "blocked" and progress["back"] == "problem"
+
+
+def test_config_is_directory(setup: Setup) -> None:
+    """
+    train.yaml がディレクトリなら blocked になることを確かめる関数
+
+    Parameters
+    ----------
+    setup: Setup
+        試験の場
+
+    Returns
+    ----------
+    None
+    """
+    config = setup.project / "configs" / "default" / "train.yaml"
+    config.unlink()
+    config.mkdir()
+    progress = setup.progress()
+    assert progress["state"] == "blocked" and progress["back"] == "problem"
+
+
+def test_place_link_outside(setup: Setup, tmp_path: Path) -> None:
+    """
+    置き場の外を指す問題のディレクトリのリンクは 404 になることを
+    確かめる関数
+
+    Parameters
+    ----------
+    setup: Setup
+        試験の場
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "problem.yaml").write_text("needs: {}\n")
+    link = setup.problem.parent.parent / "abcdefabcdef"
+    link.symlink_to(other)
+    response = setup.client.get(
+        "/api/progress", params={"problem": "abcdefabcdef"}
+    )
+    assert response.status_code == 404
+
+
+def test_mark_of_other_dataset(setup: Setup, tmp_path: Path) -> None:
+    """
+    印が別のデータセットを指すなら新しさ不明の done になることを
+    確かめる関数
+
+    Parameters
+    ----------
+    setup: Setup
+        試験の場
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "dataset.yaml").write_text("name: z\n")
+    save_spec(setup)
+    setup.record["data"]["project_dataset"] = str(other)
+    progress = setup.progress()
+    assert progress["state"] == "done"
+    assert "分かりません" in progress["summary"]
+
+
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0, reason="root は読める"
+)
+def test_unreadable_dataset(setup: Setup) -> None:
+    """
+    読めないデータセットは 422 になることを確かめる関数
+
+    Parameters
+    ----------
+    setup: Setup
+        試験の場
+
+    Returns
+    ----------
+    None
+    """
+    setup.dataset.chmod(0)
+    try:
+        response = setup.client.get(
+            "/api/progress", params={"problem": IDENT}
+        )
+    finally:
+        setup.dataset.chmod(0o755)
+    assert response.status_code == 422
+
+
+def real_problem(
+    setup_home: Path, change: Any = None
+) -> None:
+    """
+    実物の ML-Quest の例の問題を置き場に書く関数
+
+    Parameters
+    ----------
+    setup_home: Path
+        問題の置き場の元
+    change: Any
+        問題の設定を書き換える関数 (無ければそのまま)
+
+    Returns
+    ----------
+    None
+    """
+    quest = pytest.importorskip("ml_quest")
+    problem = quest.example_problem(next(iter(quest.EXAMPLES)))
+    if change is not None:
+        change(problem)
+    path = setup_home / "problems" / IDENT / "problem.yaml"
+    quest.save_problem(problem, path)
+
+
+def test_real_quest_skip(client: TestClient, pathfinder_home: Path) -> None:
+    """
+    実物の ML-Quest で, 機械学習を使わない問題が skip になることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    pathfinder_home: Path
+        問題の置き場の元
+
+    Returns
+    ----------
+    None
+    """
+    def change(problem: dict[str, Any]) -> None:
+        problem["ml"] = {"use": False, "reason": "表で足りる"}
+
+    real_problem(pathfinder_home, change)
+    response = client.get("/api/progress", params={"problem": IDENT})
+    assert response.status_code == 200, response.text
+    assert response.json()["state"] == "skip"
+
+
+def test_real_quest_blocked(client: TestClient, pathfinder_home: Path) -> None:
+    """
+    実物の ML-Quest で, 何も書き出していない問題が blocked になることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    pathfinder_home: Path
+        問題の置き場の元
+
+    Returns
+    ----------
+    None
+    """
+    real_problem(pathfinder_home)
+    response = client.get("/api/progress", params={"problem": IDENT})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["state"] == "blocked" and body["back"] == "problem"
