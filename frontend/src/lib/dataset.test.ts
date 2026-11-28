@@ -602,6 +602,51 @@ describe('applyDatasetInputs (並べる)', () => {
   })
 })
 
+describe('applyDatasetInputs (まとめる)', () => {
+  /** 同梱の例 contrastive_encoder の入力と 1 段目の全結合 (16 列) */
+  const encoder: Spec = {
+    ...emptySpec(),
+    inputs: { x: { shape: [8, 16], ui: { x: 0, y: 100 } } },
+    nodes: {
+      fc1: { unit: 'nn.Linear', params: { in_features: 16, out_features: 32 }, inputs: 'x' },
+      fc2: { unit: 'nn.Linear', params: { in_features: 32, out_features: 16 }, inputs: 'fc1' },
+    },
+    outputs: { embedding: 'fc2', similarity: 'fc2' },
+  }
+  /** 数の列 2 つと, 地域の 3 つと欠損の分類の列 1 つの群を作る表 */
+  const customers: DatasetInfo = {
+    path: '/proj/data/customers.csv',
+    inputs: [{ name: 'x', shape: [4, 6], dtype: 'float32', dataset_shape: [null, 6] }],
+    outputs: null,
+    group: { width: 6, numbers: 2, categories: 1, values: 4, columns: 3, problem: '顧客の群' },
+  }
+
+  it('入力 x の幅を符号化した行の幅にし, 決め方を初めに知らせ, 出力は変えない', () => {
+    const { spec, notes } = applyDatasetInputs(encoder, customers, units)
+    expect(spec.inputs.x).toMatchObject({ shape: [4, 6], dtype: 'float32' })
+    expect(spec.nodes.fc1!.params).toMatchObject({ in_features: 6, out_features: 32 })
+    expect(spec.nodes.fc2!.params).toMatchObject({ in_features: 32, out_features: 16 })
+    expect(notes[0]).toBe(
+      '問題 顧客の群 がまとめるなので, 入力 x の幅を, 学習で使う 1 行の長さ 6 にしました ' +
+        '(数の項目 2 は 1 つずつ, 分類の項目 1 は選べる値の数の合計 4. 群を作る項目の数 3 ではありません)',
+    )
+    expect(notes.at(-1)).toContain('出力の大きさは変えていません')
+    expect(datasetSummary(customers)).toBe('群を作る表から入れました: 入力 x [4, 6]')
+  })
+
+  it('雛形 contrastive_encoder のままなら, features を符号化した行の幅にして今と同じ定義にする', () => {
+    const places: Places = { features: [inputAt('x', 1), paramAt('fc1', 'in_features')] }
+    const { spec, notes, values } = viaTemplate('contrastive_encoder', encoder, places, customers)
+    expect(values).toEqual({ features: 6 })
+    expect(spec).toEqual(applyDatasetInputs(encoder, customers, units).spec)
+    expect(notes[0]).toContain('がまとめるなので')
+    expect(notes).toContain(
+      '雛形の引数 features (特徴の数) を 16 から 6 にしました (入力 x の形の 2 番目, fc1 の in_features)',
+    )
+    expect(notes.at(-1)).toContain('similarity は行どうしの似ている度合いの表なので')
+  })
+})
+
 describe('applyDatasetInputs (異常の検知)', () => {
   /** 同梱の例 tabular_autoencoder の形 (16 列を縮めた幅 4 を通して戻す) */
   const autoencoder: Spec = {

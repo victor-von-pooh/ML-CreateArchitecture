@@ -94,7 +94,8 @@ class DatasetBody(BaseModel):
         "出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. "
         "並べるなら, path は反応の表のファイルで, 入力 user と item の大きさ"
         "を ML-Quest の rank_encoding の学習用の利用者と品物の数にする. "
-        "異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を"
+        "まとめるなら, path は群を作る表のファイルで, 入力 x の幅を ML-EDA "
+        "の describe_groups の符号化した行の幅にする. 異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を"
         "見積もるなら, データセットの説明に無い処置の列と行の id の列を受け"
         "持ちの答えから読む. 値段を変える判断なら, データセットの説明に無い"
         "値段, 原価, 商品の id と行の id の列を受け持ちの答えから読む. 時間を"
@@ -138,6 +139,19 @@ class TableWidth(BaseModel):
     categories: int = Field(description="種類の列の数")
     values: int = Field(description="種類の列の値の種類の数の和")
     columns: int = Field(description="学習に使う列の数")
+    problem: Optional[str] = Field(
+        default=None, description="問題の設定の名前"
+    )
+
+
+class GroupWidth(BaseModel):
+    # 群分けの符号化した行の幅と, その内訳 (ML-EDA の describe_groups の
+    # width. ML-Fathom の群の要約と同じ数え方)
+    width: int = Field(description="符号化した行の幅 (入力 x の幅)")
+    numbers: int = Field(description="数の列の数 (1 ずつ)")
+    categories: int = Field(description="種類の列の数")
+    values: int = Field(description="種類の列の値の種類の数の和")
+    columns: int = Field(description="群を作る列の数")
     problem: Optional[str] = Field(
         default=None, description="問題の設定の名前"
     )
@@ -329,6 +343,11 @@ class DatasetInputs(BaseModel):
         default=None,
         description="並べるの問題の設定で, 入力 user と item の大きさにした"
         "学習用の利用者と品物の数 (他は無し)"
+    )
+    group: Optional[GroupWidth] = Field(
+        default=None,
+        description="まとめるの問題の設定で, 入力 x の幅にした符号化した"
+        "行の幅 (他は無し)"
     )
     anomaly: Optional[AnomalyWidth] = Field(
         default=None,
@@ -743,6 +762,151 @@ def table_width(problem: Any, dataset: Path) -> Optional[TableWidth]:
         )
 
     return table
+
+
+def is_group(problem: Any) -> bool:
+    """
+    問題の設定の骨組みが, 行の符号化器を学ぶまとめるかを返す関数
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+
+    Returns
+    ----------
+    group: bool
+        ML-Quest の skeleton_type が group か (既製の埋め込みを使う
+        group_ready は, モデルの定義を組まないので除く. 読めなければ
+        False)
+    """
+    # 骨組みの型の見分け方は ML-Quest に任せる
+    quest = load_library("ml_quest", "skeleton_type")
+    try:
+        kind = quest.skeleton_type(problem)
+    except READ_ERRORS:
+        kind = None
+    group = bool(kind == "group")
+
+    return group
+
+
+def group_width(problem: Any, table: Path) -> GroupWidth:
+    """
+    まとめるの問題の設定で, 群を作る表の符号化した行の幅を求める関数
+
+    幅は ML-EDA の describe_groups の width (数の列は 1 つずつ, 種類の
+    列は値の種類の数. ML-Fathom の群の要約と同じ数え方). 群を作る列と
+    表の読み方は問題の設定の答え (骨組みの config の group.columns と
+    同じ)
+
+    Parameters
+    ----------
+    problem: Any
+        問題の設定 (read_problem)
+    table: Path
+        群を作る表のファイル
+
+    Returns
+    ----------
+    group: GroupWidth
+        符号化した行の幅と内訳
+
+    Raises
+    ----------
+    HTTPException
+        ML-EDA か ML-Quest が無いか古い場合と, 表を読む部品 (parquet の
+        pyarrow) が無い場合は 501, 表が無い場合は 404, 群を作る列に
+        答えていない場合と幅を求められない場合 (列が無い, 行が無い, 幅が
+        大きすぎるなど) は 422
+    """
+    # 群を作る列と表の読み方 (問題の設定の答え)
+    quest = load_library("ml_quest", "active_value")
+    try:
+        columns = quest.active_value(problem, f"{quest.PART}.group.columns")
+        loader = quest.get_value(problem, "data.loader")
+        options = quest.get_value(problem, "data.options")
+    except READ_ERRORS as error:
+        raise HTTPException(
+            422, f"まとめるの群を作る列を読めません: {error}"
+        ) from error
+    if not isinstance(columns, list) or not columns:
+        raise HTTPException(
+            422,
+            "まとめるの問題ですが, 群を作る列 (group.columns) に答えて"
+            "いません"
+        )
+    if not table.is_file():
+        raise HTTPException(404, f"群を作る表 {table} が見つかりません")
+
+    # 符号化の決まりは ML-EDA に任せる (群は幅を求めるためだけに 2 つ.
+    # 作り直しは 1 回)
+    eda = load_library("ml_eda", "describe_groups")
+    try:
+        summary = eda.describe_groups(
+            table, columns=[str(name) for name in columns], k=2, repeats=1,
+            loader=loader if isinstance(loader, str) else None,
+            **(options if isinstance(options, dict) else {})
+        )
+    except FileNotFoundError as error:
+        raise HTTPException(
+            404, f"群を作る表 {table} が見つかりません: {error}"
+        ) from error
+    except ImportError as error:
+        raise missing_reader(error) from error
+    except READ_ERRORS as error:
+        raise HTTPException(
+            422,
+            "まとめるの, 符号化した行の幅 (入力 x の幅) を求められません: "
+            f"{error}"
+        ) from error
+
+    # 幅と内訳 (形の崩れた値は 422)
+    try:
+        numbers = len(summary["columns"]["numeric"])
+        categories = len(summary["columns"]["categorical"])
+        group = GroupWidth(
+            width=summary["width"], numbers=numbers, categories=categories,
+            values=summary["width"] - numbers,
+            columns=numbers + categories, problem=problem_name(problem)
+        )
+    except (*READ_ERRORS, ValidationError) as error:
+        raise HTTPException(
+            422, f"まとめるの符号化した行の幅を読めません: {error}"
+        ) from error
+    if group.width < 1:
+        raise HTTPException(
+            422, "まとめるの符号化した行の幅が 0 です (群を作る列がありません)"
+        )
+
+    return group
+
+
+def group_inputs(path: Path, group: GroupWidth) -> DatasetInputs:
+    """
+    まとめるの符号化器の入力 (行の特徴) を作る関数
+
+    Parameters
+    ----------
+    path: Path
+        群を作る表のファイル
+    group: GroupWidth
+        符号化した行の幅
+
+    Returns
+    ----------
+    result: DatasetInputs
+        入力 x ((件数, 符号化した行の幅)) の float32 (出す値の数は無し.
+        出力の埋め込みの幅は定義が決める)
+    """
+    # 名前は学習のスクリプトと同梱の例 contrastive_encoder の入力
+    inputs = [DatasetInput(
+        name="x", shape=[EXAMPLE_SIZE, group.width], dtype="float32",
+        dataset_shape=[None, group.width]
+    )]
+    result = DatasetInputs(path=str(path), inputs=inputs, group=group)
+
+    return result
 
 
 def project_config(problem: Any) -> tuple[bool, Optional[dict[str, Any]]]:
@@ -1397,7 +1561,9 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     符号化した行の幅 (ML-Quest の table_encoding) にする (学習のスクリプト
     が学ぶ行の幅. 列の数とは違う). 並べるなら, 場所は反応の表のファイルで,
     入力 user と item の大きさを学習用の利用者と品物の数 (ML-Quest の
-    rank_encoding) にする. 異常の検知のデータセットでは, 学習に使う列の数
+    rank_encoding) にする. まとめるなら, 場所は群を作る表のファイルで,
+    入力 x の幅を符号化した行の幅 (ML-EDA の describe_groups) にする.
+    異常の検知のデータセットでは, 学習に使う列の数
     (ML-EDA の outputs) と, 問題の設定の度合いの決め方も返す. 効果を
     見積もるのデータセットでは, 学習に使う列の数 (ML-EDA の入力 x の幅) と,
     処置の列と行の id の列 (データセットの説明を先, 無ければ問題の設定の
@@ -1413,15 +1579,16 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
     Parameters
     ----------
     body: DatasetBody
-        データセットのディレクトリ (並べるなら反応の表のファイル) と,
-        問題の設定のファイル (任意)
+        データセットのディレクトリ (並べるなら反応の表, まとめるなら群を
+        作る表のファイル) と, 問題の設定のファイル (任意)
 
     Returns
     ----------
     result: DatasetInputs
         入力 (形はバッチの次元を例の大きさにしたものと, データセットの
         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
-        符号化した行の幅, 並べるの学習用の利用者と品物の数, 異常の検知の
+        符号化した行の幅, 並べるの学習用の利用者と品物の数, まとめるの
+        符号化した行の幅, 異常の検知の
         学習に使う列の数と度合いの決め方, 効果を見積もるの学習に使う列の数と
         数えない列, 値段を変える判断の特徴の列と値段の列の数と列の名前,
         需要の学習に使う列の数, 数えない列と学ぶ分位点の水準
@@ -1438,10 +1605,13 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         見積もるの問題の設定でデータセットが介入の記録の表でない場合と, 値段
         を変える判断の問題の設定でデータセットが値段を変えた記録の表でない
         場合と, 時間をまたぐ量の判断の問題の設定でデータセットが需要の記録の
-        表でない場合は 422.
-        並べるで反応の表が無い場合は 404
+        表でない場合と, まとめるで群を作る列に答えていないか幅を
+        求められない場合は 422.
+        並べるで反応の表が無い場合と, まとめるで群を作る表が無い場合は
+        404
     """
-    # 並べるは反応の表のファイルから 2 塔の入力を作る
+    # 並べるは反応の表のファイルから 2 塔の入力を, まとめるは群を作る表の
+    # ファイルから符号化器の入力を作る
     path = absolute_path(body.path)
     problem = None
     if body.problem and body.problem.strip():
@@ -1449,6 +1619,9 @@ def read_dataset_inputs(body: DatasetBody) -> DatasetInputs:
         rank = rank_size(problem, path)
         if rank is not None:
             result = rank_inputs(path, rank)
+            return result
+        if is_group(problem):
+            result = group_inputs(path, group_width(problem, path))
             return result
 
     # 説明の版と読み方は ML-EDA に任せる
@@ -2561,6 +2734,8 @@ def contract_widths(kind: str, info: DatasetInputs) -> dict[str, int]:
     elif kind == "rank" and info.rank is not None:
         widths["users"] = info.rank.users
         widths["items"] = info.rank.items
+    elif kind == "group" and info.group is not None:
+        widths["features"] = info.group.width
     elif part is not None and part.columns is not None:
         widths["features"] = part.columns
 
