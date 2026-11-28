@@ -1979,6 +1979,204 @@ def test_dataset_inputs_rank(client: TestClient, tmp_path: Path) -> None:
     )
 
 
+def group_problem(quest: Any) -> dict[str, Any]:
+    """
+    見本の課題から, まとめる受け持ちを一から学習する問題の設定を作る関数
+
+    Parameters
+    ----------
+    quest: Any
+        ML-Quest のモジュール
+
+    Returns
+    ----------
+    problem: dict[str, Any]
+        問題の設定 (雛形は contrastive_encoder. 表の列は customer, spend,
+        visits, region で, 群を作る列は spend, visits, region)
+    """
+    # 見本の受け持ちを作り直す (ML-Quest のテストの受け持ちの入れ替えと同じ)
+    problem = quest.example_problem(next(iter(quest.EXAMPLES)))
+    problem["ml"]["parts"] = [{}]
+    for key in ("decision", "basis", "current"):
+        problem["action"].pop(key, None)
+    problem = quest.answer(
+        problem, "information.columns",
+        ["customer", "spend", "visits", "region"]
+    )
+    answers = [
+        ("role", "group"), ("unit", "row"), ("output", "cluster"),
+        ("target.source", "none"), ("method", "scratch"),
+        ("what", "顧客の群"), ("item", "顧客 1 人"),
+        ("baseline", "今の区分 (地域)"),
+        ("evaluation.metric", "silhouette"),
+        ("evaluation.link", "群ごとに連絡の仕方を変える"),
+        ("group.columns", ["spend", "visits", "region"]),
+        ("group.id", "customer"), ("group.k", 3),
+        ("group.stability", "seed")
+    ]
+    for key, value in answers:
+        problem = quest.answer(problem, f"ml.parts.0.{key}", value)
+
+    return problem
+
+
+def write_group_rows(path: Path) -> None:
+    """
+    群を作る顧客の表の CSV を書く関数
+
+    Parameters
+    ----------
+    path: Path
+        書き出すファイル (customer, spend, visits, region. 30 行で, 地域は
+        3 つと欠けた値)
+
+    Returns
+    ----------
+    None
+    """
+    # 欠けた数の値と欠けた地域を 1 つずつ (地域の欠損も 1 つの値)
+    rows = [
+        {"customer": f"c{number}", "spend": 100.0 * (number % 3 + 1),
+         "visits": number % 5,
+         "region": ("north", "south", "east")[number % 3]}
+        for number in range(30)
+    ]
+    rows[0]["spend"] = None
+    rows[1]["region"] = None
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+def test_dataset_inputs_group(client: TestClient, tmp_path: Path) -> None:
+    """
+    まとめるの問題の設定と群を作る表のファイルを渡すと, 入力 x の幅を
+    ML-EDA の make_encoding と同じ数え方の符号化した行の幅にすることを
+    確かめる関数 (ML-EDA と ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 読み込みに要るライブラリ
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    groups = pytest.importorskip("ml_eda.groups")
+
+    # 群を作る表のファイルを写した問題の設定
+    source = tmp_path / "customers.csv"
+    write_group_rows(source)
+    problem = ml_quest.attach_data(
+        group_problem(ml_quest), str(source),
+        copy_to=str(tmp_path / "copies")
+    )
+    place = tmp_path / "problem.yaml"
+    ml_quest.save_problem(problem, place)
+
+    # 幅は ML-EDA の符号化 (数の列 2 つと, 地域の 3 つと欠損の 4 つ)
+    frame = ml_eda.load_data(source).frame[["spend", "visits", "region"]]
+    encoding = groups.make_encoding(frame)
+    width = len(encoding["numeric"]) + sum(
+        len(values) for values in encoding["categories"].values()
+    )
+    assert width == 6
+    response = client.post(
+        "/api/dataset/inputs", json={"path": str(source), "problem": str(place)}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [(item["name"], item["shape"], item["dataset_shape"])
+            for item in body["inputs"]] == [("x", [4, width], [None, width])]
+    assert body["outputs"] is None and body["rank"] is None
+    assert body["group"] == {
+        "width": width, "numbers": 2, "categories": 1, "values": 4,
+        "columns": 3, "problem": problem["name"]
+    }
+
+    # 群を作る表の無い場所は 404, 表に無い列は 422
+    response = client.post(
+        "/api/dataset/inputs",
+        json={"path": str(tmp_path / "none.csv"), "problem": str(place)}
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"].startswith("群を作る表")
+    other = tmp_path / "other.csv"
+    pd.DataFrame({"customer": ["c0", "c1"], "spend": [1.0, 2.0]}).to_csv(
+        other, index=False
+    )
+    response = client.post(
+        "/api/dataset/inputs", json={"path": str(other), "problem": str(place)}
+    )
+    assert response.status_code == 422
+    assert "符号化した行の幅" in response.json()["detail"]
+
+
+def test_dataset_inputs_group_all_rows(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    まとめるの幅は, 1 行にだけ出る種類の値 (学習用と検証用に分けると検証用
+    にだけ出うる値) も数えた全ての行の幅になり, 幅を求める所の READ_ERRORS
+    の外の誤りは 500 でなく 422 になることを確かめる関数 (ML-EDA と
+    ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        ML-EDA の describe_groups を差し替える
+
+    Returns
+    ----------
+    None
+    """
+    # 最後の 1 行にだけ出る地域 west
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    source = tmp_path / "customers.csv"
+    write_group_rows(source)
+    frame = pd.read_csv(source)
+    frame.loc[len(frame) - 1, "region"] = "west"
+    frame.to_csv(source, index=False)
+    problem = ml_quest.attach_data(
+        group_problem(ml_quest), str(source),
+        copy_to=str(tmp_path / "copies")
+    )
+    place = tmp_path / "problem.yaml"
+    ml_quest.save_problem(problem, place)
+
+    # 数の列 2 つと, 地域の 4 つと欠損の 5 つ
+    response = client.post(
+        "/api/dataset/inputs", json={"path": str(source), "problem": str(place)}
+    )
+    assert response.status_code == 200, response.text
+    group = response.json()["group"]
+    assert (group["width"], group["values"]) == (7, 5)
+
+    # メモリの不足と, ライブラリの中の他の誤りは 422
+    for error in (MemoryError(), RuntimeError("k-means の誤り")):
+        def describe_groups(*args: Any, error: Exception = error,
+                            **kwargs: Any) -> None:
+            raise error
+
+        monkeypatch.setattr(ml_eda, "describe_groups", describe_groups)
+        response = client.post(
+            "/api/dataset/inputs",
+            json={"path": str(source), "problem": str(place)}
+        )
+        assert response.status_code == 422, response.text
+        assert "符号化した行の幅" in response.json()["detail"]
+
+
 def test_dataset_inputs_without_rank_encoding(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -3394,6 +3592,7 @@ CONTRACT_CASES = {
     "uplift": ("tabular_uplift", "treated"),
     "price": ("tabular_price", "units"),
     "demand": ("tabular_demand", "quantiles"),
+    "group": ("contrastive_encoder", "embedding"),
 }
 
 
@@ -3431,20 +3630,23 @@ def contract_problem(
     makers = {
         "anomaly": anomaly_problem, "rank": rank_problem,
         "uplift": uplift_problem, "price": price_problem,
-        "demand": demand_problem,
+        "demand": demand_problem, "group": group_problem,
     }
     problem = makers[kind](ml_quest)
     project = root / "project"
     ml_quest.make_project(problem, project)
     recorded = ml_quest.record_project(problem, project)
 
-    # 記録のデータセット (並べるは記録の場所の反応の表)
+    # 記録のデータセット (並べるは記録の場所の反応の表, まとめるは群を
+    # 作る表)
     if kind == "rank":
         rows = [{"member": f"m{number % 6}", "item_id": f"i{number % 4}",
                  "ts": number, "qty": 1} for number in range(40)]
         reactions = Path(recorded["project"]["dataset"])
         reactions.parent.mkdir(parents=True, exist_ok=True)
         pd.DataFrame(rows).to_csv(reactions, index=False)
+    elif kind == "group":
+        write_group_rows(Path(recorded["project"]["dataset"]))
     elif kind == "anomaly":
         dataset = write_anomaly_dataset(ml_eda, root, labeled=True)
         recorded["project"]["dataset"] = str(dataset)

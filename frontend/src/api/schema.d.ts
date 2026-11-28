@@ -362,7 +362,9 @@ export interface paths {
          *     符号化した行の幅 (ML-Quest の table_encoding) にする (学習のスクリプト
          *     が学ぶ行の幅. 列の数とは違う). 並べるなら, 場所は反応の表のファイルで,
          *     入力 user と item の大きさを学習用の利用者と品物の数 (ML-Quest の
-         *     rank_encoding) にする. 異常の検知のデータセットでは, 学習に使う列の数
+         *     rank_encoding) にする. まとめるなら, 場所は群を作る表のファイルで,
+         *     入力 x の幅を符号化した行の幅 (ML-EDA の describe_groups) にする.
+         *     異常の検知のデータセットでは, 学習に使う列の数
          *     (ML-EDA の outputs) と, 問題の設定の度合いの決め方も返す. 効果を
          *     見積もるのデータセットでは, 学習に使う列の数 (ML-EDA の入力 x の幅) と,
          *     処置の列と行の id の列 (データセットの説明を先, 無ければ問題の設定の
@@ -378,15 +380,16 @@ export interface paths {
          *     Parameters
          *     ----------
          *     body: DatasetBody
-         *         データセットのディレクトリ (並べるなら反応の表のファイル) と,
-         *         問題の設定のファイル (任意)
+         *         データセットのディレクトリ (並べるなら反応の表, まとめるなら群を
+         *         作る表のファイル) と, 問題の設定のファイル (任意)
          *
          *     Returns
          *     ----------
          *     result: DatasetInputs
          *         入力 (形はバッチの次元を例の大きさにしたものと, データセットの
          *         形), タスク, 目的の列, クラス, 正解の種類, 出す値の数, 表の生成の
-         *         符号化した行の幅, 並べるの学習用の利用者と品物の数, 異常の検知の
+         *         符号化した行の幅, 並べるの学習用の利用者と品物の数, まとめるの
+         *         符号化した行の幅, 異常の検知の
          *         学習に使う列の数と度合いの決め方, 効果を見積もるの学習に使う列の数と
          *         数えない列, 値段を変える判断の特徴の列と値段の列の数と列の名前,
          *         需要の学習に使う列の数, 数えない列と学ぶ分位点の水準
@@ -403,8 +406,10 @@ export interface paths {
          *         見積もるの問題の設定でデータセットが介入の記録の表でない場合と, 値段
          *         を変える判断の問題の設定でデータセットが値段を変えた記録の表でない
          *         場合と, 時間をまたぐ量の判断の問題の設定でデータセットが需要の記録の
-         *         表でない場合は 422.
-         *         並べるで反応の表が無い場合は 404
+         *         表でない場合と, まとめるで群を作る列に答えていないか幅を
+         *         求められない場合は 422.
+         *         並べるで反応の表が無い場合と, まとめるで群を作る表が無い場合は
+         *         404
          */
         post: operations["read_dataset_inputs"];
         delete?: never;
@@ -742,7 +747,7 @@ export interface components {
             path: string;
             /**
              * Problem
-             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. 並べるなら, path は反応の表のファイルで, 入力 user と item の大きさを ML-Quest の rank_encoding の学習用の利用者と品物の数にする. 異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を見積もるなら, データセットの説明に無い処置の列と行の id の列を受け持ちの答えから読む. 値段を変える判断なら, データセットの説明に無い値段, 原価, 商品の id と行の id の列を受け持ちの答えから読む. 時間をまたぐ量の判断なら, 出す値の数を学ぶ分位点の水準の数 (記録のプロジェクトの学習の設定の demand.levels. 無ければ受け渡しの demand.levels) にする)
+             * @description 問題の設定のファイルの絶対のパス (表の生成なら, 入力と出力の幅を ML-Quest の table_encoding の符号化した行の幅にする. 並べるなら, path は反応の表のファイルで, 入力 user と item の大きさを ML-Quest の rank_encoding の学習用の利用者と品物の数にする. まとめるなら, path は群を作る表のファイルで, 入力 x の幅を ML-EDA の describe_groups の符号化した行の幅にする. 異常の検知なら, 度合いの決め方を受け持ちの答えから読む. 効果を見積もるなら, データセットの説明に無い処置の列と行の id の列を受け持ちの答えから読む. 値段を変える判断なら, データセットの説明に無い値段, 原価, 商品の id と行の id の列を受け持ちの答えから読む. 時間をまたぐ量の判断なら, 出す値の数を学ぶ分位点の水準の数 (記録のプロジェクトの学習の設定の demand.levels. 無ければ受け渡しの demand.levels) にする)
              */
             problem?: string | null;
         };
@@ -788,6 +793,8 @@ export interface components {
             table?: components["schemas"]["TableWidth"] | null;
             /** @description 並べるの問題の設定で, 入力 user と item の大きさにした学習用の利用者と品物の数 (他は無し) */
             rank?: components["schemas"]["RankSize"] | null;
+            /** @description まとめるの問題の設定で, 入力 x の幅にした符号化した行の幅 (他は無し) */
+            group?: components["schemas"]["GroupWidth"] | null;
             /** @description 異常の検知のデータセットか問題の設定で, 入力と出力の幅にした学習に使う列の数と度合いの決め方 (他は無し) */
             anomaly?: components["schemas"]["AnomalyWidth"] | null;
             /** @description 効果を見積もるのデータセットか問題の設定で, 入力 x の幅にした学習に使う列の数と数えない列 (他は無し) */
@@ -970,6 +977,39 @@ export interface components {
             hub_id?: string | null;
             /** Url */
             url?: string | null;
+        };
+        /** GroupWidth */
+        GroupWidth: {
+            /**
+             * Width
+             * @description 符号化した行の幅 (入力 x の幅)
+             */
+            width: number;
+            /**
+             * Numbers
+             * @description 数の列の数 (1 ずつ)
+             */
+            numbers: number;
+            /**
+             * Categories
+             * @description 種類の列の数
+             */
+            categories: number;
+            /**
+             * Values
+             * @description 種類の列の値の種類の数の和
+             */
+            values: number;
+            /**
+             * Columns
+             * @description 群を作る列の数
+             */
+            columns: number;
+            /**
+             * Problem
+             * @description 問題の設定の名前
+             */
+            problem?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {

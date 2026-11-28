@@ -27,6 +27,22 @@ export interface TableWidth {
   problem?: string | null
 }
 
+/** まとめるの符号化した行の幅と内訳 (ML-EDA の describe_groups. ML-Fathom の群の要約と同じ数え方) */
+export interface GroupWidth {
+  /** 符号化した行の幅 (入力 x の幅) */
+  width: number
+  /** 数の列の数 (1 ずつ) */
+  numbers: number
+  /** 種類の列の数 */
+  categories: number
+  /** 種類の列の値の種類の数の和 */
+  values: number
+  /** 群を作る列の数 */
+  columns: number
+  /** 問題の設定の名前 */
+  problem?: string | null
+}
+
 /** 並べるの学習用の利用者と品物の数と決め方 (ML-Quest の rank_encoding) */
 export interface RankSize {
   /** 学習用の利用者の数 (入力 user の大きさ) */
@@ -127,6 +143,8 @@ export interface DatasetInfo {
   table?: TableWidth | null
   /** 並べるの問題の設定で, 入力 user と item の大きさにした学習用の利用者と品物の数 (他は無い) */
   rank?: RankSize | null
+  /** まとめるの問題の設定で, 入力 x の幅にした符号化した行の幅 (他は無い) */
+  group?: GroupWidth | null
   /** 異常の検知のデータセットで, 入力と出力の幅にした学習に使う列の数と度合いの決め方 (他は無い) */
   anomaly?: AnomalyWidth | null
   /** 効果を見積もるのデータセットで, 入力 x の幅にした学習に使う列の数と数えない列 (他は無い) */
@@ -202,6 +220,10 @@ const OUTPUT_RULES: Record<string, string> = {
   contrastive_encoder: '出力 embedding は埋め込みの幅で, similarity は行どうしの似ている度合い',
   policy_value: '出力 logits は行動の数 (データセットから決めない) で, value は 1 つの値',
 }
+
+/** まとめるの出力の大きさを変えない知らせ */
+const GROUP_OUTPUT_NOTE =
+  '出力 embedding は埋め込みの幅 (定義で決める) で, similarity は行どうしの似ている度合いの表なので, 出力の大きさは変えていません'
 
 /** 知らせに添える, 雛形の引数の意味 (ML-ModelControl の docs/DESIGN.md の 9 節の表の記号) */
 const ARG_LABELS: Record<string, string> = {
@@ -387,6 +409,8 @@ function templateNotes(template: TemplateApplied, info: DatasetInfo): string[] {
     )
   } else if (info.rank) {
     notes.push('出力 score は利用者と品物の全ての組の点数の表なので, 出力の大きさは変えていません')
+  } else if (info.group) {
+    notes.push(GROUP_OUTPUT_NOTE)
   } else if (info.uplift) {
     const outputs = Object.keys(template.spec.outputs)
     notes.push(
@@ -533,6 +557,16 @@ export function rankSizeNote(rank: RankSize): string {
     `item の大きさを学習用の品物の数 ${rank.items} にしました ` +
     `(学習用の反応の行の数 ${train} (時刻の順に分けたもの). 分ける割合は${rates}. ` +
     '検証用とテスト用にだけ出る利用者と品物は数えません)'
+  )
+}
+
+/** まとめるで, 入力 x の幅をどう決めたかの文 */
+export function groupWidthNote(group: GroupWidth): string {
+  const from = group.problem ? `問題 ${group.problem} がまとめる` : 'まとめるの問題'
+  return (
+    `${from}なので, 入力 x の幅を, 学習で使う 1 行の長さ ${group.width} にしました ` +
+    `(数の列 ${group.numbers} は 1 つずつ, 種類の列 ${group.categories} は値の種類の数の和 ${group.values}. ` +
+    `群を作る列の数 ${group.columns} ではありません)`
   )
 }
 
@@ -745,7 +779,9 @@ export function anomalyDistanceNote(anomaly: AnomalyWidth): string {
  * 符号化した行の幅なので, その決め方を初めに知らせる. 並べるの問題の設定
  * (info.rank) では, 入力 user と item の大きさが学習用の利用者と品物の数
  * なので, その決め方と除いた行の知らせを初めに知らせる (出力は全ての組の
- * 点数の表なので大きさを変えない). 異常の検知のデータセット (info.anomaly)
+ * 点数の表なので大きさを変えない). まとめるの問題の設定 (info.group) では,
+ * 入力 x の幅が符号化した行の幅なので, その決め方を初めに知らせる (出力は埋め込みと
+ * 類似度の表なので大きさを変えない). 異常の検知のデータセット (info.anomaly)
  * では, 入力と出力の幅が学習に使う列の数なので, その決め方を初めに知らせる.
  * 問題の設定の度合いの決め方が距離に基づく度合いなら, モデルの定義が要らない
  * ことを知らせて何も変えない. 効果を見積もるのデータセット (info.uplift) では,
@@ -788,15 +824,17 @@ export function applyDatasetInputs(
     ? [tableWidthNote(info.table)]
     : info.rank
       ? [rankSizeNote(info.rank), ...(info.rank.notes ?? [])]
-      : info.anomaly
-        ? [anomalyWidthNote(info.anomaly)]
-        : info.uplift
-          ? [upliftWidthNote(info.uplift, inputOffset(info, info.inputs[0]?.name ?? ''))]
-          : info.price
-            ? [priceWidthNote(info.price)]
-            : info.demand
-              ? [demandWidthNote(info.demand), ...(info.demand.notes ?? [])]
-              : []
+      : info.group
+        ? [groupWidthNote(info.group)]
+        : info.anomaly
+          ? [anomalyWidthNote(info.anomaly)]
+          : info.uplift
+            ? [upliftWidthNote(info.uplift, inputOffset(info, info.inputs[0]?.name ?? ''))]
+            : info.price
+              ? [priceWidthNote(info.price)]
+              : info.demand
+                ? [demandWidthNote(info.demand), ...(info.demand.notes ?? [])]
+                : []
   let next = spec
   // ノードと同じ名前の入力は作らない (つなぎ先が入力を指すように変わるため)
   const clashes = info.inputs.filter((item) => item.name in spec.nodes)
@@ -915,7 +953,9 @@ export function applyDatasetInputs(
     notes.push(
       info.rank
         ? '出力 score は利用者と品物の全ての組の点数の表なので, 出力の大きさは変えていません'
-        : 'タスクを決めていないデータセットなので, 出力の大きさは変えていません',
+        : info.group
+          ? GROUP_OUTPUT_NOTE
+          : 'タスクを決めていないデータセットなので, 出力の大きさは変えていません',
     )
     return { spec: next, notes }
   }
@@ -1022,7 +1062,7 @@ export function datasetSummary(info: DatasetInfo): string {
   else if (info.target) parts.push(`目的の列 ${info.target}`)
   if (info.classes) parts.push(`クラス ${info.classes.length}`)
   if (info.outputs != null) parts.push(`出す値 ${info.outputs}`)
-  const from = info.rank ? '反応の表' : 'データセット'
+  const from = info.rank ? '反応の表' : info.group ? '群を作る表' : 'データセット'
   // 距離に基づく度合いは何も入れないので, 読んだことだけを出す
   const done = info.anomaly?.score === 'distance' ? 'を読みました' : 'から入れました'
   return `${from}${done}: ${parts.join(', ')}`
