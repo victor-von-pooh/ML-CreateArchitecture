@@ -17,7 +17,7 @@ class StubQuest:
     def __init__(self, record: dict[str, Any]):
         # handoff が返す値を保存
         self.record = record
-        # 書きかけの判定 (ml.use の答えと, 確かめの結果)
+        # 書きかけの判定の値 (ml.use の答えと確かめの結果)
         self.use: Any = True
         self.items: list[dict[str, Any]] = []
 
@@ -53,6 +53,8 @@ class StubQuest:
         value: Any
             保存した答え
         """
+        assert key == "ml.use"
+
         return self.use
 
     def check(self, problem: dict[str, Any]) -> list[dict[str, Any]]:
@@ -527,9 +529,18 @@ def test_unfinished_problem(
     progress = setup.progress()
     assert progress["state"] == "blocked" and progress["back"] == "problem"
 
-    # 他の ValueError (形の誤り) は握らない
+    # 書きかけでない handoff の ValueError は固定の文の 422
     stub.items = [{"level": "warning"}]
     monkeypatch.setattr(stub, "handoff", unfinished)
+    response = setup.client.get("/api/progress", params={"problem": IDENT})
+    assert response.status_code == 422
+    assert "答えていません" not in response.text
+
+    # 形の誤り (KeyError) は握らない (500)
+    def broken(problem: dict[str, Any]) -> dict[str, Any]:
+        raise KeyError("model")
+
+    monkeypatch.setattr(stub, "handoff", broken)
     quiet = TestClient(setup.client.app, raise_server_exceptions=False)
     quiet.get("/api/auth?token=secret", follow_redirects=False)
     response = quiet.get("/api/progress", params={"problem": IDENT})
