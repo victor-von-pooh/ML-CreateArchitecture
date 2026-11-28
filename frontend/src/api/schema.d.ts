@@ -454,6 +454,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Progress
+         * @description 殻の段階の並びに出す, モデルの作成・選定の段階の進みを問題の単位で
+         *     返す関数
+         *
+         *     記録の場所の定義だけを数え (models/ の下の別の名前の定義は数えない),
+         *     読むだけでファイルは動かさない. 動いている処理は無いので running は
+         *     返さない
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     problem: str
+         *         問題の識別子 (置き場の直下のディレクトリの名前)
+         *
+         *     Returns
+         *     ----------
+         *     progress: dict[str, Any]
+         *         state (skip, blocked, stale, done, none), summary (短い文), back
+         *         (blocked と stale では戻る段階の鍵 problem か data. 他は None)
+         *
+         *     Raises
+         *     ----------
+         *     HTTPException
+         *         問題が無いか識別子の形が違えば 404, 壊れた問題のファイルと読めない
+         *         場所は 422
+         */
+        get: operations["get_progress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/project/target": {
         parameters: {
             query?: never;
@@ -2021,6 +2065,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProblemList"];
+                };
+            };
+        };
+    };
+    get_progress: {
+        parameters: {
+            query: {
+                problem: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
