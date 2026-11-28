@@ -2117,6 +2117,66 @@ def test_dataset_inputs_group(client: TestClient, tmp_path: Path) -> None:
     assert "符号化した行の幅" in response.json()["detail"]
 
 
+def test_dataset_inputs_group_all_rows(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    まとめるの幅は, 1 行にだけ出る種類の値 (学習用と検証用に分けると検証用
+    にだけ出うる値) も数えた全ての行の幅になり, 幅を求める所の READ_ERRORS
+    の外の誤りは 500 でなく 422 になることを確かめる関数 (ML-EDA と
+    ML-Quest が無ければ飛ばす)
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        ML-EDA の describe_groups を差し替える
+
+    Returns
+    ----------
+    None
+    """
+    # 最後の 1 行にだけ出る地域 west
+    ml_eda = pytest.importorskip("ml_eda")
+    ml_quest = pytest.importorskip("ml_quest")
+    source = tmp_path / "customers.csv"
+    write_group_rows(source)
+    frame = pd.read_csv(source)
+    frame.loc[len(frame) - 1, "region"] = "west"
+    frame.to_csv(source, index=False)
+    problem = ml_quest.attach_data(
+        group_problem(ml_quest), str(source),
+        copy_to=str(tmp_path / "copies")
+    )
+    place = tmp_path / "problem.yaml"
+    ml_quest.save_problem(problem, place)
+
+    # 数の列 2 つと, 地域の 4 つと欠損の 5 つ
+    response = client.post(
+        "/api/dataset/inputs", json={"path": str(source), "problem": str(place)}
+    )
+    assert response.status_code == 200, response.text
+    group = response.json()["group"]
+    assert (group["width"], group["values"]) == (7, 5)
+
+    # メモリの不足と, ライブラリの中の他の誤りは 422
+    for error in (MemoryError(), RuntimeError("k-means の誤り")):
+        def describe_groups(*args: Any, error: Exception = error,
+                            **kwargs: Any) -> None:
+            raise error
+
+        monkeypatch.setattr(ml_eda, "describe_groups", describe_groups)
+        response = client.post(
+            "/api/dataset/inputs",
+            json={"path": str(source), "problem": str(place)}
+        )
+        assert response.status_code == 422, response.text
+        assert "符号化した行の幅" in response.json()["detail"]
+
+
 def test_dataset_inputs_without_rank_encoding(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

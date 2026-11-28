@@ -796,7 +796,8 @@ def group_width(problem: Any, table: Path) -> GroupWidth:
     まとめるの問題の設定で, 群を作る表の符号化した行の幅を求める関数
 
     幅は ML-EDA の describe_groups の width (数の列は 1 つずつ, 種類の
-    列は値の種類の数. ML-Fathom の群の要約と同じ数え方). 群を作る列と
+    列は値の種類の数. ML-Fathom の群の要約と同じ数え方). 全ての行で数える
+    (群分けの骨組みも全ての行で符号化を決めるため). 群を作る列と
     表の読み方は問題の設定の答え (骨組みの config の group.columns と
     同じ)
 
@@ -818,7 +819,8 @@ def group_width(problem: Any, table: Path) -> GroupWidth:
         ML-EDA か ML-Quest が無いか古い場合と, 表を読む部品 (parquet の
         pyarrow) が無い場合は 501, 表が無い場合は 404, 群を作る列に
         答えていない場合と幅を求められない場合 (列が無い, 行が無い, 幅が
-        大きすぎるなど) は 422
+        大きすぎる, 表が大きすぎてメモリが足りないなど. ライブラリの中の
+        他の誤りも含む) は 422
     """
     # 群を作る列と表の読み方 (問題の設定の答え)
     quest = load_library("ml_quest", "active_value")
@@ -854,7 +856,15 @@ def group_width(problem: Any, table: Path) -> GroupWidth:
         ) from error
     except ImportError as error:
         raise missing_reader(error) from error
-    except READ_ERRORS as error:
+    except MemoryError as error:
+        raise HTTPException(
+            422,
+            "群を作る表が大きすぎて, まとめるの符号化した行の幅 (入力 x の"
+            "幅) を求められません"
+        ) from error
+    except Exception as error:
+        # 表の読み込みと k-means の中の誤り (READ_ERRORS の外も. 500 に
+        # せずに理由を出す)
         raise HTTPException(
             422,
             "まとめるの, 符号化した行の幅 (入力 x の幅) を求められません: "

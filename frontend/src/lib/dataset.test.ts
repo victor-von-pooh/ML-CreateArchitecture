@@ -628,7 +628,7 @@ describe('applyDatasetInputs (まとめる)', () => {
     expect(spec.nodes.fc2!.params).toMatchObject({ in_features: 32, out_features: 16 })
     expect(notes[0]).toBe(
       '問題 顧客の群 がまとめるなので, 入力 x の幅を, 学習で使う 1 行の長さ 6 にしました ' +
-        '(数の項目 2 は 1 つずつ, 分類の項目 1 は選べる値の数の合計 4. 群を作る項目の数 3 ではありません)',
+        '(数の列 2 は 1 つずつ, 種類の列 1 は値の種類の数の和 4. 群を作る列の数 3 ではありません)',
     )
     expect(notes.at(-1)).toContain('出力の大きさは変えていません')
     expect(datasetSummary(customers)).toBe('群を作る表から入れました: 入力 x [4, 6]')

@@ -565,8 +565,8 @@ export function groupWidthNote(group: GroupWidth): string {
   const from = group.problem ? `問題 ${group.problem} がまとめる` : 'まとめるの問題'
   return (
     `${from}なので, 入力 x の幅を, 学習で使う 1 行の長さ ${group.width} にしました ` +
-    `(数の項目 ${group.numbers} は 1 つずつ, 分類の項目 ${group.categories} は選べる値の数の合計 ${group.values}. ` +
-    `群を作る項目の数 ${group.columns} ではありません)`
+    `(数の列 ${group.numbers} は 1 つずつ, 種類の列 ${group.categories} は値の種類の数の和 ${group.values}. ` +
+    `群を作る列の数 ${group.columns} ではありません)`
   )
 }
 
