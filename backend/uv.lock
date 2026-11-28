@@ -1585,7 +1585,7 @@ provides-extras = ["geometric", "huggingface", "torchvision", "timm", "torchaudi
 [[package]]
 name = "ml-quest"
 version = "0.1.0"
-source = { git = "https://github.com/victor-von-pooh/ML-Quest.git#bdcdd2bd5df887fad40d16d35aa7965164d2e09e" }
+source = { git = "https://github.com/victor-von-pooh/ML-Quest.git#b97ed892c9ec0c2bcc4b38bfd1034c24048c98d5" }
 dependencies = [
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
