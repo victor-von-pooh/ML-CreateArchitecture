@@ -2864,7 +2864,7 @@ def progress_of(problem: Any) -> dict[str, Any]:
     Raises
     ----------
     HTTPException
-        版を読めない問題の設定は 422
+        版を読めない問題の設定と, 受け渡しの値を作れない問題の設定は 422
     """
     # 要らない問題を先に採る (前提が足りなくても進める物が無いため)
     quest = load_library("ml_quest", "stage_needs")
@@ -2880,16 +2880,28 @@ def progress_of(problem: Any) -> dict[str, Any]:
         return progress
     data_needed = needs["data"]["needed"] is not False
 
-    # 書きかけの問題 (機械学習を使うか答えていないなど) は仕上げてもらう
-    try:
-        stages = quest.handoff(problem)
-    except READ_ERRORS as error:
-        LOGGER.info("受け渡しの値を決められません", exc_info=error)
+    # 書きかけの問題 (ml.use が真でないか, check に error が残る) の判定
+    quest = load_library("ml_quest", "upgrade_problem")
+    upgraded = quest.upgrade_problem(problem)
+    unfinished = quest.get_value(upgraded, "ml.use") is not True or any(
+        item["level"] == "error" for item in quest.check(upgraded)
+    )
+    if unfinished:
         progress = progress_state(
             "blocked", "問題の設定が仕上がっていません (問題の設定の段階で"
             "仕上げてください)", "problem"
         )
         return progress
+
+    # 受け渡しの値を作れない問題 (時刻の分け方で反応が空など) は 422.
+    # TypeError と KeyError などは握らない (500)
+    try:
+        stages = quest.handoff(problem)
+    except ValueError as error:
+        LOGGER.warning("受け渡しの値を作れません", exc_info=error)
+        raise HTTPException(
+            422, "問題の設定から受け渡しの値を作れません"
+        ) from error
 
     # 形の誤りは握らない (500)
     model = stages["model"]
